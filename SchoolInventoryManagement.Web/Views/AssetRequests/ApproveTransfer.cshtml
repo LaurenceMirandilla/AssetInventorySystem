@@ -1,0 +1,59 @@
+﻿@model SchoolInventoryManagement.Web.ViewModels.ApproveTransferRequestViewModel
+@{
+    ViewData["Title"] = "Approve Transfer Request";
+    var request = ViewBag.Request as SchoolInventoryManagement.BLL.DTOs.AssetRequestResponseDTO;
+}
+
+<h2>Approve Transfer Request #@Model.RequestID</h2>
+
+@if (request is not null)
+{
+    <p class="text-muted">
+        @request.RequestedByUser.FullName (@request.RequestedByUser.RoleName)
+        asked to move <strong>@request.AssetCode</strong>
+        to <strong>@request.RequestedLocationName</strong>.
+    </p>
+    @if (!string.IsNullOrWhiteSpace(request.Reason))
+    {
+        <p class="text-muted">Reason given: @request.Reason</p>
+    }
+}
+
+<div class="alert alert-info">
+    The asset and destination are already fixed by the request, so there is
+    nothing to pick here. Approving moves the unit and marks the request
+    fulfilled in one step — the unit must still be Available for it to go through.
+</div>
+
+<form asp-action="ApproveTransfer" asp-route-id="@Model.RequestID" method="post">
+    @Html.AntiForgeryToken()
+    <input type="hidden" asp-for="RequestID" />
+    <input type="hidden" asp-for="RowVersionBase64" />
+    <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+
+    <div class="mb-3">
+        <label asp-for="ConditionOnTransfer" class="form-label">
+            Condition at hand-over <span class="text-muted">(optional)</span>
+        </label>
+        <select asp-for="ConditionOnTransfer"
+                asp-items="Html.GetEnumSelectList<SchoolInventoryManagement.DAL.Entities.Enums.ConditionStatus>()"
+                class="form-select">
+            <option value="">-- Leave unchanged --</option>
+        </select>
+        <div class="form-text">Leaving this blank keeps the condition already on record.</div>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="Remarks" class="form-label">Notes <span class="text-muted">(optional)</span></label>
+        <textarea asp-for="Remarks" class="form-control"></textarea>
+    </div>
+
+    <button type="submit" class="btn btn-success">Approve &amp; Transfer</button>
+    <a asp-action="Details" asp-route-id="@Model.RequestID" class="btn btn-secondary">Cancel</a>
+</form>
+
+@section Scripts {
+    @{
+        await Html.RenderPartialAsync("_ValidationScriptsPartial");
+    }
+}

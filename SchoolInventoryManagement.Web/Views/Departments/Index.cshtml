@@ -1,0 +1,62 @@
+﻿@model List<SchoolInventoryManagement.BLL.DTOs.DepartmentDTO>
+@{
+    ViewData["Title"] = "Departments";
+}
+@if (TempData["ErrorMessage"] != null)
+{
+    <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
+}
+
+<div class="sab-page-head">
+    <div>
+        <h2>Departments</h2>
+        <p class="sab-page-sub">@Model.Count department@(Model.Count == 1 ? "" : "s") across all branches.</p>
+    </div>
+    <div class="sab-page-actions">
+        <a asp-action="Create" class="btn btn-primary">+ New Department</a>
+    </div>
+</div>
+
+@if (Model.Any())
+{
+    <div class="sab-table-card">
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Branch</th>
+                    <th>Description</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var department in Model)
+                {
+                    <tr>
+                        <td>@department.DepartmentName</td>
+                        <td>@department.BranchName</td>
+                        <td>@(department.Description ?? "—")</td>
+                        <td>
+                            <a asp-action="Edit" asp-route-id="@department.DepartmentID">Edit</a>
+                            <form asp-action="Delete" asp-route-id="@department.DepartmentID" method="post" class="d-inline" onsubmit="return confirm('Delete this department?');">
+                                @Html.AntiForgeryToken()
+                                <button type="submit" class="btn btn-link text-danger p-0 ms-2">Delete</button>
+                            </form>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+else
+{
+    <div class="card">
+        <div class="sab-empty">
+            <div class="sab-empty-title">No departments yet</div>
+            <p>Departments belong to a branch and are what an asset is issued against.</p>
+            <a asp-action="Create" class="btn btn-primary">+ New Department</a>
+        </div>
+    </div>
+}
+

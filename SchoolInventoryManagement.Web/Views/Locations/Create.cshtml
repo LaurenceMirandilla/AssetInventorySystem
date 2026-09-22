@@ -1,0 +1,39 @@
+﻿@model SchoolInventoryManagement.BLL.DTOs.CreateLocationDTO
+@{
+    ViewData["Title"] = "New Location";
+}
+
+<h2>New Location</h2>
+
+<form asp-action="Create" method="post">
+    @Html.AntiForgeryToken()
+    <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+
+    <div class="mb-3">
+        <label asp-for="BranchID" class="form-label">Branch</label>
+        <select asp-for="BranchID" asp-items="ViewBag.Branches" class="form-select">
+            <option value="">-- Select Branch --</option>
+        </select>
+        <span asp-validation-for="BranchID" class="text-danger"></span>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="LocationName" class="form-label">Location Name</label>
+        <input asp-for="LocationName" class="form-control" placeholder="e.g. Room 204, IT Storage" />
+        <span asp-validation-for="LocationName" class="text-danger"></span>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="Description" class="form-label">Description <span class="text-muted">(optional)</span></label>
+        <textarea asp-for="Description" class="form-control"></textarea>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Create</button>
+    <a asp-action="Index" class="btn btn-secondary">Cancel</a>
+</form>
+
+@section Scripts {
+    @{
+        await Html.RenderPartialAsync("_ValidationScriptsPartial");
+    }
+}

@@ -1,0 +1,11 @@
+{
+  "profiles": {
+    "SchoolInventoryManagement.BLL": {
+      "commandName": "Project",
+      "debugEngines": "managed"
+    },
+    "Profile 1": {
+      "commandName": "Executable"
+    }
+  }
+}

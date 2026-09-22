@@ -1,0 +1,28 @@
+﻿@model SchoolInventoryManagement.Web.ViewModels.ReturnAssetViewModel
+@{
+    ViewData["Title"] = "Return Asset";
+}
+
+<h2>Return Asset</h2>
+<p class="text-muted">@ViewBag.AssetCode — @ViewBag.AssetName (currently with @ViewBag.AssignedTo)</p>
+
+<form asp-action="Return" asp-route-id="@Model.AssignmentID" method="post">
+    @Html.AntiForgeryToken()
+    <input type="hidden" asp-for="AssignmentID" />
+    <input type="hidden" asp-for="RowVersionBase64" />
+    <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+
+    <div class="mb-3">
+        <label asp-for="ConditionOnReturn" class="form-label">Condition on Return</label>
+        <select asp-for="ConditionOnReturn" asp-items="Html.GetEnumSelectList<SchoolInventoryManagement.DAL.Entities.Enums.ConditionStatus>()" class="form-select"></select>
+        <span asp-validation-for="ConditionOnReturn" class="text-danger"></span>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Confirm Return</button>
+</form>
+
+@section Scripts {
+    @{
+        await Html.RenderPartialAsync("_ValidationScriptsPartial");
+    }
+}

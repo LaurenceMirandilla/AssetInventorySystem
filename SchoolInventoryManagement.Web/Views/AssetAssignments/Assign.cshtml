@@ -1,0 +1,48 @@
+﻿@model SchoolInventoryManagement.Web.ViewModels.AssignAssetViewModel
+@{
+    ViewData["Title"] = "Assign Asset";
+}
+
+<h2>Assign Asset</h2>
+<p class="text-muted">@ViewBag.AssetCode — @ViewBag.AssetName</p>
+
+<form asp-action="Assign" asp-route-id="@Model.AssetID" method="post">
+    @Html.AntiForgeryToken()
+    <input type="hidden" asp-for="AssetID" />
+    <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+
+    <div class="mb-3">
+        <label asp-for="AssignToUserID" class="form-label">Assign To</label>
+        <select asp-for="AssignToUserID" asp-items="ViewBag.Users" class="form-select">
+            <option value="">-- Select User --</option>
+        </select>
+        <span asp-validation-for="AssignToUserID" class="text-danger"></span>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="ConditionOnAssignment" class="form-label">Condition</label>
+        <select asp-for="ConditionOnAssignment" asp-items="Html.GetEnumSelectList<SchoolInventoryManagement.DAL.Entities.Enums.ConditionStatus>()" class="form-select"></select>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="Remarks" class="form-label">Remarks <span class="text-muted">(optional)</span></label>
+        <textarea asp-for="Remarks" class="form-control"></textarea>
+    </div>
+    <div class="mb-3">
+        <label asp-for="DepartmentID" class="form-label">Borrower's Department</label>
+        <select asp-for="DepartmentID" asp-items="ViewBag.Departments" class="form-select">
+            <option value="">-- Select Department --</option>
+        </select>
+        <span asp-validation-for="DepartmentID" class="text-danger"></span>
+    </div>
+
+
+    <button type="submit" class="btn btn-primary">Assign</button>
+    <a asp-controller="Assets" asp-action="Details" asp-route-id="@Model.AssetID" class="btn btn-secondary">Cancel</a>
+</form>
+
+@section Scripts {
+    @{
+        await Html.RenderPartialAsync("_ValidationScriptsPartial");
+    }
+}

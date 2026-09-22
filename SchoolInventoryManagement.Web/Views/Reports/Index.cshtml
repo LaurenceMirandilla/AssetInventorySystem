@@ -1,0 +1,152 @@
+﻿@model SchoolInventoryManagement.BLL.DTOs.InventorySummaryDTO
+@{
+    ViewData["Title"] = "Reports";
+}
+
+<div class="row g-3 sab-reports-grid">
+    <div class="col-lg-3">
+        @await Html.PartialAsync("_ReportsNav")
+    </div>
+    <div class="col-lg-9">
+        <div class="sab-page-head">
+            <div>
+                <h2>Reports</h2>
+                <p class="sab-page-sub">
+                    Figures are live. &quot;In service&quot; excludes disposed assets, which are
+                    still counted in the breakdowns below so nothing disappears from the record.
+                </p>
+            </div>
+        </div>
+
+        <div class="report-tiles is-quad">
+            <div class="report-tile">
+                <span class="report-tile-label">Assets in service</span>
+                <span class="report-tile-value">@Model.InServiceAssets</span>
+                <span class="report-tile-note">@Model.TotalAssets on record</span>
+            </div>
+            <div class="report-tile">
+                <span class="report-tile-label">Total value</span>
+                <span class="report-tile-value">@Model.TotalValue.ToString("C0")</span>
+                <span class="report-tile-note">in service only</span>
+            </div>
+            <div class="report-tile">
+                <span class="report-tile-label">Available</span>
+                <span class="report-tile-value">@Model.AvailableCount</span>
+                <span class="report-tile-note">ready to issue</span>
+            </div>
+            <div class="report-tile">
+                <span class="report-tile-label">Assigned out</span>
+                <span class="report-tile-value">@Model.AssignedCount</span>
+                <span class="report-tile-note">@Model.OutstandingAssignmentCount open assignment(s)</span>
+            </div>
+            <div class="report-tile">
+                <span class="report-tile-label">Pending requests</span>
+                <span class="report-tile-value">@Model.PendingRequestCount</span>
+                <span class="report-tile-note">awaiting a decision</span>
+            </div>
+            <div class="report-tile">
+                <span class="report-tile-label">Under maintenance</span>
+                <span class="report-tile-value">@Model.UnderMaintenanceCount</span>
+                <span class="report-tile-note">@Model.LostOrDamagedCount lost or damaged</span>
+            </div>
+            <div class="report-tile">
+                <span class="report-tile-label">Disposed</span>
+                <span class="report-tile-value">@Model.DisposedCount</span>
+                <span class="report-tile-note">excluded from value</span>
+            </div>
+            <div class="report-tile">
+                <span class="report-tile-label">Active users</span>
+                <span class="report-tile-value">@Model.ActiveUserCount</span>
+                <span class="report-tile-note">can sign in</span>
+            </div>
+        </div>
+
+        <div class="sab-table-card mb-3">
+            <div class="sab-table-head"><h5>By status</h5></div>
+            <table class="table table-striped table-sm">
+                <thead><tr><th>Status</th><th class="text-end">Count</th><th class="text-end">Value</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var row in Model.ByStatus)
+                    {
+                        <tr>
+                            <td><span class="status-pill status-@row.Label.ToLowerInvariant()">@DisplayText.Humanize(row.Label)</span></td>
+                            <td class="text-end">@row.Count</td>
+                            <td class="text-end">@row.TotalValue.ToString("C0")</td>
+                            <td>
+                                <a asp-controller="Assets" asp-action="Index" asp-route-status="@row.Label">View assets</a>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="sab-table-card mb-3">
+            <div class="sab-table-head"><h5>By condition</h5></div>
+            <table class="table table-striped table-sm">
+                <thead><tr><th>Condition</th><th class="text-end">Count</th><th class="text-end">Value</th></tr></thead>
+                <tbody>
+                    @foreach (var row in Model.ByCondition)
+                    {
+                        <tr>
+                            <td><span class="status-pill status-@row.Label.ToLowerInvariant()">@DisplayText.Humanize(row.Label)</span></td>
+                            <td class="text-end">@row.Count</td>
+                            <td class="text-end">@row.TotalValue.ToString("C0")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="sab-table-card mb-3">
+            <div class="sab-table-head"><h5>By category</h5></div>
+            <table class="table table-striped table-sm">
+                <thead><tr><th>Category</th><th class="text-end">Count</th><th class="text-end">Value</th></tr></thead>
+                <tbody>
+                    @foreach (var row in Model.ByCategory)
+                    {
+                        <tr>
+                            <td>@row.Label</td>
+                            <td class="text-end">@row.Count</td>
+                            <td class="text-end">@row.TotalValue.ToString("C0")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="sab-table-card mb-3">
+            <div class="sab-table-head"><h5>By branch</h5></div>
+            <table class="table table-striped table-sm">
+                <thead><tr><th>Branch</th><th class="text-end">Count</th><th class="text-end">Value</th></tr></thead>
+                <tbody>
+                    @foreach (var row in Model.ByBranch)
+                    {
+                        <tr>
+                            <td>@row.Label</td>
+                            <td class="text-end">@row.Count</td>
+                            <td class="text-end">@row.TotalValue.ToString("C0")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="sab-table-card mb-3">
+            <div class="sab-table-head"><h5>By department</h5></div>
+            <table class="table table-striped table-sm">
+                <thead><tr><th>Department</th><th class="text-end">Count</th><th class="text-end">Value</th></tr></thead>
+                <tbody>
+                    @foreach (var row in Model.ByDepartment)
+                    {
+                        <tr>
+                            <td>@row.Label</td>
+                            <td class="text-end">@row.Count</td>
+                            <td class="text-end">@row.TotalValue.ToString("C0")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>

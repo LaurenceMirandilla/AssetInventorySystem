@@ -1,0 +1,97 @@
+﻿@model List<SchoolInventoryManagement.BLL.DTOs.AssignmentReportRowDTO>
+@{
+    ViewData["Title"] = "Borrowed Items";
+}
+
+<div class="row g-3 sab-reports-grid">
+    <div class="col-lg-3">
+        @await Html.PartialAsync("_ReportsNav")
+    </div>
+    <div class="col-lg-9">
+        <div class="sab-page-head">
+            <div>
+                <h2>Borrowed Items</h2>
+                <p class="sab-page-sub">
+                    Every asset currently out with someone — an assignment with no return date.
+                    Oldest first, so the longest-held units are at the top.
+                </p>
+            </div>
+            <div class="sab-page-actions">
+            <a asp-action="ExportAssignments"
+               asp-route-branchId="@Context.Request.Query["branchId"]"
+               asp-route-departmentId="@Context.Request.Query["departmentId"]"
+               class="btn btn-primary">Export CSV</a>
+            </div>
+        </div>
+
+        <div class="sab-filter-card">
+            <form method="get" class="row g-2 align-items-end">
+                <div class="col-auto">
+                    <label class="form-label">Branch</label>
+                    @Html.DropDownList("branchId", (IEnumerable<SelectListItem>)ViewBag.Branches,
+                         "All branches", new { @class = "form-select" })
+                </div>
+                <div class="col-auto">
+                    <label class="form-label">Department</label>
+                    @Html.DropDownList("departmentId", (IEnumerable<SelectListItem>)ViewBag.Departments,
+                         "All departments", new { @class = "form-select" })
+                </div>
+                <div class="col-auto align-self-end">
+                    <button type="submit" class="btn btn-secondary">Apply</button>
+                    <a asp-action="Assignments" class="btn btn-outline-secondary">Reset</a>
+                </div>
+            </form>
+        </div>
+
+        <div class="sab-table-card">
+            <div class="sab-table-head">
+                <h5>Borrowed items</h5>
+                <span class="sab-table-count">@Model.Count asset(s) currently out.</span>
+            </div>
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Asset</th>
+                        <th>Held by</th>
+                        <th>Role</th>
+                        <th>Department</th>
+                        <th>Issued by</th>
+                        <th>Issued</th>
+                        <th class="text-end">Days out</th>
+                        <th>Condition out</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in Model)
+                    {
+                        <tr>
+                            <td>
+                                <a asp-controller="Assets" asp-action="Details" asp-route-id="@row.AssetID">@row.AssetCode</a>
+                                <div class="text-muted small">@row.AssetName</div>
+                            </td>
+                            <td>
+                                @row.AssignedToName
+                                <div class="text-muted small">@row.AssignedToEmail</div>
+                            </td>
+                            <td>@row.AssignedToRole</td>
+                            <td>@(row.DepartmentName ?? "—")</td>
+                            <td>@row.AssignedByName</td>
+                            <td>@row.AssignmentDate.ToString("MMM d, yyyy")</td>
+                            <td class="text-end">@row.DaysOut</td>
+                            <td><span class="status-pill status-@row.ConditionOnAssignment.ToString().ToLowerInvariant()">@DisplayText.Humanize(row.ConditionOnAssignment.ToString())</span></td>
+                            <td>
+                                <a asp-controller="AssetAssignments" asp-action="Return" asp-route-id="@row.AssignmentID">Return</a>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            @if (!Model.Any())
+            {
+                <div class="sab-empty"><p class="mb-0">Nothing is currently out.</p></div>
+            }
+        </div>
+
+    </div>
+</div>

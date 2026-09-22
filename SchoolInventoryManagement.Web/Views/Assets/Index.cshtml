@@ -1,0 +1,171 @@
+@model SchoolInventoryManagement.Web.ViewModels.AssetIndexViewModel
+@using Microsoft.AspNetCore.Mvc.Rendering
+@{
+    ViewData["Title"] = "Assets";
+    var canManage = User.IsInRole("Asset Officer") || User.IsInRole("Administrator");
+    var activeStatus = Model.Status?.ToString();
+}
+
+<div class="sab-page-head">
+    <div>
+        <h2>Assets</h2>
+        <p class="sab-page-sub">@Model.TotalCount registered unit@(Model.TotalCount == 1 ? "" : "s").</p>
+    </div>
+    <div class="sab-page-actions">
+        <a asp-action="ExportAssets"
+           asp-route-keyword="@Model.Keyword"
+           asp-route-categoryId="@Model.CategoryId"
+           asp-route-departmentId="@Model.DepartmentId"
+           asp-route-status="@Model.Status"
+           asp-route-condition="@Model.Condition"
+           class="btn btn-outline-secondary">Export CSV</a>
+
+        @if (canManage)
+        {
+            <a asp-action="Create" class="btn btn-primary">+ Register asset</a>
+        }
+    </div>
+</div>
+
+@* KPI tiles -- always the WHOLE inventory, regardless of the active filter.
+   Clicking one jumps straight to that status; "All assets" clears it. The
+   tinted tile is the view you are looking at. *@
+<div class="report-tiles mb-3">
+    <a asp-action="Index" class="report-tile text-decoration-none @(activeStatus == null ? "active" : "")">
+        <span class="report-tile-value">@Model.TotalCount</span>
+        <span class="report-tile-label">All assets</span>
+    </a>
+    <a asp-action="Index" asp-route-status="Available"
+       class="report-tile text-decoration-none @(activeStatus == "Available" ? "active" : "")">
+        <span class="report-tile-value">@Model.AvailableCount</span>
+        <span class="report-tile-label">Available</span>
+    </a>
+    <a asp-action="Index" asp-route-status="Assigned"
+       class="report-tile text-decoration-none @(activeStatus == "Assigned" ? "active" : "")">
+        <span class="report-tile-value">@Model.AssignedCount</span>
+        <span class="report-tile-label">Assigned</span>
+    </a>
+    <a asp-action="Index" asp-route-status="UnderMaintenance"
+       class="report-tile text-decoration-none @(activeStatus == "UnderMaintenance" ? "active" : "")">
+        <span class="report-tile-value">@Model.UnderMaintenanceCount</span>
+        <span class="report-tile-label">Under maintenance</span>
+    </a>
+    <a asp-action="Index" asp-route-status="Disposed"
+       class="report-tile text-decoration-none @(activeStatus == "Disposed" ? "active" : "")">
+        <span class="report-tile-value">@Model.DisposedCount</span>
+        <span class="report-tile-label">Disposed</span>
+    </a>
+</div>
+
+@* Filters, rows and the pager are one raised surface, as in the mockup --
+   the filter row is a toolbar on the card rather than a detached form. *@
+<div class="sab-table-card">
+    <form method="get" class="sab-table-toolbar">
+        <div class="sab-table-filters">
+            <input type="text" name="keyword" class="form-control" style="width:190px;"
+                   placeholder="Name, code, serial…" value="@Model.Keyword" />
+            @Html.DropDownList("categoryId", (IEnumerable<SelectListItem>)ViewBag.CategoryFilter,
+                 "All categories", new { @class = "form-select", style = "width:auto;" })
+            @Html.DropDownList("departmentId", (IEnumerable<SelectListItem>)ViewBag.DepartmentFilter,
+                 "All departments", new { @class = "form-select", style = "width:auto;" })
+            @Html.DropDownList("status", (IEnumerable<SelectListItem>)ViewBag.StatusFilter,
+                 "All statuses", new { @class = "form-select", style = "width:auto;" })
+            @Html.DropDownList("condition", (IEnumerable<SelectListItem>)ViewBag.ConditionFilter,
+                 "All conditions", new { @class = "form-select", style = "width:auto;" })
+            <button type="submit" class="btn btn-secondary">Apply</button>
+            <a asp-action="Index" class="btn btn-outline-secondary">Reset</a>
+        </div>
+
+        <span class="sab-table-count">
+            @if (Model.TotalFilteredCount == 0)
+            {
+                <text>No matches</text>
+            }
+            else
+            {
+                <text>Showing @Model.FirstRowNumber–@Model.LastRowNumber of @Model.TotalFilteredCount</text>
+            }
+        </span>
+    </form>
+
+    @if (Model.TotalFilteredCount > 0)
+    {
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Code</th>
+                    <th>Asset</th>
+                    <th>Category</th>
+                    <th>Condition</th>
+                    <th>Status</th>
+                    <th>Holder / Location</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var asset in Model.Assets)
+                {
+                    <tr>
+                        <td><a asp-action="Details" asp-route-id="@asset.AssetID" class="sab-code">@asset.AssetCode</a></td>
+                        <td>
+                            <div class="fw-semibold">@asset.AssetName</div>
+                            <div class="text-muted small">
+                                @asset.ModelName
+                                @if (!string.IsNullOrWhiteSpace(asset.SerialNumber))
+                                {
+                                    <text> &middot; SN @asset.SerialNumber</text>
+                                }
+                            </div>
+                        </td>
+                        <td>@asset.CategoryName</td>
+                        <td><span class="status-pill status-@asset.Condition.ToString().ToLowerInvariant()">@DisplayText.Humanize(asset.Condition.ToString())</span></td>
+                        <td><span class="status-pill status-@asset.Status.ToString().ToLowerInvariant()">@DisplayText.Humanize(asset.Status.ToString())</span></td>
+                        <td>
+                            @if (!string.IsNullOrWhiteSpace(asset.AssignedUserName))
+                            {
+                                var initials = string.Concat(asset.AssignedUserName.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(p => p[0])).ToUpperInvariant();
+                                if (initials.Length > 2) { initials = initials[..2]; }
+                                <div class="d-flex align-items-center" style="gap:8px;">
+                                    <span class="sab-avatar sab-avatar-soft sab-avatar-sm">@initials</span>
+                                    <span>@asset.AssignedUserName</span>
+                                </div>
+                            }
+                            else
+                            {
+                                @(asset.CurrentLocationName ?? "—")
+                            }
+                        </td>
+                        <td><a asp-action="Details" asp-route-id="@asset.AssetID">View</a></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+
+        @if (Model.TotalPages > 1)
+        {
+            <div class="sab-table-foot">
+                <span class="text-muted small">Page @Model.Page of @Model.TotalPages</span>
+                <div>
+                    <a class="btn btn-outline-secondary btn-sm @(Model.Page <= 1 ? "disabled" : "")"
+                       asp-action="Index"
+                       asp-route-keyword="@Model.Keyword" asp-route-categoryId="@Model.CategoryId"
+                       asp-route-departmentId="@Model.DepartmentId" asp-route-status="@Model.Status"
+                       asp-route-condition="@Model.Condition" asp-route-page="@(Model.Page - 1)">Previous</a>
+                    <a class="btn btn-outline-secondary btn-sm @(Model.Page >= Model.TotalPages ? "disabled" : "")"
+                       asp-action="Index"
+                       asp-route-keyword="@Model.Keyword" asp-route-categoryId="@Model.CategoryId"
+                       asp-route-departmentId="@Model.DepartmentId" asp-route-status="@Model.Status"
+                       asp-route-condition="@Model.Condition" asp-route-page="@(Model.Page + 1)">Next</a>
+                </div>
+            </div>
+        }
+    }
+    else
+    {
+        <div class="sab-empty">
+            <div class="sab-empty-title">No assets match these filters</div>
+            <p>Every record here is one physical unit. Clear the filters to see the whole inventory.</p>
+            <a asp-action="Index" class="btn btn-outline-secondary">Reset filters</a>
+        </div>
+    }
+</div>

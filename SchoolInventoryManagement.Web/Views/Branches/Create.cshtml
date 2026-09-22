@@ -1,0 +1,36 @@
+@model SchoolInventoryManagement.BLL.DTOs.CreateBranchDTO
+@{
+    ViewData["Title"] = "New Branch";
+}
+
+<h2>New Branch</h2>
+
+<form asp-action="Create" method="post">
+    @Html.AntiForgeryToken()
+    <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+
+    <div class="mb-3">
+        <label asp-for="BranchName" class="form-label"></label>
+        <input asp-for="BranchName" class="form-control" />
+        <span asp-validation-for="BranchName" class="text-danger"></span>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="Address" class="form-label">Address <span class="text-muted">(optional)</span></label>
+        <textarea asp-for="Address" class="form-control"></textarea>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="ContactInfo" class="form-label">Contact Info <span class="text-muted">(optional)</span></label>
+        <input asp-for="ContactInfo" class="form-control" />
+    </div>
+
+    <button type="submit" class="btn btn-primary">Create</button>
+    <a asp-action="Index" class="btn btn-secondary">Cancel</a>
+</form>
+
+@section Scripts {
+    @{
+        await Html.RenderPartialAsync("_ValidationScriptsPartial");
+    }
+}

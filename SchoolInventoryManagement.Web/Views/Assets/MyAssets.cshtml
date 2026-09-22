@@ -1,0 +1,82 @@
+﻿@model List<SchoolInventoryManagement.BLL.DTOs.AssetAssignmentResponseDTO>
+@{
+    ViewData["Title"] = "My Assets";
+}
+
+@if (TempData["ErrorMessage"] != null)
+{
+    <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
+}
+
+<div class="sab-page-head">
+    <div>
+        <h2>My Assets</h2>
+        <p class="sab-page-sub">
+            @Model.Count unit@(Model.Count == 1 ? "" : "s") currently signed out to you.
+        </p>
+    </div>
+    <div class="sab-page-actions">
+        <a asp-controller="AssetRequests" asp-action="Create" class="btn btn-primary">+ New Request</a>
+    </div>
+</div>
+
+@if (Model.Any())
+{
+    <p class="text-muted">
+        A unit stays on this list until an Asset Officer records its return, so
+        this is what you are accountable for right now. Returns and transfers
+        are recorded by an Asset Officer, not from here.
+    </p>
+
+    <div class="sab-table-card">
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Code</th>
+                    <th>Asset</th>
+                    <th>Issued</th>
+                    <th>Condition when issued</th>
+                    <th>Issued by</th>
+                    <th>Remarks</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var assignment in Model)
+                {
+                    var daysHeld = (int)(DateTime.Now.Date - assignment.AssignmentDate.Date).TotalDays;
+                    var heldLabel = daysHeld == 0
+                        ? "today"
+                        : daysHeld == 1 ? "1 day ago" : daysHeld + " days ago";
+
+                    <tr>
+                        <td><a asp-action="Details" asp-route-id="@assignment.AssetID" class="sab-code">@assignment.AssetCode</a></td>
+                        <td><div class="fw-semibold">@assignment.AssetName</div></td>
+                        <td>
+                            <div>@assignment.AssignmentDate.ToString("MMM d, yyyy")</div>
+                            <div class="text-muted small">@heldLabel</div>
+                        </td>
+                        <td>
+                            <span class="status-pill status-@assignment.ConditionOnAssignment.ToString().ToLowerInvariant()">
+                                @DisplayText.Humanize(assignment.ConditionOnAssignment.ToString())
+                            </span>
+                        </td>
+                        <td>@assignment.AssignedByUser.FullName</td>
+                        <td>@(string.IsNullOrWhiteSpace(assignment.Remarks) ? "—" : assignment.Remarks)</td>
+                        <td><a asp-action="Details" asp-route-id="@assignment.AssetID">View</a></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+else
+{
+    <div class="card">
+        <div class="sab-empty">
+            <div class="sab-empty-title">Nothing is signed out to you</div>
+            <p>Anything issued to you appears here until an Asset Officer records its return.</p>
+            <a asp-controller="AssetRequests" asp-action="Create" class="btn btn-primary">Request an asset</a>
+        </div>
+    </div>
+}

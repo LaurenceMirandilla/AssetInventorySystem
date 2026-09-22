@@ -1,0 +1,107 @@
+﻿@model SchoolInventoryManagement.Web.ViewModels.AssetHistoryViewModel
+@{
+    ViewData["Title"] = "Asset History";
+}
+
+<h2>History — @Model.Asset.AssetName</h2>
+<p class="text-muted">@Model.Asset.AssetCode</p>
+
+<h4 class="mt-4">Assignments</h4>
+@if (Model.Assignments.Any())
+{
+    <table class="table table-sm">
+        <thead><tr><th>Assigned To</th><th>Assigned By</th><th>Date</th><th>Return Date</th><th>Condition</th></tr></thead>
+        <tbody>
+            @foreach (var a in Model.Assignments)
+            {
+                <tr>
+                    <td>@a.AssignedToUser.FullName</td>
+                    <td>@a.AssignedByUser.FullName</td>
+                    <td>@a.AssignmentDate.ToString("MMM d, yyyy")</td>
+                    <td>@(a.ReturnDate?.ToString("MMM d, yyyy") ?? "Not returned")</td>
+                    <td>@a.ConditionOnAssignment @(a.ConditionOnReturn != null ? $"→ {a.ConditionOnReturn}" : "")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+else
+{
+
+    <p class="text-muted">No assignments recorded.</p>
+}
+
+<h4 class="mt-4">Movements</h4>
+@if (Model.Movements.Any())
+{
+    <table class="table table-sm">
+        <thead><tr><th>From</th><th>To</th><th>Moved By</th><th>Date</th><th>Reason</th></tr></thead>
+        <tbody>
+            @foreach (var m in Model.Movements)
+            {
+                <tr>
+                    <td>@(m.SourceLocationName ?? "—")</td>
+                    <td>@m.DestinationLocationName</td>
+                    <td>@m.MovedByUser.FullName</td>
+                    <td>@m.DateMoved.ToString("MMM d, yyyy")</td>
+                    <td>@m.ReasonForTransfer</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+else
+{
+
+    <p class="text-muted">No movements recorded.</p>
+}
+
+<h4 class="mt-4">Disposals</h4>
+@if (Model.Disposals.Any())
+{
+    <table class="table table-sm">
+        <thead><tr><th>Date</th><th>Reason</th><th>Method</th><th>Approved By</th><th>Restored</th></tr></thead>
+        <tbody>
+            @foreach (var d in Model.Disposals)
+            {
+                <tr>
+                    <td>@d.DisposalDate.ToString("MMM d, yyyy")</td>
+                    <td>@d.ReasonForDisposal</td>
+                    <td>@d.DisposalMethod</td>
+                    <td>@d.ApprovedByUser.FullName</td>
+                    <td>@(d.RestoredDate?.ToString("MMM d, yyyy") ?? "Still disposed")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+else
+{
+
+    <p class="text-muted">No disposal records.</p>
+}
+
+<h4 class="mt-4">Audit Log</h4>
+@if (Model.AuditEntries.Any())
+{
+    <table class="table table-sm">
+        <thead><tr><th>Action</th><th>Date</th><th>Details</th></tr></thead>
+        <tbody>
+            @foreach (var log in Model.AuditEntries)
+            {
+                <tr>
+                    <td>@log.ActionPerformed</td>
+                    <td>@log.LogDateTime.ToString("MMM d, yyyy h:mm tt")</td>
+                    <td>@(log.Description ?? "—")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+else
+{
+
+    <p class="text-muted">No audit entries.</p>
+}
+
+<a asp-action="Details" asp-route-id="@Model.Asset.AssetID" class="btn btn-secondary mt-3">Back to Asset</a>

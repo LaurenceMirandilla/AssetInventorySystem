@@ -1,0 +1,63 @@
+﻿@model List<SchoolInventoryManagement.BLL.DTOs.LocationDTO>
+@{
+    ViewData["Title"] = "Locations";
+}
+@if (TempData["ErrorMessage"] != null)
+{
+    <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
+}
+
+<div class="sab-page-head">
+    <div>
+        <h2>Locations</h2>
+        <p class="sab-page-sub">@Model.Count location@(Model.Count == 1 ? "" : "s") across all branches.</p>
+    </div>
+    <div class="sab-page-actions">
+        <a asp-action="Create" class="btn btn-primary">+ New Location</a>
+    </div>
+</div>
+
+@if (Model.Any())
+{
+    <div class="sab-table-card">
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Branch</th>
+                    <th>Description</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var location in Model)
+                {
+                    <tr>
+                        <td>@location.LocationName</td>
+                        <td>@location.BranchName</td>
+                        <td>@(location.Description ?? "—")</td>
+                        <td>
+                            <a asp-action="Edit" asp-route-id="@location.LocationID">Edit</a>
+                            <a asp-controller="AssetMovements" asp-action="ForLocation" asp-route-id="@location.LocationID" class="ms-2">Movements</a>
+                            <form asp-action="Delete" asp-route-id="@location.LocationID" method="post" class="d-inline" onsubmit="return confirm('Delete this location?');">
+                                @Html.AntiForgeryToken()
+                                <button type="submit" class="btn btn-link text-danger p-0 ms-2">Delete</button>
+                            </form>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+else
+{
+    <div class="card">
+        <div class="sab-empty">
+            <div class="sab-empty-title">No locations yet</div>
+            <p>A location is a room or store an asset can sit in when nobody is holding it.</p>
+            <a asp-action="Create" class="btn btn-primary">+ New Location</a>
+        </div>
+    </div>
+}
+

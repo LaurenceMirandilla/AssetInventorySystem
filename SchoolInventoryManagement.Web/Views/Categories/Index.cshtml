@@ -1,0 +1,60 @@
+﻿@model List<SchoolInventoryManagement.BLL.DTOs.CategoryDTO>
+@{
+    ViewData["Title"] = "Categories";
+}
+@if (TempData["ErrorMessage"] != null)
+{
+    <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
+}
+
+<div class="sab-page-head">
+    <div>
+        <h2>Categories</h2>
+        <p class="sab-page-sub">@Model.Count categor@(Model.Count == 1 ? "y" : "ies"). Categories group models; models group the physical units.</p>
+    </div>
+    <div class="sab-page-actions">
+        <a asp-action="Create" class="btn btn-primary">+ New Category</a>
+    </div>
+</div>
+
+@if (Model.Any())
+{
+    <div class="sab-table-card">
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Description</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var category in Model)
+                {
+                    <tr>
+                        <td>@category.CategoryName</td>
+                        <td>@(string.IsNullOrWhiteSpace(category.Description) ? "—" : category.Description)</td>
+                        <td>
+                            <a asp-action="Edit" asp-route-id="@category.CategoryID">Edit</a>
+                            <form asp-action="Delete" asp-route-id="@category.CategoryID" method="post" class="d-inline" onsubmit="return confirm('Delete this category?');">
+                                @Html.AntiForgeryToken()
+                                <button type="submit" class="btn btn-link text-danger p-0 ms-2">Delete</button>
+                            </form>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+else
+{
+    <div class="card">
+        <div class="sab-empty">
+            <div class="sab-empty-title">No categories yet</div>
+            <p>A category is the top of the catalog — add one before adding models.</p>
+            <a asp-action="Create" class="btn btn-primary">+ New Category</a>
+        </div>
+    </div>
+}
+

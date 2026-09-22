@@ -1,0 +1,9 @@
+@model int
+@* Icon-only: the parent <a class="sab-bell"> in _Layout.cshtml provides the
+   link and the click target. This view only renders the bell glyph and the
+   unread dot, so it can't be wrapped in another anchor. *@
+<span style="font-size:1.1rem;">&#128276;</span>
+@if (Model > 0)
+{
+    <span class="sab-bell-dot" title="@Model unread"></span>
+}

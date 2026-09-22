@@ -1,0 +1,45 @@
+﻿@model SchoolInventoryManagement.Web.ViewModels.DisposeAssetViewModel
+@{
+    ViewData["Title"] = "Dispose Asset";
+}
+
+<h2>Dispose Asset</h2>
+<p class="text-muted">@ViewBag.AssetCode — @ViewBag.AssetName</p>
+
+<form asp-action="Dispose" asp-route-id="@Model.AssetID" method="post">
+    @Html.AntiForgeryToken()
+    <input type="hidden" asp-for="AssetID" />
+    <input type="hidden" asp-for="AssetRowVersionBase64" />
+    <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+
+    <div class="mb-3">
+        <label asp-for="ReasonForDisposal" class="form-label"></label>
+        <textarea asp-for="ReasonForDisposal" class="form-control"></textarea>
+        <span asp-validation-for="ReasonForDisposal" class="text-danger"></span>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="DisposalMethod" class="form-label">Disposal Method</label>
+        <input asp-for="DisposalMethod" class="form-control" placeholder="e.g. Sold, Scrapped, Donated" />
+        <span asp-validation-for="DisposalMethod" class="text-danger"></span>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="SupportingDocumentationURL" class="form-label">Supporting Documentation <span class="text-muted">(optional)</span></label>
+        <input asp-for="SupportingDocumentationURL" class="form-control" />
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="Notes" class="form-label">Notes <span class="text-muted">(optional)</span></label>
+        <textarea asp-for="Notes" class="form-control"></textarea>
+    </div>
+
+    <button type="submit" class="btn btn-danger">Confirm Disposal</button>
+    <a asp-action="Details" asp-route-id="@Model.AssetID" class="btn btn-secondary">Cancel</a>
+</form>
+
+@section Scripts {
+    @{
+        await Html.RenderPartialAsync("_ValidationScriptsPartial");
+    }
+}

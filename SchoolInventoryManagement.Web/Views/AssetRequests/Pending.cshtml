@@ -1,0 +1,81 @@
+﻿@model List<SchoolInventoryManagement.BLL.DTOs.AssetRequestResponseDTO>
+@{
+    ViewData["Title"] = "Pending Requests";
+}
+@if (TempData["ErrorMessage"] != null)
+{
+    <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
+}
+
+<div class="sab-page-head">
+    <div>
+        <h2>Approvals</h2>
+        <p class="sab-page-sub">
+            @Model.Count request@(Model.Count == 1 ? "" : "s") awaiting a decision from you.
+        </p>
+    </div>
+</div>
+
+@if (Model.Any())
+{
+    <div class="card">
+        <div class="card-body">
+            @foreach (var request in Model)
+            {
+                var requesterName = request.RequestedByUser.FullName;
+                var requesterInitials = string.Concat(requesterName
+                    .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                    .Select(part => part[0])).ToUpperInvariant();
+                if (requesterInitials.Length > 2) { requesterInitials = requesterInitials[..2]; }
+
+                <div class="sab-row">
+                    <div class="d-flex align-items-center" style="gap:12px; min-width:0;">
+                        <span class="sab-avatar sab-avatar-soft">@requesterInitials</span>
+                        <div style="min-width:0;">
+                            <div class="sab-row-title">
+                                @requesterName &mdash;
+                                @if (request.RequestType == SchoolInventoryManagement.DAL.Entities.Enums.RequestType.Borrow)
+                                {
+                                    @(request.ModelName ?? "—")
+                                }
+                                else
+                                {
+                                    <span class="sab-code">@request.AssetCode</span><text> &rarr; @request.RequestedLocationName</text>
+                                }
+                            </div>
+                            <div class="sab-row-meta">
+                                <span class="status-pill status-@request.RequestType.ToString().ToLowerInvariant()">@request.RequestType</span>
+                                <span class="ms-1">
+                                    @request.RequestedByUser.RoleName &middot; @request.DepartmentName
+                                    &middot; submitted @request.RequestDate.ToString("MMM d, yyyy")
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="text-nowrap">
+                        <a asp-action="Details" asp-route-id="@request.RequestID">View</a>
+                        <a asp-action="Approve" asp-route-id="@request.RequestID" class="ms-3">Approve</a>
+                        <a asp-action="Reject" asp-route-id="@request.RequestID" class="ms-3 text-danger">Reject</a>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+}
+else
+{
+    <div class="card">
+        <div class="sab-empty">
+            <div class="sab-empty-title">Nothing is waiting on you</div>
+            <p>Requests appear here as soon as somebody submits one.</p>
+        </div>
+    </div>
+}
+
+<div class="sab-callout sab-callout-warn mt-3">
+    <span class="sab-callout-label">Not yours to decide</span>
+    A request cannot be decided by someone holding the requester's own role.
+    One from an approver of your own role stays listed here, but has to go to
+    an approver of a different role.
+</div>

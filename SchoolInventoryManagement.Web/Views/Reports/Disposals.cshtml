@@ -1,0 +1,111 @@
+﻿@model List<SchoolInventoryManagement.BLL.DTOs.DisposalReportRowDTO>
+@{
+    ViewData["Title"] = "Disposals";
+    var totalCost = Model.Sum(r => r.AcquisitionCost ?? 0m);
+}
+
+<div class="row g-3 sab-reports-grid">
+    <div class="col-lg-3">
+        @await Html.PartialAsync("_ReportsNav")
+    </div>
+    <div class="col-lg-9">
+        <div class="sab-page-head">
+            <div>
+                <h2>Disposals</h2>
+                <p class="sab-page-sub">
+                    An asset can appear more than once — it can be disposed, restored, and
+                    disposed again over its life. Restored rows are hidden unless you ask for them.
+                </p>
+            </div>
+            <div class="sab-page-actions">
+            <a asp-action="ExportDisposals"
+               asp-route-fromDate="@Context.Request.Query["fromDate"]"
+               asp-route-toDate="@Context.Request.Query["toDate"]"
+               asp-route-includeRestored="@Context.Request.Query["includeRestored"]"
+               class="btn btn-primary">Export CSV</a>
+            </div>
+        </div>
+
+        <div class="sab-filter-card">
+            <form method="get" class="row g-2 align-items-end">
+                <div class="col-auto">
+                    <label class="form-label">From</label>
+                    <input type="date" name="fromDate" class="form-control"
+                           value="@(ViewBag.FromDate is DateTime f ? f.ToString("yyyy-MM-dd") : "")" />
+                </div>
+                <div class="col-auto">
+                    <label class="form-label">To</label>
+                    <input type="date" name="toDate" class="form-control"
+                           value="@(ViewBag.ToDate is DateTime t ? t.ToString("yyyy-MM-dd") : "")" />
+                </div>
+                <div class="col-auto align-self-end">
+                    <div class="form-check">
+                        <input type="checkbox" name="includeRestored" value="true" class="form-check-input"
+                               id="includeRestored" @(ViewBag.IncludeRestored == true ? "checked" : "") />
+                        <label class="form-check-label" for="includeRestored">Include restored</label>
+                    </div>
+                </div>
+                <div class="col-auto align-self-end">
+                    <button type="submit" class="btn btn-secondary">Apply</button>
+                    <a asp-action="Disposals" class="btn btn-outline-secondary">Reset</a>
+                </div>
+            </form>
+        </div>
+
+        <div class="sab-table-card">
+            <div class="sab-table-head">
+                <h5>Disposals</h5>
+                <span class="sab-table-count">@Model.Count disposal(s), original acquisition cost @totalCost.ToString("C0").</span>
+            </div>
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Asset</th>
+                        <th>Category</th>
+                        <th>Disposed</th>
+                        <th>Reason</th>
+                        <th>Method</th>
+                        <th>Approved by</th>
+                        <th class="text-end">Cost</th>
+                        <th>Restored</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in Model)
+                    {
+                        <tr>
+                            <td>
+                                <a asp-controller="Assets" asp-action="Details" asp-route-id="@row.AssetID">@row.AssetCode</a>
+                                <div class="text-muted small">@row.AssetName</div>
+                            </td>
+                            <td>@row.CategoryName</td>
+                            <td>@row.DisposalDate.ToString("MMM d, yyyy")</td>
+                            <td>@row.ReasonForDisposal</td>
+                            <td>@row.DisposalMethod</td>
+                            <td>@row.ApprovedByName</td>
+                            <td class="text-end">@(row.AcquisitionCost?.ToString("C0") ?? "—")</td>
+                            <td>
+                                @if (row.IsRestored)
+                                {
+                                    <span class="status-pill status-available">Restored</span>
+                                    <div class="text-muted small">
+                                        @row.RestoredDate?.ToString("MMM d, yyyy") by @row.RestoredByName
+                                    </div>
+                                }
+                                else
+                                {
+                                    <span class="status-pill status-disposed">Disposed</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            @if (!Model.Any())
+            {
+                <div class="sab-empty"><p class="mb-0">No disposals in this range.</p></div>
+            }
+        </div>
+
+    </div>
+</div>

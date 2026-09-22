@@ -1,0 +1,160 @@
+﻿@model SchoolInventoryManagement.BLL.DTOs.RequestActivityDTO
+@using SchoolInventoryManagement.DAL.Entities.Enums
+@{
+    ViewData["Title"] = "Request Activity";
+}
+
+<div class="row g-3 sab-reports-grid">
+    <div class="col-lg-3">
+        @await Html.PartialAsync("_ReportsNav")
+    </div>
+    <div class="col-lg-9">
+        <div class="sab-page-head">
+            <div>
+                <h2>Request Activity</h2>
+                <p class="sab-page-sub">
+                    Turnaround is measured from submission to decision, so it only exists for
+                    requests that were actually approved or rejected — pending and cancelled
+                    requests are excluded from the average.
+                </p>
+            </div>
+            <div class="sab-page-actions">
+            <a asp-action="ExportRequests"
+               asp-route-fromDate="@Context.Request.Query["fromDate"]"
+               asp-route-toDate="@Context.Request.Query["toDate"]"
+               asp-route-status="@Context.Request.Query["status"]"
+               asp-route-type="@Context.Request.Query["type"]"
+               class="btn btn-primary">Export CSV</a>
+            </div>
+        </div>
+
+        <div class="sab-filter-card">
+            <form method="get" class="row g-2 align-items-end">
+                <div class="col-auto">
+                    <label class="form-label">From</label>
+                    <input type="date" name="fromDate" class="form-control"
+                           value="@(ViewBag.FromDate is DateTime f ? f.ToString("yyyy-MM-dd") : "")" />
+                </div>
+                <div class="col-auto">
+                    <label class="form-label">To</label>
+                    <input type="date" name="toDate" class="form-control"
+                           value="@(ViewBag.ToDate is DateTime t ? t.ToString("yyyy-MM-dd") : "")" />
+                </div>
+                <div class="col-auto">
+                    <label class="form-label">Status</label>
+                    @Html.DropDownList("status", Html.GetEnumSelectList<RequestStatus>(),
+                         "All statuses", new { @class = "form-select" })
+                </div>
+                <div class="col-auto">
+                    <label class="form-label">Type</label>
+                    @Html.DropDownList("type", Html.GetEnumSelectList<RequestType>(),
+                         "All types", new { @class = "form-select" })
+                </div>
+                <div class="col-auto align-self-end">
+                    <button type="submit" class="btn btn-secondary">Apply</button>
+                    <a asp-action="Requests" class="btn btn-outline-secondary">Reset</a>
+                </div>
+            </form>
+        </div>
+
+        <div class="report-tiles">
+            <div class="report-tile">
+                <span class="report-tile-label">Requests</span>
+                <span class="report-tile-value">@Model.TotalRequests</span>
+                <span class="report-tile-note">in range</span>
+            </div>
+            <div class="report-tile">
+                <span class="report-tile-label">Decided</span>
+                <span class="report-tile-value">@Model.DecidedRequests</span>
+                <span class="report-tile-note">approved or rejected</span>
+            </div>
+            <div class="report-tile">
+                <span class="report-tile-label">Avg turnaround</span>
+                <span class="report-tile-value">
+                    @(Model.AverageTurnaroundDays.HasValue ? $"{Model.AverageTurnaroundDays:0.0}d" : "—")
+                </span>
+                <span class="report-tile-note">submission to decision</span>
+            </div>
+        </div>
+
+        <div class="row g-3 mb-3">
+            <div class="col-md-6">
+                <div class="sab-table-card">
+                    <div class="sab-table-head"><h5>By status</h5></div>
+                    <table class="table table-sm table-striped">
+                        <thead><tr><th>Status</th><th class="text-end">Count</th></tr></thead>
+                        <tbody>
+                            @foreach (var row in Model.ByStatus)
+                            {
+                                <tr>
+                                    <td><span class="status-pill status-@row.Label.ToLowerInvariant()">@row.Label</span></td>
+                                    <td class="text-end">@row.Count</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="sab-table-card">
+                    <div class="sab-table-head"><h5>By type</h5></div>
+                    <table class="table table-sm table-striped">
+                        <thead><tr><th>Type</th><th class="text-end">Count</th></tr></thead>
+                        <tbody>
+                            @foreach (var row in Model.ByType)
+                            {
+                                <tr>
+                                    <td><span class="status-pill status-@row.Label.ToLowerInvariant()">@row.Label</span></td>
+                                    <td class="text-end">@row.Count</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="sab-table-card">
+            <div class="sab-table-head"><h5>Requests</h5></div>
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Type</th>
+                        <th>Requester</th>
+                        <th>Department</th>
+                        <th>Item</th>
+                        <th>Submitted</th>
+                        <th>Decided by</th>
+                        <th class="text-end">Turnaround</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in Model.Rows)
+                    {
+                        <tr>
+                            <td><a asp-controller="AssetRequests" asp-action="Details" asp-route-id="@row.RequestID">@row.RequestID</a></td>
+                            <td><span class="status-pill status-@row.RequestType.ToString().ToLowerInvariant()">@row.RequestType</span></td>
+                            <td>
+                                @row.RequesterName
+                                <div class="text-muted small">@row.RequesterRole</div>
+                            </td>
+                            <td>@row.DepartmentName</td>
+                            <td>@row.ItemDescription</td>
+                            <td>@row.RequestDate.ToString("MMM d, yyyy")</td>
+                            <td>@(row.DecidedByName ?? "—")</td>
+                            <td class="text-end">@(row.TurnaroundDays.HasValue ? $"{row.TurnaroundDays:0.0}d" : "—")</td>
+                            <td><span class="status-pill status-@row.RequestStatus.ToString().ToLowerInvariant()">@row.RequestStatus</span></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        @if (!Model.Rows.Any())
+        {
+            <div class="sab-empty"><p class="mb-0">No requests in this range.</p></div>
+        }
+    </div>
+</div>

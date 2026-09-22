@@ -1,0 +1,75 @@
+﻿@model SchoolInventoryManagement.Web.ViewModels.UserCreateViewModel
+@{
+    ViewData["Title"] = "New User";
+}
+
+<h2>New User</h2>
+
+<form asp-action="Create" method="post">
+    @Html.AntiForgeryToken()
+    <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+
+    <div class="mb-3">
+        <label asp-for="FirstName" class="form-label"></label>
+        <input asp-for="FirstName" class="form-control" />
+        <span asp-validation-for="FirstName" class="text-danger"></span>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="LastName" class="form-label"></label>
+        <input asp-for="LastName" class="form-control" />
+        <span asp-validation-for="LastName" class="text-danger"></span>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="Email" class="form-label"></label>
+        <input asp-for="Email" class="form-control" autocomplete="off" />
+        <div class="form-text">This is the user's login. It can't be changed later.</div>
+        <span asp-validation-for="Email" class="text-danger"></span>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="RoleID" class="form-label"></label>
+        <select asp-for="RoleID" asp-items="ViewBag.Roles" class="form-select">
+            <option value="">-- Select Role --</option>
+        </select>
+        <span asp-validation-for="RoleID" class="text-danger"></span>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="BranchID" class="form-label"></label>
+        <select asp-for="BranchID" asp-items="ViewBag.Branches" class="form-select">
+            <option value="">-- Select Branch --</option>
+        </select>
+        <span asp-validation-for="BranchID" class="text-danger"></span>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="DepartmentID" class="form-label"></label>
+        <select asp-for="DepartmentID" asp-items="ViewBag.Departments" class="form-select">
+            <option value="">-- Select Department --</option>
+        </select>
+        <span asp-validation-for="DepartmentID" class="text-danger"></span>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="Password" class="form-label"></label>
+        <input asp-for="Password" class="form-control" autocomplete="new-password" />
+        <span asp-validation-for="Password" class="text-danger"></span>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="ConfirmPassword" class="form-label"></label>
+        <input asp-for="ConfirmPassword" class="form-control" autocomplete="new-password" />
+        <span asp-validation-for="ConfirmPassword" class="text-danger"></span>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Create User</button>
+    <a asp-action="Index" class="btn btn-secondary">Cancel</a>
+</form>
+
+@section Scripts {
+    @{
+        await Html.RenderPartialAsync("_ValidationScriptsPartial");
+    }
+}

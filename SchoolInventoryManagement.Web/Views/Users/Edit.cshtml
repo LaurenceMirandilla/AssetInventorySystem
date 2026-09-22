@@ -1,0 +1,60 @@
+﻿@model SchoolInventoryManagement.Web.ViewModels.UserEditViewModel
+@{
+    ViewData["Title"] = "Edit User";
+}
+
+<h2>Edit User</h2>
+<p class="text-muted">@Model.Email</p>
+
+<form asp-action="Edit" asp-route-id="@Model.UserID" method="post">
+    @Html.AntiForgeryToken()
+    <input type="hidden" asp-for="UserID" />
+    <input type="hidden" asp-for="Email" />
+    <input type="hidden" asp-for="RowVersionBase64" />
+    <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+
+    <div class="mb-3">
+        <label asp-for="FirstName" class="form-label"></label>
+        <input asp-for="FirstName" class="form-control" />
+        <span asp-validation-for="FirstName" class="text-danger"></span>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="LastName" class="form-label"></label>
+        <input asp-for="LastName" class="form-control" />
+        <span asp-validation-for="LastName" class="text-danger"></span>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="RoleID" class="form-label"></label>
+        <select asp-for="RoleID" asp-items="ViewBag.Roles" class="form-select">
+            <option value="">-- Select Role --</option>
+        </select>
+        <span asp-validation-for="RoleID" class="text-danger"></span>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="BranchID" class="form-label"></label>
+        <select asp-for="BranchID" asp-items="ViewBag.Branches" class="form-select">
+            <option value="">-- Select Branch --</option>
+        </select>
+        <span asp-validation-for="BranchID" class="text-danger"></span>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="DepartmentID" class="form-label"></label>
+        <select asp-for="DepartmentID" asp-items="ViewBag.Departments" class="form-select">
+            <option value="">-- Select Department --</option>
+        </select>
+        <span asp-validation-for="DepartmentID" class="text-danger"></span>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Save</button>
+    <a asp-action="Index" class="btn btn-secondary">Cancel</a>
+</form>
+
+@section Scripts {
+    @{
+        await Html.RenderPartialAsync("_ValidationScriptsPartial");
+    }
+}

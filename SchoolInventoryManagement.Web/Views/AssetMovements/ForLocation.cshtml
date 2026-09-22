@@ -1,0 +1,44 @@
+﻿@model List<SchoolInventoryManagement.BLL.DTOs.AssetMovementResponseDTO>
+@{
+    ViewData["Title"] = "Location Movements";
+}
+
+<h2>Movements — @ViewBag.LocationName</h2>
+<p class="text-muted">Everything that has come into or gone out of this location.</p>
+
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>Asset</th>
+            <th>From</th>
+            <th>To</th>
+            <th>Moved By</th>
+            <th>Date</th>
+            <th>Reason</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var movement in Model)
+        {
+            <tr>
+                <td>
+                    <a asp-controller="Assets" asp-action="Details" asp-route-id="@movement.AssetID">
+                        @movement.AssetCode
+                    </a>
+                </td>
+                <td>@(movement.SourceLocationName ?? "—")</td>
+                <td>@movement.DestinationLocationName</td>
+                <td>@movement.MovedByUser.FullName</td>
+                <td>@movement.DateMoved.ToString("MMM d, yyyy h:mm tt")</td>
+                <td>@movement.ReasonForTransfer</td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@if (!Model.Any())
+{
+    <p class="text-muted">Nothing has moved through this location yet.</p>
+}
+
+<a asp-controller="Locations" asp-action="Index" class="btn btn-secondary">Back to Locations</a>

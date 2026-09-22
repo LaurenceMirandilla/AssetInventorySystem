@@ -1,0 +1,62 @@
+@model List<SchoolInventoryManagement.BLL.DTOs.BranchDTO>
+@{
+    ViewData["Title"] = "Branches";
+}
+@if (TempData["ErrorMessage"] != null)
+{
+    <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
+}
+
+<div class="sab-page-head">
+    <div>
+        <h2>Branches</h2>
+        <p class="sab-page-sub">@Model.Count branch@(Model.Count == 1 ? "" : "es") on record.</p>
+    </div>
+    <div class="sab-page-actions">
+        <a asp-action="Create" class="btn btn-primary">+ New Branch</a>
+    </div>
+</div>
+
+@if (Model.Any())
+{
+    <div class="sab-table-card">
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Address</th>
+                    <th>Contact</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var branch in Model)
+                {
+                    <tr>
+                        <td>@branch.BranchName</td>
+                        <td>@branch.Address</td>
+                        <td>@branch.ContactInfo</td>
+                        <td>
+                            <a asp-action="Edit" asp-route-id="@branch.BranchID">Edit</a>
+                            <form asp-action="Delete" asp-route-id="@branch.BranchID" method="post" class="d-inline" onsubmit="return confirm('Delete this branch?');">
+                                @Html.AntiForgeryToken()
+                                <button type="submit" class="btn btn-link text-danger p-0 ms-2">Delete</button>
+                            </form>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+else
+{
+    <div class="card">
+        <div class="sab-empty">
+            <div class="sab-empty-title">No branches yet</div>
+            <p>A branch is a campus. Locations and departments both hang off one.</p>
+            <a asp-action="Create" class="btn btn-primary">+ New Branch</a>
+        </div>
+    </div>
+}
+

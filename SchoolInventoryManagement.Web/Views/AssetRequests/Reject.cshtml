@@ -1,0 +1,38 @@
+﻿@model SchoolInventoryManagement.Web.ViewModels.RejectAssetRequestViewModel
+@{
+    ViewData["Title"] = "Reject Request";
+    var request = ViewBag.Request as SchoolInventoryManagement.BLL.DTOs.AssetRequestResponseDTO;
+}
+
+<h2>Reject Request #@Model.RequestID</h2>
+
+@if (request is not null)
+{
+    <p class="text-muted">
+        From @request.RequestedByUser.FullName (@request.RequestedByUser.RoleName)
+        — @request.RequestType
+    </p>
+}
+
+<form asp-action="Reject" asp-route-id="@Model.RequestID" method="post">
+    @Html.AntiForgeryToken()
+    <input type="hidden" asp-for="RequestID" />
+    <input type="hidden" asp-for="RowVersionBase64" />
+    <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+
+    <div class="mb-3">
+        <label asp-for="Remarks" class="form-label">Reason for rejection</label>
+        <textarea asp-for="Remarks" class="form-control" rows="4"></textarea>
+        <div class="form-text">The requester sees this on their request.</div>
+        <span asp-validation-for="Remarks" class="text-danger"></span>
+    </div>
+
+    <button type="submit" class="btn btn-danger">Reject Request</button>
+    <a asp-action="Details" asp-route-id="@Model.RequestID" class="btn btn-secondary">Cancel</a>
+</form>
+
+@section Scripts {
+    @{
+        await Html.RenderPartialAsync("_ValidationScriptsPartial");
+    }
+}

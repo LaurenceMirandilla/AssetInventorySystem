@@ -1,0 +1,81 @@
+﻿@model SchoolInventoryManagement.BLL.DTOs.AssetRequestResponseDTO
+@using SchoolInventoryManagement.DAL.Constants
+@using SchoolInventoryManagement.DAL.Entities.Enums
+@{
+    ViewData["Title"] = $"Request #{Model.RequestID}";
+
+    var isApprover = User.IsInRole(RoleNames.AssetOfficer)
+        || User.IsInRole(RoleNames.Administrator)
+        || User.IsInRole(RoleNames.Principal);
+
+    var currentUserId = int.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)!.Value);
+    var isMine = Model.RequestedByUser.UserID == currentUserId;
+    var isPending = Model.RequestStatus == RequestStatus.Pending;
+}
+
+<h2>Request #@Model.RequestID</h2>
+<p class="text-muted">@Model.RequestType — @Model.RequestStatus</p>
+
+@if (TempData["ErrorMessage"] != null)
+{
+    <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
+}
+
+<dl class="row">
+    <dt class="col-sm-3">Requested By</dt>
+    <dd class="col-sm-9">@Model.RequestedByUser.FullName (@Model.RequestedByUser.RoleName)</dd>
+
+    <dt class="col-sm-3">Department</dt>
+    <dd class="col-sm-9">@Model.DepartmentName</dd>
+
+    @if (Model.RequestType == RequestType.Borrow)
+    {
+        <dt class="col-sm-3">Model Requested</dt>
+        <dd class="col-sm-9">@(Model.ModelName ?? "—")</dd>
+    }
+    else
+    {
+        <dt class="col-sm-3">Asset</dt>
+        <dd class="col-sm-9">@(Model.AssetCode ?? "—")</dd>
+
+        <dt class="col-sm-3">Destination</dt>
+        <dd class="col-sm-9">@(Model.RequestedLocationName ?? "—")</dd>
+    }
+
+    <dt class="col-sm-3">Submitted</dt>
+    <dd class="col-sm-9">@Model.RequestDate.ToString("MMM d, yyyy h:mm tt")</dd>
+
+    <dt class="col-sm-3">Reason</dt>
+    <dd class="col-sm-9">@(Model.Reason ?? "—")</dd>
+
+    <dt class="col-sm-3">Decided By</dt>
+    <dd class="col-sm-9">@(Model.ApprovedByUser?.FullName ?? "—")</dd>
+
+    <dt class="col-sm-3">Decided On</dt>
+    <dd class="col-sm-9">@(Model.ApprovalDate?.ToString("MMM d, yyyy h:mm tt") ?? "—")</dd>
+
+    <dt class="col-sm-3">Remarks</dt>
+    <dd class="col-sm-9">@(Model.Remarks ?? "—")</dd>
+</dl>
+
+@if (isPending && isApprover)
+{
+    <a asp-action="Approve" asp-route-id="@Model.RequestID" class="btn btn-success">Approve</a>
+    <a asp-action="Reject" asp-route-id="@Model.RequestID" class="btn btn-danger">Reject</a>
+}
+
+@if (isPending && isMine)
+{
+    <form asp-action="Cancel" asp-route-id="@Model.RequestID" method="post" class="d-inline"
+          onsubmit="return confirm('Cancel this request?');">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="rowVersionBase64" value="@Convert.ToBase64String(Model.RowVersion)" />
+        <button type="submit" class="btn btn-outline-danger">Cancel Request</button>
+    </form>
+}
+
+<a asp-action="MyRequests" class="btn btn-secondary">My Requests</a>
+@if (isApprover)
+{
+    <a asp-action="Pending" class="btn btn-outline-secondary">Pending Queue</a>
+}

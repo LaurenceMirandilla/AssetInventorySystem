@@ -1,0 +1,171 @@
+@using SchoolInventoryManagement.Web.Controllers
+@using SchoolInventoryManagement.DAL.Constants
+@model List<SchoolInventoryManagement.BLL.DTOs.UserResponseDTO>
+@{
+    ViewData["Title"] = "Users";
+
+    // Reset Password refuses to act on your own account (UserService sends
+    // you to Change Password instead), so don't offer the link there.
+    var currentUserId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
+    var statusFilter = (ViewData["StatusFilter"] as string) ?? UsersController.StatusFilterActive;
+}
+@if (TempData["StatusMessage"] != null)
+{
+    <div class="alert alert-success">@TempData["StatusMessage"]</div>
+}
+@if (TempData["ErrorMessage"] != null)
+{
+    <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
+}
+
+<div class="sab-page-head">
+    <div>
+        <h2>Users</h2>
+        <p class="sab-page-sub">
+            Accounts are never deleted. Deactivating blocks sign-in and every privileged
+            action immediately, while keeping the person's history intact.
+        </p>
+    </div>
+    <div class="sab-page-actions">
+        <a asp-action="Create" class="btn btn-primary">+ New User</a>
+    </div>
+</div>
+
+<div class="d-flex justify-content-between align-items-center flex-wrap mb-3" style="gap:12px;">
+    <div class="sab-seg">
+        <a asp-action="Index" asp-route-status="@UsersController.StatusFilterActive"
+           class="@(statusFilter == UsersController.StatusFilterActive ? "active" : "")">Active</a>
+        <a asp-action="Index" asp-route-status="@UsersController.StatusFilterInactive"
+           class="@(statusFilter == UsersController.StatusFilterInactive ? "active" : "")">Inactive</a>
+        <a asp-action="Index" asp-route-status="@UsersController.StatusFilterAll"
+           class="@(statusFilter == UsersController.StatusFilterAll ? "active" : "")">All</a>
+    </div>
+    <span class="text-muted small">
+        @Model.Count account@(Model.Count == 1 ? "" : "s") shown
+    </span>
+</div>
+
+<div class="sab-table-card">
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Role</th>
+                <th>Department</th>
+                <th>Branch</th>
+                <th>Status</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var user in Model)
+            {
+                var isSelf = user.UserID.ToString() == currentUserId;
+                var isAnonymized = AnonymizedUser.IsAnonymizedEmail(user.Email);
+
+                <tr>
+                    <td>
+                        <div class="d-flex align-items-center" style="gap:9px;">
+                            @{
+                                var full = $"{user.FirstName} {user.LastName}".Trim();
+                                var userInitials = string.Concat(full
+                                    .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                                    .Select(part => part[0])).ToUpperInvariant();
+                                if (userInitials.Length > 2) { userInitials = userInitials[..2]; }
+                            }
+                            <span class="sab-avatar sab-avatar-soft sab-avatar-sm">@userInitials</span>
+                            <div>
+                                <div class="fw-semibold">@full</div>
+                                @if (isSelf)
+                                {
+                                    <div class="text-muted small">you</div>
+                                }
+                            </div>
+                        </div>
+                    </td>
+                    <td>@user.Email</td>
+                    <td>@user.RoleName</td>
+                    <td>@user.DepartmentName</td>
+                    <td>@user.BranchName</td>
+                    <td>
+                        @if (isAnonymized)
+                        {
+                            <span class="status-pill status-cancelled">Anonymized</span>
+                        }
+                        else
+                        {
+                            <span class="status-pill status-@user.Status.ToLowerInvariant()">@user.Status</span>
+                        }
+                    </td>
+                    <td>
+                        <a asp-action="Edit" asp-route-id="@user.UserID">Edit</a>
+
+                        @* Pointless on an anonymized account -- nobody is left to
+                           hand the new password to. *@
+                        @if (!isSelf && !isAnonymized)
+                        {
+                            <a asp-action="ResetPassword" asp-route-id="@user.UserID" class="ms-2">Reset Password</a>
+                        }
+
+                        @if (user.Status == "Active")
+                        {
+                            <form asp-action="Deactivate" asp-route-id="@user.UserID" method="post" class="d-inline"
+                                  onsubmit="return confirm('Deactivate @user.Email?');">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="rowVersionBase64" value="@Convert.ToBase64String(user.RowVersion)" />
+                                <button type="submit" class="btn btn-link text-danger p-0 ms-2">Deactivate</button>
+                            </form>
+                        }
+                        else
+                        {
+                            <form asp-action="Reactivate" asp-route-id="@user.UserID" method="post" class="d-inline">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="rowVersionBase64" value="@Convert.ToBase64String(user.RowVersion)" />
+                                <button type="submit" class="btn btn-link text-success p-0 ms-2">Reactivate</button>
+                            </form>
+                        }
+
+                        @* Irreversible, so it is worded bluntly and asks twice. *@
+                        @if (!isSelf && !isAnonymized)
+                        {
+                            <form asp-action="Anonymize" asp-route-id="@user.UserID" method="post" class="d-inline"
+                                  onsubmit="return confirm('Permanently remove the name and email for @user.Email?\n\nThis CANNOT be undone. Their history stays, but will no longer name them.');">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="rowVersionBase64" value="@Convert.ToBase64String(user.RowVersion)" />
+                                <button type="submit" class="btn btn-link text-danger p-0 ms-2">Anonymize</button>
+                            </form>
+                        }
+                    </td>
+                </tr>
+            }
+
+            @if (!Model.Any())
+            {
+                <tr>
+                    <td colspan="7" class="text-muted text-center py-3">
+                        No @(statusFilter == UsersController.StatusFilterAll ? "" : statusFilter.ToLower()) users to show.
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+<div class="row g-3 mt-1">
+    <div class="col-md-6">
+        <div class="sab-callout">
+            <span class="sab-callout-label">Deactivate</span>
+            Reversible. Blocks sign-in and takes effect on any open session at
+            once — it does not wait for their cookie to expire.
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="sab-callout sab-callout-danger">
+            <span class="sab-callout-label">Anonymize</span>
+            Permanent. Clears the name and email for someone who has asked to be
+            forgotten, leaving their records pointing at a tombstone.
+        </div>
+    </div>
+</div>

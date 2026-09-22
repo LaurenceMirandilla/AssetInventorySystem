@@ -1,0 +1,62 @@
+﻿@model List<SchoolInventoryManagement.BLL.DTOs.ModelDTO>
+@{
+    ViewData["Title"] = "Models";
+}
+@if (TempData["ErrorMessage"] != null)
+{
+    <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
+}
+
+<div class="sab-page-head">
+    <div>
+        <h2>Models</h2>
+        <p class="sab-page-sub">@Model.Count model@(Model.Count == 1 ? "" : "s"). A requester picks a model, never a specific unit.</p>
+    </div>
+    <div class="sab-page-actions">
+        <a asp-action="Create" class="btn btn-primary">+ New Model</a>
+    </div>
+</div>
+
+@if (Model.Any())
+{
+    <div class="sab-table-card">
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Category</th>
+                    <th>Description</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var item in Model)
+                {
+                    <tr>
+                        <td>@item.ModelName</td>
+                        <td>@item.CategoryName</td>
+                        <td>@(string.IsNullOrWhiteSpace(item.Description) ? "—" : item.Description)</td>
+                        <td>
+                            <a asp-action="Edit" asp-route-id="@item.ModelID">Edit</a>
+                            <form asp-action="Delete" asp-route-id="@item.ModelID" method="post" class="d-inline" onsubmit="return confirm('Delete this model?');">
+                                @Html.AntiForgeryToken()
+                                <button type="submit" class="btn btn-link text-danger p-0 ms-2">Delete</button>
+                            </form>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+else
+{
+    <div class="card">
+        <div class="sab-empty">
+            <div class="sab-empty-title">No models yet</div>
+            <p>Models sit under a category and group the physical units of one product.</p>
+            <a asp-action="Create" class="btn btn-primary">+ New Model</a>
+        </div>
+    </div>
+}
+
