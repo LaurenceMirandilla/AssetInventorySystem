@@ -15,15 +15,22 @@ namespace SchoolInventoryManagement.BLL.DTOs
         public int DepartmentID { get; set; }
         public string DepartmentName { get; set; } = null!;
 
-        // ModelID is set for both types. AssetID is set only on a Transfer
-        // that has been approved -- it is the unit that was moved.
-        // RequestedLocation is set only for Transfer.
+        // ModelID is set for both types. AssetID is the unit staff chose,
+        // set from approval onwards. RequestedLocation is the Transfer
+        // destination; PickupLocation is where a Borrow is collected.
         public int? ModelID { get; set; }
         public string? ModelName { get; set; }
         public int? AssetID { get; set; }
         public string? AssetCode { get; set; }
+        public string? AssetName { get; set; }
         public int? RequestedLocationID { get; set; }
         public string? RequestedLocationName { get; set; }
+        public int? PickupLocationID { get; set; }
+        public string? PickupLocationName { get; set; }
+
+        // The unit's open assignment while the request is InTransit or
+        // Assigned -- what "Record return" acts on. Null otherwise.
+        public int? ActiveAssignmentID { get; set; }
 
         public RequestType RequestType { get; set; }
         public DateTime RequestDate { get; set; }
@@ -33,6 +40,9 @@ namespace SchoolInventoryManagement.BLL.DTOs
         // Null only on requests made before these were collected.
         public DateTime? NeededFrom { get; set; }
         public DateTime? ReturnBy { get; set; }
+
+        public DateTime? AssignedDate { get; set; }
+        public DateTime? ReturnedDate { get; set; }
 
         public UserSummaryDTO? ApprovedByUser { get; set; }
         public DateTime? ApprovalDate { get; set; }

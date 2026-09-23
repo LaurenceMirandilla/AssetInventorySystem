@@ -31,8 +31,11 @@
 }
 
 <div class="alert alert-info">
-    Approving moves the unit and marks the request fulfilled in one step. If any
-    part fails, none of it is saved. The unit must still be Available when you approve.
+    Approving reserves the unit to the requester; the request is then
+    <strong>In Transit</strong> and stays under Approvals. Once the unit reaches
+    the destination, an Asset Officer or Administrator marks it
+    <strong>Assigned</strong>, and later records its return. The unit must still
+    be Available when you approve.
 </div>
 
 <form asp-action="ApproveTransfer" asp-route-id="@Model.RequestID" method="post">
@@ -81,7 +84,7 @@
         <textarea asp-for="Remarks" class="form-control"></textarea>
     </div>
 
-    <button type="submit" class="btn btn-success">Approve &amp; Transfer</button>
+    <button type="submit" class="btn btn-success">Approve</button>
     <a asp-action="Details" asp-route-id="@Model.RequestID" class="btn btn-secondary">Cancel</a>
 </form>
 

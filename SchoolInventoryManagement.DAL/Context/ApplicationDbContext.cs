@@ -126,6 +126,16 @@ namespace SchoolInventoryManagement.DAL.Context
                 .HasForeignKey(ar => ar.RequestedLocationID)
                 .OnDelete(DeleteBehavior.Restrict);
 
+            // Second link from a request to Location. Location.AssetRequests
+            // already belongs to RequestedLocation above, so this one has no
+            // collection on the Location side -- otherwise EF cannot tell the
+            // two apart.
+            modelBuilder.Entity<AssetRequest>()
+                .HasOne(ar => ar.PickupLocation)
+                .WithMany()
+                .HasForeignKey(ar => ar.PickupLocationID)
+                .OnDelete(DeleteBehavior.Restrict);
+
             // =====================================================
             // ASSET → AssignedUser (User)
             // =====================================================
@@ -325,7 +335,7 @@ namespace SchoolInventoryManagement.DAL.Context
                 {
                     t.HasCheckConstraint(
                         "CK_AssetRequests_TypeFieldRules",
-                        "([RequestType] = 'Borrow' AND [ModelID] IS NOT NULL AND [AssetID] IS NULL AND [RequestedLocationID] IS NULL) " +
+                                                "([RequestType] = 'Borrow' AND [ModelID] IS NOT NULL AND [RequestedLocationID] IS NULL) " +
                         "OR ([RequestType] = 'Transfer' AND [ModelID] IS NOT NULL AND [RequestedLocationID] IS NOT NULL)");
                     t.HasCheckConstraint(
                         "CK_AssetRequests_DateOrder",

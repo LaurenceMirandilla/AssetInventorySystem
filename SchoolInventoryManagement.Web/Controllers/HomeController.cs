@@ -72,9 +72,13 @@ namespace SchoolInventoryManagement.Web.Controllers
                 model.AssetsInMyCare = myAssignments.Count;
 
                 var myRequests = await _requestService.GetMyRequestsAsync(CurrentUserId);
+                // Open = not finished: still waiting for a decision, or
+                // approved and not yet returned.
                 model.MyOpenRequestCount = myRequests.Count(r =>
                     r.RequestStatus == RequestStatus.Pending ||
-                    r.RequestStatus == RequestStatus.Approved);
+                    r.RequestStatus == RequestStatus.Approved ||
+                    r.RequestStatus == RequestStatus.InTransit ||
+                    r.RequestStatus == RequestStatus.Assigned);
 
                 // GetMyRequestsAsync already orders newest first.
                 model.MyRecentRequests = myRequests.Take(5).ToList();

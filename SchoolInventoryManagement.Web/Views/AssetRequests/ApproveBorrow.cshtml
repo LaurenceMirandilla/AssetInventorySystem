@@ -29,9 +29,11 @@
 }
 
 <div class="alert alert-info">
-    Approving hands over a specific unit in one step — the request is approved,
-    the unit is assigned to the requester, and the request is marked fulfilled.
-    If any part fails, none of it is saved.
+    Approving reserves the unit to the requester and sets it aside at the pickup
+    location. The request is then <strong>In Transit</strong> and stays under
+    Approvals. When they collect it, an Asset Officer or Administrator marks it
+    <strong>Assigned</strong>, and later records its return. If any part of the
+    approval fails, none of it is saved.
 </div>
 
 <form asp-action="ApproveBorrow" asp-route-id="@Model.RequestID" method="post">
@@ -66,11 +68,20 @@
     </div>
 
     <div class="mb-3">
+        <label asp-for="PickupLocationID" class="form-label">Pickup location</label>
+        <select asp-for="PickupLocationID" asp-items="ViewBag.PickupLocations" class="form-select">
+            <option value="">-- Select Location --</option>
+        </select>
+        <div class="form-text">Where the requester can collect the unit. They are told this when you approve.</div>
+        <span asp-validation-for="PickupLocationID" class="text-danger"></span>
+    </div>
+
+    <div class="mb-3">
         <label asp-for="Remarks" class="form-label">Remarks <span class="text-muted">(optional)</span></label>
         <textarea asp-for="Remarks" class="form-control"></textarea>
     </div>
 
-    <button type="submit" class="btn btn-success">Approve &amp; Assign</button>
+    <button type="submit" class="btn btn-success">Approve</button>
     <a asp-action="Details" asp-route-id="@Model.RequestID" class="btn btn-secondary">Cancel</a>
 </form>
 

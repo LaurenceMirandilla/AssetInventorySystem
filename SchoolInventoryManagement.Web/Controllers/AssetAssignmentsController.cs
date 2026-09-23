@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
+using SchoolInventoryManagement.BLL.DTOs;
 using SchoolInventoryManagement.BLL.Interfaces;
 using SchoolInventoryManagement.DAL.Constants;
 using SchoolInventoryManagement.DAL.Context;
@@ -75,8 +76,10 @@ namespace SchoolInventoryManagement.Web.Controllers
             }
         }
 
-        // GET /AssetAssignments/Return/12  (12 = AssignmentID)
-        public async Task<IActionResult> Return(int id)
+        // GET /AssetAssignments/Return/12
+        // requestId is passed when the return is started from a request, so
+        // the user lands back on that request afterwards.
+        public async Task<IActionResult> Return(int id, int? requestId)
         {
             var assignment = await _assignmentService.GetAssignmentByIdAsync(id);
             if (assignment is null)
@@ -88,13 +91,11 @@ namespace SchoolInventoryManagement.Web.Controllers
             var model = new ReturnAssetViewModel
             {
                 AssignmentID = id,
+                RequestID = requestId,
                 RowVersionBase64 = RowVersionHelper.ToBase64(assignment.RowVersion)
             };
 
-            ViewBag.AssetName = assignment.AssetName;
-            ViewBag.AssetCode = assignment.AssetCode;
-            ViewBag.AssignedTo = assignment.AssignedToUser.FullName;
-
+            await PopulateReturnViewAsync(assignment);
             return View(model);
         }
 
@@ -103,24 +104,55 @@ namespace SchoolInventoryManagement.Web.Controllers
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Return(int id, ReturnAssetViewModel model)
         {
+            var assignment = await _assignmentService.GetAssignmentByIdAsync(id);
+            if (assignment is null)
+                return NotFound();
+
             if (!ModelState.IsValid)
+            {
+                await PopulateReturnViewAsync(assignment);
                 return View(model);
+            }
 
             try
             {
-                var rowVersion = RowVersionHelper.FromBase64(model.RowVersionBase64);
-                var assignment = await _assignmentService.GetAssignmentByIdAsync(id);
+                await _assignmentService.ReturnAssetAsync(
+                    id,
+                    model.ConditionOnReturn,
+                    model.ReturnLocationID!.Value,
+                    RowVersionHelper.FromBase64(model.RowVersionBase64),
+                    CurrentUserId);
 
-                await _assignmentService.ReturnAssetAsync(id, model.ConditionOnReturn, rowVersion, CurrentUserId);
+                TempData["StatusMessage"] = $"{assignment.AssetCode} returned.";
 
-                return RedirectToAction("Details", "Assets", new { id = assignment!.AssetID });
+                return model.RequestID is not null
+                    ? RedirectToAction("Details", "AssetRequests", new { id = model.RequestID })
+                    : RedirectToAction("Details", "Assets", new { id = assignment.AssetID });
             }
             catch (Exception ex)
             {
                 HandleServiceException(ex);
+                await PopulateReturnViewAsync(assignment);
                 return View(model);
             }
         }
+
+        // The return form's header and its location list. Needed on every
+        // render -- including a failed post, which used to lose the header.
+        private async Task PopulateReturnViewAsync(AssetAssignmentResponseDTO assignment)
+        {
+            ViewBag.AssetName = assignment.AssetName;
+            ViewBag.AssetCode = assignment.AssetCode;
+            ViewBag.AssignedTo = assignment.AssignedToUser.FullName;
+
+            ViewBag.Locations = new SelectList(
+                await _context.Locations
+                    .OrderBy(l => l.Branch.BranchName).ThenBy(l => l.LocationName)
+                    .Select(l => new { l.LocationID, Label = l.Branch.BranchName + " — " + l.LocationName })
+                    .ToListAsync(),
+                "LocationID", "Label");
+        }
+
         private async Task PopulateDropdownsAsync()
         {
             var users = await _context.Users

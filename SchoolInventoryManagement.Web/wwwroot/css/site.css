@@ -393,6 +393,12 @@ a.report-tile:hover {
 .status-fulfilled { background: var(--sab-green-light); color: var(--sab-green-dark); }
 .status-rejected  { background: var(--sab-red-bg);    color: var(--sab-red-text); }
 .status-cancelled { background: var(--sab-gray-bg);   color: var(--sab-gray-text); }
+/* InTransit and Assigned reuse the AssetStatus pills below
+   (.status-intransit, .status-assigned); Returned is the closed state. */
+.status-returned {
+    background: var(--sab-gray-bg);
+    color: var(--sab-gray-text);
+}
 
 /* RequestType */
 .status-borrow   { background: var(--sab-blue-bg);   color: var(--sab-blue-text);   border-color: #cfe6f2; }

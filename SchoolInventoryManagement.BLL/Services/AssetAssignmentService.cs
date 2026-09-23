@@ -32,12 +32,11 @@ namespace SchoolInventoryManagement.BLL.Services
         }
 
         // notifyRecipient is false when RequestFulfillmentService drives this
-        // as part of approve-and-assign; that flow sends one combined message
-        // instead. It stays true for a direct assignment, which is the case
-        // where the recipient is currently told nothing at all.
+        // as part of approval; that flow sends one combined message instead.
+        // It stays true for a direct assignment.
         public async Task<AssetAssignmentResponseDTO> AssignAssetAsync(
-    int assetId, int assignToUserId, ConditionStatus conditionOnAssignment,
-    int departmentId, int actingUserId, string? remarks, bool notifyRecipient = true)
+            int assetId, int assignToUserId, ConditionStatus conditionOnAssignment,
+            int departmentId, int actingUserId, string? remarks, bool notifyRecipient = true)
         {
             var actingUser = await PermissionHelper.EnsureIsAssetManagerAsync(_context, actingUserId);
 
@@ -92,9 +91,14 @@ namespace SchoolInventoryManagement.BLL.Services
         }
 
         public async Task ReturnAssetAsync(
-            int assignmentId, ConditionStatus conditionOnReturn, byte[] rowVersion, int actingUserId)
+            int assignmentId, ConditionStatus conditionOnReturn, int returnLocationId,
+            byte[] rowVersion, int actingUserId)
         {
-            await PermissionHelper.EnsureIsAssetManagerAsync(_context, actingUserId);
+            var actingUser = await PermissionHelper.EnsureIsAssetManagerAsync(_context, actingUserId);
+
+            var returnLocation = await _context.Locations.FindAsync(returnLocationId);
+            if (returnLocation is null)
+                throw new KeyNotFoundException("Return location not found.");
 
             var assignment = await _context.AssetAssignments
                 .Include(a => a.Asset)
@@ -115,9 +119,27 @@ namespace SchoolInventoryManagement.BLL.Services
             assignment.Asset.Status = AssetStatus.Available;
             assignment.Asset.AssignedUserID = null;
 
+            // Back on a shelf, where staff said -- recorded as a movement so
+            // the unit's history shows where it went.
+            MovementHelper.Record(
+                _context, assignment.Asset, returnLocationId, actingUser.UserID,
+                $"Returned from assignment #{assignmentId}", conditionOnReturn);
+
+            // If this unit went out on a request, that request ends here.
+            // At most one can be open for a unit: approval reserves it via
+            // this very assignment, and a reserved unit cannot be approved
+            // for anyone else.
+            var request = await _context.AssetRequests.FirstOrDefaultAsync(r =>
+                r.AssetID == assignment.AssetID &&
+                (r.RequestStatus == RequestStatus.InTransit || r.RequestStatus == RequestStatus.Assigned));
+            if (request is not null)
+            {
+                request.RequestStatus = RequestStatus.Returned;
+                request.ReturnedDate = DateTime.Now;
+            }
+
             // Sent to whoever held the asset, not to the officer recording
-            // the return: it is their record of having handed it back, and
-            // the condition logged against it.
+            // the return.
             NotificationHelper.Queue(
                 _context,
                 assignment.AssignedToUserID,

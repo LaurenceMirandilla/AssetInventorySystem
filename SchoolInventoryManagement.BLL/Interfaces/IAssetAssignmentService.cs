@@ -14,7 +14,12 @@ namespace SchoolInventoryManagement.BLL.Interfaces
     int assetId, int assignToUserId, ConditionStatus conditionOnAssignment,
     int departmentId, int actingUserId, string? remarks, bool notifyRecipient = true);
 
-        Task ReturnAssetAsync(int assignmentId, ConditionStatus conditionOnReturn, byte[] rowVersion, int actingUserId);
+        // Closes the assignment and puts the unit at returnLocationId (staff
+        // choose it). If the unit was out on a request, that request is
+        // marked Returned in the same save.
+        Task ReturnAssetAsync(
+            int assignmentId, ConditionStatus conditionOnReturn, int returnLocationId,
+            byte[] rowVersion, int actingUserId);
 
         Task<AssetAssignmentResponseDTO?> GetAssignmentByIdAsync(int assignmentId);
         Task<List<AssetAssignmentResponseDTO>> GetAssignmentHistoryForAssetAsync(int assetId);

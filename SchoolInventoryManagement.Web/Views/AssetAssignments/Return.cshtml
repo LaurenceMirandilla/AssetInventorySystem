@@ -9,6 +9,7 @@
 <form asp-action="Return" asp-route-id="@Model.AssignmentID" method="post">
     @Html.AntiForgeryToken()
     <input type="hidden" asp-for="AssignmentID" />
+    <input type="hidden" asp-for="RequestID" />
     <input type="hidden" asp-for="RowVersionBase64" />
     <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
 
@@ -18,7 +19,20 @@
         <span asp-validation-for="ConditionOnReturn" class="text-danger"></span>
     </div>
 
+    <div class="mb-3">
+        <label asp-for="ReturnLocationID" class="form-label">Return to location</label>
+        <select asp-for="ReturnLocationID" asp-items="ViewBag.Locations" class="form-select">
+            <option value="">-- Select Location --</option>
+        </select>
+        <div class="form-text">Where the unit is being put back. It becomes Available there.</div>
+        <span asp-validation-for="ReturnLocationID" class="text-danger"></span>
+    </div>
+
     <button type="submit" class="btn btn-primary">Confirm Return</button>
+    @if (Model.RequestID is not null)
+    {
+        <a asp-controller="AssetRequests" asp-action="Details" asp-route-id="@Model.RequestID" class="btn btn-secondary">Cancel</a>
+    }
 </form>
 
 @section Scripts {

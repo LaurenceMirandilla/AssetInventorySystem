@@ -29,7 +29,9 @@ namespace SchoolInventoryManagement.BLL.Services
                 .Include(r => r.Department)
                 .Include(r => r.Model)
                 .Include(r => r.Asset)
+                    .ThenInclude(a => a!.AssetAssignments)
                 .Include(r => r.RequestedLocation)
+                .Include(r => r.PickupLocation)
                 .Include(r => r.ApprovedByUser)
                     .ThenInclude(u => u!.Role);
         }
@@ -64,8 +66,8 @@ namespace SchoolInventoryManagement.BLL.Services
 
             // Nothing on the shelf, nothing to request. The form greys these
             // models out; this is the check a hand-built post cannot skip.
-            // Pending requests do not hold units -- approval hands one over
-            // on the spot -- so the Available count is the whole story.
+            // Pending requests do not hold units -- approval reserves one on
+            // the spot -- so the Available count is the whole story.
             var availableUnits = await _context.Assets.CountAsync(a =>
                 a.ModelID == dto.ModelID.Value && a.Status == AssetStatus.Available);
             if (availableUnits == 0)
@@ -91,10 +93,9 @@ namespace SchoolInventoryManagement.BLL.Services
 
             // Queued only AFTER the first save, because RequestID is still 0
             // until the INSERT actually runs and the ActionURL needs the real
-            // id -- the same identity-value trap the audit interceptor hit
-            // with a newly-added Asset. The second save is deliberate: if it
-            // fails, the request itself still stands rather than being lost
-            // for the sake of a notification.
+            // id. The second save is deliberate: if it fails, the request
+            // itself still stands rather than being lost for the sake of a
+            // notification.
             await NotificationHelper.QueueForApproversAsync(
                 _context,
                 requestingUser.RoleID,
@@ -136,6 +137,23 @@ namespace SchoolInventoryManagement.BLL.Services
             return requests.Select(r => r.ToResponseDTO()).ToList();
         }
 
+        // Approved requests that are still out: waiting for pickup, on
+        // their way, or with the requester. They stay on the Approvals page
+        // until staff record the return. Soonest-due first.
+        public async Task<List<AssetRequestResponseDTO>> GetInProgressRequestsAsync(int actingUserId)
+        {
+            await PermissionHelper.EnsureIsApproverAsync(_context, actingUserId);
+
+            var requests = await RequestQueryWithIncludes()
+                .Where(r => r.RequestStatus == RequestStatus.InTransit
+                         || r.RequestStatus == RequestStatus.Assigned)
+                .OrderBy(r => r.ReturnBy ?? DateTime.MaxValue)
+                .ThenBy(r => r.RequestDate)
+                .ToListAsync();
+
+            return requests.Select(r => r.ToResponseDTO()).ToList();
+        }
+
         private async Task<(AssetRequest request, User approver)> ValidateApproverActionAsync(
             int requestId, byte[] rowVersion, int actingUserId)
         {
@@ -162,9 +180,8 @@ namespace SchoolInventoryManagement.BLL.Services
         }
 
         // notifyRequester is false when RequestFulfillmentService drives this
-        // as one step of approve-assign-fulfil. That flow sends a single
-        // message describing the whole outcome instead, so the requester is
-        // not handed three notifications for one action.
+        // as one step of approval. That flow sends a single message
+        // describing the whole outcome instead.
         public async Task ApproveRequestAsync(
             int requestId, byte[] rowVersion, int actingUserId, bool notifyRequester = true)
         {
@@ -203,10 +220,8 @@ namespace SchoolInventoryManagement.BLL.Services
             request.ApprovalDate = DateTime.Now;
             request.Remarks = remarks;
 
-            // The reason travels with the rejection. Being told "no" without
-            // being told why is the most common complaint about workflows
-            // like this, and the requester should not have to open the
-            // record to find out. NotificationHelper caps the length.
+            // The reason travels with the rejection, so the requester does
+            // not have to open the record to find out why.
             var reason = string.IsNullOrWhiteSpace(remarks)
                 ? "No reason was given."
                 : remarks;

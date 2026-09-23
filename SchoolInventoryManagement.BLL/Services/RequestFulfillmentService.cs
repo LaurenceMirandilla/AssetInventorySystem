@@ -7,28 +7,43 @@ using SchoolInventoryManagement.DAL.Entities.Enums;
 
 namespace SchoolInventoryManagement.BLL.Services
 {
+    // Drives a request through its lifecycle after the requester is done:
+    //
+    //   Pending --approve--> InTransit --mark assigned--> Assigned --return--> Returned
+    //
+    // Approve  (any approver): staff pick the unit, and it is reserved to
+    //          the requester straight away (an open AssetAssignment, so it
+    //          reads Assigned and nobody else can borrow it). Borrow: it is
+    //          set aside at the pickup location. Transfer: it stays where it
+    //          is until it is carried to the destination.
+    // Mark assigned (Asset Officer / Administrator): Borrow -- the
+    //          requester collected it, so it is with them now. Transfer --
+    //          it arrived, so it is recorded at the destination.
+    // Return   (Asset Officer / Administrator): AssetAssignmentService.
+    //          ReturnAssetAsync closes the assignment, puts the unit where
+    //          staff say, and marks the request Returned.
+    //
+    // The request stays on the Approvals page from InTransit until Returned.
     public class RequestFulfillmentService : IRequestFulfillmentService
     {
         private readonly ApplicationDbContext _context;
         private readonly IAssetRequestService _requestService;
         private readonly IAssetAssignmentService _assignmentService;
-        private readonly IAssetMovementService _movementService;
 
         public RequestFulfillmentService(
             ApplicationDbContext context,
             IAssetRequestService requestService,
-            IAssetAssignmentService assignmentService,
-            IAssetMovementService movementService)
+            IAssetAssignmentService assignmentService)
         {
             _context = context;
             _requestService = requestService;
             _assignmentService = assignmentService;
-            _movementService = movementService;
         }
 
         public async Task ApproveAndAssignAsync(
             int requestId, int assetId, ConditionStatus conditionOnAssignment,
-            int departmentId, byte[] requestRowVersion, int actingUserId, string? remarks)
+            int departmentId, int pickupLocationId, byte[] requestRowVersion,
+            int actingUserId, string? remarks)
         {
             var request = await _requestService.GetRequestByIdAsync(requestId);
             if (request is null)
@@ -42,81 +57,75 @@ namespace SchoolInventoryManagement.BLL.Services
             // chose has to actually be one of that Model's units.
             var assetMatchesModel = await _context.Assets
                 .AnyAsync(a => a.AssetID == assetId && a.ModelID == request.ModelID);
-
             if (!assetMatchesModel)
                 throw new ArgumentException(
                     "The selected asset is not a unit of the model that was requested.");
 
-            // All three steps below share the SAME ApplicationDbContext instance
-            // (injected once, scoped per HTTP request). Beginning a transaction
-            // here means every SaveChangesAsync() call made by the services
-            // below participates in this one transaction — none of them commit
-            // independently until we call CommitAsync() at the end.
+            var pickup = await _context.Locations.FindAsync(pickupLocationId);
+            if (pickup is null)
+                throw new KeyNotFoundException("Pickup location not found.");
+
+            // Every step below shares this one context, so every
+            // SaveChangesAsync inside the services joins this transaction:
+            // all of it lands, or none of it does.
             await using var transaction = await _context.Database.BeginTransactionAsync();
 
             try
             {
-                // Step 1: Approve the request.
-                // notifyRequester: false throughout this method — approving,
-                // assigning and fulfilling all happen in one action here, and
-                // three separate notifications for one click is noise. One
-                // combined message is sent at the end instead.
+                // Step 1: approve. The requester gets one combined message at
+                // the end instead of one per step.
                 await _requestService.ApproveRequestAsync(
                     requestId, requestRowVersion, actingUserId, notifyRequester: false);
 
-                // RowVersion changed after the approve save above — re-fetch
-                // the request to get its current RowVersion before the next
-                // concurrency-checked call (Fulfill, later in this method).
-                var approvedRequest = await _requestService.GetRequestByIdAsync(requestId);
-                if (approvedRequest is null)
-                    throw new KeyNotFoundException("Request not found after approval.");
+                // Step 2: reserve the unit to the requester. AssignAssetAsync
+                // clears the location ("it's with a person now"), but it is
+                // not with them yet -- so remember where it was.
+                var unit = await _context.Assets.FindAsync(assetId);
+                if (unit is null)
+                    throw new KeyNotFoundException("Asset not found.");
+                var origin = unit.CurrentLocationID;
 
-                // Step 2: Create the assignment (also updates Asset.Status -> Assigned)
                 await _assignmentService.AssignAssetAsync(
                     assetId,
-                    approvedRequest.RequestedByUser.UserID,
+                    request.RequestedByUser.UserID,
                     conditionOnAssignment,
                     departmentId,
                     actingUserId,
                     remarks,
                     notifyRecipient: false);
 
-                // Step 3: Mark the request as Fulfilled
-                await _requestService.FulfillRequestAsync(
-                    requestId,
-                    approvedRequest.RowVersion,
-                    actingUserId,
-                    notifyRequester: false);
+                // Step 3: set it aside at the pickup point, recorded as a
+                // movement from wherever it actually was.
+                unit.CurrentLocationID = origin;
+                MovementHelper.Record(
+                    _context, unit, pickupLocationId, actingUserId,
+                    $"Borrow request #{requestId}: set aside for pickup");
 
-                // Step 4: one message covering the whole outcome. Queued
-                // INSIDE the transaction, so a rollback takes it with
-                // everything else rather than announcing an approval that
-                // never happened.
-                var assignedAsset = await _context.Assets.FindAsync(assetId);
+                // Step 4: the request is now InTransit -- approved, unit
+                // chosen, waiting to be collected.
+                var requestRow = await _context.AssetRequests.FindAsync(requestId);
+                requestRow!.AssetID = assetId;
+                requestRow.PickupLocationID = pickupLocationId;
+                requestRow.RequestStatus = RequestStatus.InTransit;
 
                 NotificationHelper.Queue(
                     _context,
-                    approvedRequest.RequestedByUser.UserID,
-                    $"Your Borrow request was approved — {assignedAsset!.AssetName} " +
-                    $"({assignedAsset.AssetCode}) has been assigned to you.",
+                    request.RequestedByUser.UserID,
+                    $"Your Borrow request was approved — {unit.AssetName} ({unit.AssetCode}) " +
+                    $"is ready to collect at {pickup.LocationName}.",
                     $"/AssetRequests/Details/{requestId}");
 
                 await _context.SaveChangesAsync();
-
-                // All steps succeeded — commit everything together
                 await transaction.CommitAsync();
             }
             catch
             {
-                // Any failure above rolls back ALL changes made within this
-                // transaction, including the Approve step, even though it
-                // already called SaveChangesAsync() internally.
                 await transaction.RollbackAsync();
                 throw;
             }
 
             // Audit logging happens on its own: AuditSaveChangesInterceptor
-            // picks up every entity touched above as part of the same save.
+            // picks up every entity touched above as part of the same saves.
         }
 
         public async Task ApproveAndTransferAsync(
@@ -137,8 +146,8 @@ namespace SchoolInventoryManagement.BLL.Services
             if (request.RequestedLocationID is null)
                 throw new ArgumentException("This Transfer request is missing its destination location.");
 
-            // Transfers name a Model now, so staff pick the unit -- exactly
-            // as for Borrow. A request made before that change already names
+            // Transfers name a Model, so staff pick the unit -- exactly as
+            // for Borrow. A request made before that change already names
             // its unit; honour it rather than ask again.
             var unitId = request.AssetID ?? assetId;
             if (unitId is null)
@@ -153,58 +162,49 @@ namespace SchoolInventoryManagement.BLL.Services
                         "The selected asset is not a unit of the model that was requested.");
             }
 
-            // Same single-transaction shape as ApproveAndAssignAsync above:
-            // Approve, move, and Fulfill either all land or none do.
             await using var transaction = await _context.Database.BeginTransactionAsync();
 
             try
             {
-                // Step 1: Approve the request (see the Borrow flow above for
-                // why notifications are suppressed step by step here).
+                // Step 1: approve (one combined message at the end).
                 await _requestService.ApproveRequestAsync(
                     requestId, requestRowVersion, actingUserId, notifyRequester: false);
 
-                // The approve save above refreshed RowVersion, and Fulfill
-                // checks it again — so re-read before using it.
-                var approvedRequest = await _requestService.GetRequestByIdAsync(requestId);
-                if (approvedRequest is null)
-                    throw new KeyNotFoundException("Request not found after approval.");
+                // Step 2: reserve the unit to the requester so nobody else can
+                // take it while it is out. It stays physically where it is
+                // until staff mark it delivered, so undo the location-clear
+                // AssignAssetAsync does.
+                var unit = await _context.Assets.FindAsync(unitId.Value);
+                if (unit is null)
+                    throw new KeyNotFoundException("Asset not found.");
+                var origin = unit.CurrentLocationID;
 
-                // Step 2: Move the asset (also updates Asset.CurrentLocationID)
-                await _movementService.TransferAssetAsync(
+                await _assignmentService.AssignAssetAsync(
                     unitId.Value,
-                    request.RequestedLocationID.Value,
-                    BuildTransferReason(request.RequestID, request.Reason),
-                    conditionOnTransfer,
+                    request.RequestedByUser.UserID,
+                    conditionOnTransfer ?? unit.Condition,
+                    request.DepartmentID,
                     actingUserId,
-                    remarks);
+                    remarks,
+                    notifyRecipient: false);
 
-                // Step 3: Mark the request as Fulfilled
-                await _requestService.FulfillRequestAsync(
-                    requestId,
-                    approvedRequest.RowVersion,
-                    actingUserId,
-                    notifyRequester: false);
+                unit.CurrentLocationID = origin;
+                if (conditionOnTransfer.HasValue)
+                    unit.Condition = conditionOnTransfer.Value;
 
-                // Step 4: record which unit went, so the request's Details
-                // page can show it. The tracked entity already carries the
-                // RowVersion from Fulfill's save, and this rides along in the
-                // same final SaveChangesAsync as the notification below.
+                // Step 3: InTransit -- approved, unit chosen, on its way.
                 var requestRow = await _context.AssetRequests.FindAsync(requestId);
                 requestRow!.AssetID = unitId.Value;
-
-                // Step 5: one message covering the whole outcome.
-                var movedAsset = await _context.Assets.FindAsync(unitId.Value);
+                requestRow.RequestStatus = RequestStatus.InTransit;
 
                 NotificationHelper.Queue(
                     _context,
-                    approvedRequest.RequestedByUser.UserID,
-                    $"Your Transfer request was approved — {movedAsset!.AssetName} " +
-                    $"({movedAsset.AssetCode}) has been moved.",
+                    request.RequestedByUser.UserID,
+                    $"Your Transfer request was approved — {unit.AssetName} ({unit.AssetCode}) " +
+                    $"is on its way to {request.RequestedLocationName}.",
                     $"/AssetRequests/Details/{requestId}");
 
                 await _context.SaveChangesAsync();
-
                 await transaction.CommitAsync();
             }
             catch
@@ -214,16 +214,62 @@ namespace SchoolInventoryManagement.BLL.Services
             }
         }
 
-        // AssetMovements.ReasonForTransfer is NOT NULL VARCHAR(500) while a
-        // request's Reason is optional — so fall back to naming the request
-        // the movement came from, and keep the result inside the column.
-        private static string BuildTransferReason(int requestId, string? requestReason)
+        public async Task MarkAssignedAsync(int requestId, byte[] requestRowVersion, int actingUserId)
         {
-            var reason = string.IsNullOrWhiteSpace(requestReason)
-                ? $"Transfer request #{requestId}"
-                : $"Transfer request #{requestId}: {requestReason}";
+            // Officers and Administrators only -- approving is wider (Principal
+            // too), but handing over and recording returns is asset work.
+            await PermissionHelper.EnsureIsAssetManagerAsync(_context, actingUserId);
 
-            return reason.Length > 500 ? reason[..500] : reason;
+            var request = await _context.AssetRequests
+                .Include(r => r.Asset)
+                .Include(r => r.RequestedLocation)
+                .FirstOrDefaultAsync(r => r.RequestID == requestId);
+
+            if (request is null)
+                throw new KeyNotFoundException("Request not found.");
+
+            if (request.RequestStatus != RequestStatus.InTransit)
+                throw new InvalidOperationException("Only a request that is In Transit can be marked Assigned.");
+
+            if (request.Asset is null)
+                throw new InvalidOperationException("This request has no unit recorded against it.");
+
+            _context.Entry(request).Property(r => r.RowVersion).OriginalValue = requestRowVersion;
+
+            string message;
+            if (request.RequestType == RequestType.Borrow)
+            {
+                // Collected: it is with the requester now, not on a shelf --
+                // the same "no location" an ordinary assignment gives it.
+                request.Asset.CurrentLocationID = null;
+                message = $"You collected {request.Asset.AssetName} ({request.Asset.AssetCode}).";
+            }
+            else
+            {
+                // Delivered: recorded at the destination, with a movement row
+                // so the unit's history shows where it came from.
+                MovementHelper.Record(
+                    _context, request.Asset, request.RequestedLocationID!.Value, actingUserId,
+                    $"Transfer request #{requestId}: delivered");
+                message = $"{request.Asset.AssetName} ({request.Asset.AssetCode}) was delivered " +
+                          $"to {request.RequestedLocation?.LocationName}.";
+            }
+
+            request.RequestStatus = RequestStatus.Assigned;
+            request.AssignedDate = DateTime.Now;
+
+            NotificationHelper.Queue(
+                _context, request.RequestedByUserID, message, $"/AssetRequests/Details/{requestId}");
+
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                throw new ConcurrencyConflictException(
+                    "This request was modified by someone else. Please reload and try again.");
+            }
         }
     }
 }

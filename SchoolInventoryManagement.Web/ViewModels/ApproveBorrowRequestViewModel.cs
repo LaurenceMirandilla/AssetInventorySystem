@@ -4,8 +4,9 @@ using SchoolInventoryManagement.DAL.Entities.Enums;
 namespace SchoolInventoryManagement.Web.ViewModels
 {
     // Borrow approval is where the abstract request becomes a physical
-    // unit: staff pick which AssetID of the requested Model actually goes
-    // out, and confirm the department it is being issued to.
+    // unit: staff pick which AssetID of the requested Model goes out,
+    // confirm the department it is issued to, and say where the requester
+    // can collect it. The request is then In Transit until they do.
     public class ApproveBorrowRequestViewModel
     {
         public int RequestID { get; set; }
@@ -18,6 +19,10 @@ namespace SchoolInventoryManagement.Web.ViewModels
 
         [Required]
         public int DepartmentID { get; set; }
+
+        [Required(ErrorMessage = "Say where the requester can collect it.")]
+        [Display(Name = "Pickup location")]
+        public int? PickupLocationID { get; set; }
 
         [MaxLength(500)]
         public string? Remarks { get; set; }

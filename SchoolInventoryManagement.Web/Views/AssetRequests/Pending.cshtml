@@ -1,6 +1,17 @@
 ﻿@model List<SchoolInventoryManagement.BLL.DTOs.AssetRequestResponseDTO>
+@using SchoolInventoryManagement.DAL.Constants
+@using SchoolInventoryManagement.DAL.Entities.Enums
 @{
     ViewData["Title"] = "Pending Requests";
+
+    // Approved requests still out: In Transit or Assigned, until returned.
+    var inProgress = ViewBag.InProgress as List<SchoolInventoryManagement.BLL.DTOs.AssetRequestResponseDTO>
+        ?? new List<SchoolInventoryManagement.BLL.DTOs.AssetRequestResponseDTO>();
+
+    // Principals see this list but cannot act on it: handing over and
+    // recording returns is Officers' and Administrators' work.
+    var canManageAssets = User.IsInRole(RoleNames.AssetOfficer)
+        || User.IsInRole(RoleNames.Administrator);
 }
 @if (TempData["ErrorMessage"] != null)
 {
@@ -74,6 +85,109 @@ else
         <div class="sab-empty">
             <div class="sab-empty-title">Nothing is waiting on you</div>
             <p>Requests appear here as soon as somebody submits one.</p>
+        </div>
+    </div>
+}
+
+<div class="sab-page-head mt-4">
+    <div>
+        <h2>In Progress</h2>
+        <p class="sab-page-sub">
+            Approved and still out. <strong>In Transit</strong> means waiting to be
+            collected (Borrow) or on its way (Transfer); <strong>Assigned</strong>
+            means the requester has it. Each stays here until its return is recorded.
+        </p>
+    </div>
+</div>
+
+@if (inProgress.Any())
+{
+    <div class="sab-table-card">
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Requester</th>
+                    <th>Unit</th>
+                    <th>Where</th>
+                    <th>Due back</th>
+                    <th>Status</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var r in inProgress)
+                {
+                    var isBorrow = r.RequestType == RequestType.Borrow;
+                    var overdue = r.RequestStatus == RequestStatus.Assigned
+                        && r.ReturnBy is not null && r.ReturnBy.Value < DateTime.Now;
+
+                    <tr>
+                        <td><a asp-action="Details" asp-route-id="@r.RequestID">@r.RequestID</a></td>
+                        <td>
+                            <div>@r.RequestedByUser.FullName</div>
+                            <div class="text-muted small">@r.DepartmentName</div>
+                        </td>
+                        <td>
+                            <span class="sab-code">@(r.AssetCode ?? "—")</span>
+                            <div class="text-muted small">@r.ModelName</div>
+                        </td>
+                        <td class="small">
+                            @if (isBorrow)
+                            {
+                                @(r.RequestStatus == RequestStatus.InTransit
+                                    ? "Pickup: " + (r.PickupLocationName ?? "—")
+                                    : "With requester")
+                            }
+                            else
+                            {
+                                <text>&rarr; @r.RequestedLocationName</text>
+                            }
+                        </td>
+                        <td class="small @(overdue ? "text-danger fw-semibold" : "")">
+                            @(r.ReturnBy?.ToString("MMM d, h:mm tt") ?? "—")
+                            @if (overdue)
+                            {
+                                <div>Overdue</div>
+                            }
+                        </td>
+                        <td>
+                            <span class="status-pill status-@r.RequestType.ToString().ToLowerInvariant()">@r.RequestType</span>
+                            <span class="status-pill status-@r.RequestStatus.ToString().ToLowerInvariant()">@DisplayText.Humanize(r.RequestStatus.ToString())</span>
+                        </td>
+                        <td class="text-nowrap">
+                            @if (canManageAssets && r.RequestStatus == RequestStatus.InTransit)
+                            {
+                                <form asp-action="MarkAssigned" asp-route-id="@r.RequestID" method="post" class="d-inline">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="rowVersionBase64" value="@Convert.ToBase64String(r.RowVersion)" />
+                                    <input type="hidden" name="fromApprovals" value="true" />
+                                    <button type="submit" class="btn btn-link p-0">@(isBorrow ? "Picked up" : "Delivered")</button>
+                                </form>
+                            }
+                            @if (canManageAssets && r.ActiveAssignmentID is not null)
+                            {
+                                <a asp-controller="AssetAssignments" asp-action="Return"
+                                   asp-route-id="@r.ActiveAssignmentID" asp-route-requestId="@r.RequestID"
+                                   class="ms-3">Record return</a>
+                            }
+                            @if (!canManageAssets)
+                            {
+                                <a asp-action="Details" asp-route-id="@r.RequestID">View</a>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+else
+{
+    <div class="card">
+        <div class="sab-empty">
+            <div class="sab-empty-title">Nothing out right now</div>
+            <p>Approved requests appear here until their return is recorded.</p>
         </div>
     </div>
 }

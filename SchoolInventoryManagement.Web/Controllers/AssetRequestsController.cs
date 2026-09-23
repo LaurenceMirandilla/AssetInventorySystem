@@ -55,6 +55,11 @@ namespace SchoolInventoryManagement.Web.Controllers
             User.IsInRole(RoleNames.Administrator) ||
             User.IsInRole(RoleNames.Principal);
 
+        // Handing over and recording returns is asset work: Officers and
+        // Administrators, not the wider approver group.
+        private const string AssetManagerRoles =
+            RoleNames.AssetOfficer + "," + RoleNames.Administrator;
+
         // GET /AssetRequests
         public IActionResult Index() => RedirectToAction(nameof(MyRequests));
 
@@ -66,10 +71,13 @@ namespace SchoolInventoryManagement.Web.Controllers
         }
 
         // GET /AssetRequests/Pending
+        // Two lists: requests waiting for a decision, and approved ones that
+        // are still out (In Transit / Assigned) until their return is recorded.
         [Authorize(Roles = ApproverRoles)]
         public async Task<IActionResult> Pending()
         {
             var requests = await _requestService.GetPendingRequestsAsync(CurrentUserId);
+            ViewBag.InProgress = await _requestService.GetInProgressRequestsAsync(CurrentUserId);
             return View(requests);
         }
 
@@ -207,6 +215,7 @@ namespace SchoolInventoryManagement.Web.Controllers
                     model.AssetID,
                     model.ConditionOnAssignment,
                     model.DepartmentID,
+                    model.PickupLocationID!.Value,
                     RowVersionHelper.FromBase64(model.RowVersionBase64),
                     CurrentUserId,
                     model.Remarks);
@@ -246,6 +255,31 @@ namespace SchoolInventoryManagement.Web.Controllers
                 HandleServiceException(ex);
                 return await RedisplayTransferApprovalAsync(id, model);
             }
+        }
+
+        // POST /AssetRequests/MarkAssigned/5
+        // In Transit -> Assigned: a Borrow was collected, or a Transfer
+        // arrived. Officers and Administrators only.
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        [Authorize(Roles = AssetManagerRoles)]
+        public async Task<IActionResult> MarkAssigned(int id, string rowVersionBase64, bool fromApprovals = false)
+        {
+            try
+            {
+                await _fulfillmentService.MarkAssignedAsync(
+                    id, RowVersionHelper.FromBase64(rowVersionBase64), CurrentUserId);
+                TempData["StatusMessage"] = $"Request #{id} marked Assigned.";
+            }
+            catch (Exception ex)
+            {
+                TempData["ErrorMessage"] = ex.Message;
+            }
+
+            // Back to wherever the button was pressed.
+            return fromApprovals
+                ? RedirectToAction(nameof(Pending))
+                : RedirectToAction(nameof(Details), new { id });
         }
 
         // GET /AssetRequests/Reject/5
@@ -389,6 +423,13 @@ namespace SchoolInventoryManagement.Web.Controllers
             ViewBag.Departments = new SelectList(
                 departments.Select(d => new { d.DepartmentID, Label = $"{d.BranchName} — {d.DepartmentName}" }),
                 "DepartmentID", "Label");
+
+            var locations = await _locationService.GetAllLocationsAsync();
+            ViewBag.PickupLocations = new SelectList(
+                locations
+                    .Select(l => new { l.LocationID, Label = $"{l.BranchName} — {l.LocationName}" })
+                    .OrderBy(l => l.Label),
+                "LocationID", "Label");
         }
 
         private async Task<IActionResult> RedisplayBorrowApprovalAsync(int id, ApproveBorrowRequestViewModel model)

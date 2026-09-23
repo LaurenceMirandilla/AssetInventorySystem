@@ -15,14 +15,17 @@ namespace SchoolInventoryManagement.DAL.Entities
         public int DepartmentID { get; set; }
 
         // Both types name a Model; Transfer also names a destination.
-        // AssetID is never chosen by the requester: for a Transfer it is
-        // filled in at approval with the unit staff actually moved, and it
-        // stays null for Borrow (the assignment records that unit instead).
+        // AssetID is never chosen by the requester: staff fill it in at
+        // approval with the unit that goes out, for either type.
         // Enforced by CK_AssetRequests_TypeFieldRules at the DB level.
         public int? ModelID { get; set; }
         public int? AssetID { get; set; }
 
         public int? RequestedLocationID { get; set; }
+
+        // Borrow only: where the approver said the requester can collect
+        // the unit. Set at approval.
+        public int? PickupLocationID { get; set; }
 
         [Required]
         public RequestType RequestType { get; set; }
@@ -38,6 +41,11 @@ namespace SchoolInventoryManagement.DAL.Entities
         // service requires both on every new request.
         public DateTime? NeededFrom { get; set; }
         public DateTime? ReturnBy { get; set; }
+
+        // When staff marked it Assigned (collected / delivered), and when
+        // they recorded it coming back.
+        public DateTime? AssignedDate { get; set; }
+        public DateTime? ReturnedDate { get; set; }
         [Required]
         public RequestStatus RequestStatus { get; set; } = RequestStatus.Pending;
 
@@ -66,6 +74,9 @@ namespace SchoolInventoryManagement.DAL.Entities
 
         [ForeignKey("RequestedLocationID")]
         public Location? RequestedLocation { get; set; }
+
+        [ForeignKey(nameof(PickupLocationID))]
+        public Location? PickupLocation { get; set; }
 
         [ForeignKey("ApprovedByUserID")]
         public User? ApprovedByUser { get; set; }

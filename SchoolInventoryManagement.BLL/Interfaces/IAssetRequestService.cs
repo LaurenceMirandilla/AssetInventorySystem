@@ -11,6 +11,9 @@ namespace SchoolInventoryManagement.BLL.Interfaces
         Task<List<AssetRequestResponseDTO>> GetMyRequestsAsync(int actingUserId);
         Task<List<AssetRequestResponseDTO>> GetPendingRequestsAsync(int actingUserId);
 
+        // InTransit + Assigned: approved and still out, awaiting return.
+        Task<List<AssetRequestResponseDTO>> GetInProgressRequestsAsync(int actingUserId);
+
         // notifyRequester exists so RequestFulfillmentService can suppress
         // the per-step notifications and send one message for the whole
         // approve-assign-fulfil sequence. Optional, so existing call sites
