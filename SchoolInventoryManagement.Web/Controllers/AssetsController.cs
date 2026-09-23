@@ -169,7 +169,7 @@ namespace SchoolInventoryManagement.Web.Controllers
             // One query drives both the table and the KPI tiles, which is
             // what makes the tiles mirror the rows: every filter, status
             // included, narrows this set, and the tiles are just its
-            // breakdown. With a status selected the other three read zero.
+            // breakdown. With a status selected the others read zero.
             var filtered = await _assetService.SearchAssetsAsync(
                 keyword, categoryId, modelId, branchId, departmentId, status, condition, locationId);
 
@@ -191,6 +191,7 @@ namespace SchoolInventoryManagement.Web.Controllers
                 Assets = paged,
                 AvailableCount = filtered.Count(a => a.Status == AssetStatus.Available),
                 AssignedCount = filtered.Count(a => a.Status == AssetStatus.Assigned),
+                InTransitCount = filtered.Count(a => a.Status == AssetStatus.InTransit),
                 UnderMaintenanceCount = filtered.Count(a => a.Status == AssetStatus.UnderMaintenance),
                 DisposedCount = filtered.Count(a => a.Status == AssetStatus.Disposed),
                 GrandTotalCount = grandTotal,
@@ -384,9 +385,12 @@ namespace SchoolInventoryManagement.Web.Controllers
             if (asset is null)
                 return NotFound();
 
-            if (asset.Status == AssetStatus.Assigned)
+            // Out on a request -- reserved and waiting (InTransit) or with
+            // someone (Assigned). Editing its location now would pull it
+            // out from under the request.
+            if (asset.Status == AssetStatus.Assigned || asset.Status == AssetStatus.InTransit)
             {
-                TempData["ErrorMessage"] = "This asset is currently assigned and cannot be edited until it's returned.";
+                TempData["ErrorMessage"] = "This asset is out on a request and cannot be edited until it's returned.";
                 return RedirectToAction(nameof(Details), new { id });
             }
 
@@ -562,9 +566,7 @@ namespace SchoolInventoryManagement.Web.Controllers
             // bare "wwwroot" string -- a relative path resolves against the
             // process's current working directory, which is only the
             // project folder by coincidence when running under the Visual
-            // Studio debugger. Anywhere else (dotnet run from elsewhere,
-            // IIS, a published build) it either writes to the wrong place
-            // or throws because that resolved path isn't writable.
+            // Studio debugger.
             var folder = Path.Combine(_webHostEnvironment.WebRootPath, "images", "assets");
             Directory.CreateDirectory(folder);
             var fullPath = Path.Combine(folder, fileName);

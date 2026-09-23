@@ -37,7 +37,7 @@
 
 @* KPI tiles -- a live breakdown of the rows below, so they always add up
    to what the table is showing. Every filter narrows them, status
-   included, which means selecting a status zeroes the other four. That is
+   included, which means selecting a status zeroes the others. That is
    the honest count, so the highlighted tile doubles as the way out:
    clicking it drops the status and restores the full breakdown, as does
    "All assets". The other filters ride along on every tile, so you never
@@ -65,6 +65,14 @@
        class="report-tile text-decoration-none @(activeStatus == "Assigned" ? "active" : "")">
         <span class="report-tile-value">@Model.AssignedCount</span>
         <span class="report-tile-label">Assigned</span>
+    </a>
+    <a asp-action="Index"
+       asp-route-status="@(activeStatus == "InTransit" ? null : "InTransit")"
+       asp-route-keyword="@Model.Keyword" asp-route-categoryId="@Model.CategoryId"
+       asp-route-departmentId="@Model.DepartmentId" asp-route-condition="@Model.Condition" asp-route-locationId="@Model.LocationId" asp-route-modelId="@Model.ModelId" asp-route-branchId="@Model.BranchId"
+       class="report-tile text-decoration-none @(activeStatus == "InTransit" ? "active" : "")">
+        <span class="report-tile-value">@Model.InTransitCount</span>
+        <span class="report-tile-label">In transit</span>
     </a>
     <a asp-action="Index"
        asp-route-status="@(activeStatus == "UnderMaintenance" ? null : "UnderMaintenance")"

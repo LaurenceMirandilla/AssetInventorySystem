@@ -8,7 +8,7 @@ namespace SchoolInventoryManagement.Web.ViewModels
     // Drives Views/Assets/Index.cshtml. The KPI tiles mirror the table
     // beneath them: every filter, status included, narrows the counts, so
     // the tiles always add up to the rows on screen. Selecting a status
-    // therefore zeroes the other four tiles -- which is the honest count,
+    // therefore zeroes the other tiles -- which is the honest count,
     // and why clicking the highlighted tile clears the status again rather
     // than leaving you stranded on a row of noughts.
     public class AssetIndexViewModel
@@ -19,6 +19,7 @@ namespace SchoolInventoryManagement.Web.ViewModels
         // of these is non-zero and equals TotalFilteredCount.
         public int AvailableCount { get; set; }
         public int AssignedCount { get; set; }
+        public int InTransitCount { get; set; }
         public int UnderMaintenanceCount { get; set; }
         public int DisposedCount { get; set; }
 

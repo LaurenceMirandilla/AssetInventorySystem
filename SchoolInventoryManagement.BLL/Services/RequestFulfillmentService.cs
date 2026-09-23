@@ -12,13 +12,15 @@ namespace SchoolInventoryManagement.BLL.Services
     //   Pending --approve--> InTransit --mark assigned--> Assigned --return--> Returned
     //
     // Approve  (any approver): staff pick the unit, and it is reserved to
-    //          the requester straight away (an open AssetAssignment, so it
-    //          reads Assigned and nobody else can borrow it). Borrow: it is
-    //          set aside at the pickup location. Transfer: it stays where it
-    //          is until it is carried to the destination.
-    // Mark assigned (Asset Officer / Administrator): Borrow -- the
-    //          requester collected it, so it is with them now. Transfer --
-    //          it arrived, so it is recorded at the destination.
+    //          the requester straight away (an open AssetAssignment, so
+    //          nobody else can borrow it) and reads In transit on the Assets
+    //          page. Borrow: it is set aside at the pickup location.
+    //          Transfer: it stays where it is until it is carried to the
+    //          destination.
+    // Mark assigned (Asset Officer / Administrator): the unit now reads
+    //          Assigned. Borrow -- the requester collected it, so it is with
+    //          them now. Transfer -- it arrived, so it is recorded at the
+    //          destination.
     // Return   (Asset Officer / Administrator): AssetAssignmentService.
     //          ReturnAssetAsync closes the assignment, puts the unit where
     //          staff say, and marks the request Returned.
@@ -95,8 +97,10 @@ namespace SchoolInventoryManagement.BLL.Services
                     notifyRecipient: false);
 
                 // Step 3: set it aside at the pickup point, recorded as a
-                // movement from wherever it actually was.
+                // movement from wherever it actually was. It reads In transit
+                // on the Assets page until it is collected.
                 unit.CurrentLocationID = origin;
+                unit.Status = AssetStatus.InTransit; // NEW
                 MovementHelper.Record(
                     _context, unit, pickupLocationId, actingUserId,
                     $"Borrow request #{requestId}: set aside for pickup");
@@ -189,6 +193,7 @@ namespace SchoolInventoryManagement.BLL.Services
                     notifyRecipient: false);
 
                 unit.CurrentLocationID = origin;
+                unit.Status = AssetStatus.InTransit; // NEW -- until it is delivered
                 if (conditionOnTransfer.HasValue)
                     unit.Condition = conditionOnTransfer.Value;
 
@@ -254,6 +259,10 @@ namespace SchoolInventoryManagement.BLL.Services
                 message = $"{request.Asset.AssetName} ({request.Asset.AssetCode}) was delivered " +
                           $"to {request.RequestedLocation?.LocationName}.";
             }
+
+            // NEW -- the unit's own status follows the request's: no longer
+            // in transit, now with the requester (or at the destination).
+            request.Asset.Status = AssetStatus.Assigned;
 
             request.RequestStatus = RequestStatus.Assigned;
             request.AssignedDate = DateTime.Now;

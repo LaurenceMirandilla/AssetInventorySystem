@@ -30,7 +30,7 @@ namespace SchoolInventoryManagement.BLL.Services
                 .Include(a => a.Department)
                 .Include(a => a.AssignedUser)
                 .Include(a => a.Branch)
-                .Include(a => a.AssetAssignments); // NEW — needed for ActiveAssignmentID
+                .Include(a => a.AssetAssignments); // needed for ActiveAssignmentID
         }
 
         public async Task<AssetResponseDTO> CreateAssetAsync(CreateAssetDTO dto, int actingUserId)
@@ -269,9 +269,12 @@ namespace SchoolInventoryManagement.BLL.Services
             if (asset is null)
                 throw new KeyNotFoundException("Asset not found.");
 
-            if (asset.Status == AssetStatus.Assigned)
+            // Out on a request -- reserved and waiting (InTransit) or with
+            // someone (Assigned). Editing it now would pull it out from
+            // under the request.
+            if (asset.Status == AssetStatus.Assigned || asset.Status == AssetStatus.InTransit)
                 throw new InvalidOperationException(
-                    "This asset is currently assigned and cannot be edited until it's returned.");
+                    "This asset is out on a request and cannot be edited until it's returned.");
 
             _context.Entry(asset).Property(a => a.RowVersion).OriginalValue = dto.RowVersion;
 

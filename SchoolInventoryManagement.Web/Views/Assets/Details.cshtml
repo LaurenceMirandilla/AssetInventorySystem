@@ -9,6 +9,12 @@
     var canViewHistory = User.IsInRole(RoleNames.AssetOfficer)
         || User.IsInRole(RoleNames.Administrator)
         || User.IsInRole(RoleNames.Principal);
+
+    // Out on a request: reserved for someone and waiting to be collected or
+    // delivered (InTransit), or with them (Assigned). Either way it cannot
+    // be edited until it comes back.
+    var isInTransit = Model.Status == SchoolInventoryManagement.DAL.Entities.Enums.AssetStatus.InTransit;
+    var isOut = isInTransit || Model.Status == SchoolInventoryManagement.DAL.Entities.Enums.AssetStatus.Assigned;
 }
 
 @if (TempData["ErrorMessage"] != null)
@@ -26,7 +32,7 @@
     <div>
         <h2 class="mb-0 d-flex align-items-center" style="gap:10px;">
             @Model.AssetName
-            <span class="status-pill status-@Model.Status.ToString().ToLowerInvariant()">@Model.Status</span>
+            <span class="status-pill status-@Model.Status.ToString().ToLowerInvariant()">@DisplayText.Humanize(Model.Status.ToString())</span>
         </h2>
         <p class="text-muted mb-3">
             <span class="sab-code">@Model.AssetCode</span> &middot; @Model.ModelName
@@ -40,7 +46,10 @@
     @if (User.IsInRole("Asset Officer") || User.IsInRole("Administrator"))
     {
         <div class="d-flex" style="gap:8px;">
-            <a asp-action="Edit" asp-route-id="@Model.AssetID" class="btn btn-outline-secondary">Edit</a>
+            @if (!isOut)
+            {
+                <a asp-action="Edit" asp-route-id="@Model.AssetID" class="btn btn-outline-secondary">Edit</a>
+            }
 
             @if (Model.Status == SchoolInventoryManagement.DAL.Entities.Enums.AssetStatus.Disposed)
             {
@@ -71,7 +80,7 @@
 
                 <a asp-controller="AssetAssignments" asp-action="Assign" asp-route-id="@Model.AssetID" class="btn btn-primary">Assign</a>
             }
-            else if (Model.Status == SchoolInventoryManagement.DAL.Entities.Enums.AssetStatus.Assigned && Model.ActiveAssignmentID.HasValue)
+            else if (isOut && Model.ActiveAssignmentID.HasValue)
             {
                 <a asp-controller="AssetAssignments" asp-action="Return" asp-route-id="@Model.ActiveAssignmentID" class="btn btn-primary">Record return</a>
             }
@@ -153,7 +162,7 @@
         {
             <div class="card mb-3">
                 <div class="card-body">
-                    <h6 class="text-muted small mb-3" style="text-transform:uppercase; letter-spacing:.04em;">Current holder</h6>
+                    <h6 class="text-muted small mb-3" style="text-transform:uppercase; letter-spacing:.04em;">@(isInTransit ? "Reserved for" : "Current holder")</h6>
                     <div class="d-flex align-items-center" style="gap:10px;">
                         <span class="sab-avatar sab-avatar-soft">
                             @string.Concat(Model.AssignedUserName.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(p => p[0])).ToUpperInvariant()
