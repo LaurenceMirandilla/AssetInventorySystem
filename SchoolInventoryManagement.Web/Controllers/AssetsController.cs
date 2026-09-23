@@ -32,7 +32,7 @@ namespace SchoolInventoryManagement.Web.Controllers
         private readonly IWebHostEnvironment _webHostEnvironment;
 
         // Matches the mockup's page size. Unrelated to the KPI tiles above
-        // it -- those count the whole filtered scope, not just this page.
+        // it -- those count the whole filtered set, not just this page.
         private const int PageSize = 20;
 
         public AssetsController(
@@ -97,43 +97,81 @@ namespace SchoolInventoryManagement.Web.Controllers
                 .ToListAsync();
         }
 
-        // Separate from PopulateDropdownsAsync above: that one feeds the
-        // Create/Edit forms (Models/Locations/Branches/Departments as
-        // create-time choices). This one feeds the Index page's FILTER row
-        // (Category/Department/Status/Condition), which is a different set
-        // of dropdowns with different selected-value handling.
-        private async Task PopulateFilterDropdownsAsync(
-            int? selectedCategoryId, int? selectedDepartmentId,
-            AssetStatus? selectedStatus, ConditionStatus? selectedCondition)
+        // Feeds the Index page's filter row -- separate from
+        // PopulateDropdownsAsync above, which feeds the Create/Edit forms.
+        // Every child list carries its parent's id so the page can cascade:
+        // Category narrows Model, Branch narrows Location and Department.
+        // The narrowing itself is JavaScript in Index.cshtml; this only
+        // ships the relationships. Grouped by parent so the lists stay
+        // readable when nothing is narrowed yet.
+        private async Task PopulateFilterOptionsAsync(AssetIndexViewModel model)
         {
-            var categories = await _context.Categories.OrderBy(c => c.CategoryName).ToListAsync();
-            ViewBag.CategoryFilter = new SelectList(categories, "CategoryID", "CategoryName", selectedCategoryId);
+            model.CategoryOptions = await _context.Categories
+                .OrderBy(c => c.CategoryName)
+                .Select(c => new CategoryDTO { CategoryID = c.CategoryID, CategoryName = c.CategoryName })
+                .ToListAsync();
 
-            var departments = await _context.Departments.OrderBy(d => d.DepartmentName).ToListAsync();
-            ViewBag.DepartmentFilter = new SelectList(departments, "DepartmentID", "DepartmentName", selectedDepartmentId);
+            model.ModelOptions = await _context.Models
+                .OrderBy(m => m.Category.CategoryName).ThenBy(m => m.ModelName)
+                .Select(m => new ModelDTO
+                {
+                    ModelID = m.ModelID,
+                    ModelName = m.ModelName,
+                    CategoryID = m.CategoryID,
+                    CategoryName = m.Category.CategoryName
+                })
+                .ToListAsync();
+
+            model.BranchOptions = await _context.Branches
+                .OrderBy(b => b.BranchName)
+                .Select(b => new BranchDTO { BranchID = b.BranchID, BranchName = b.BranchName })
+                .ToListAsync();
+
+            model.LocationOptions = await _context.Locations
+                .OrderBy(l => l.Branch.BranchName).ThenBy(l => l.LocationName)
+                .Select(l => new LocationDTO
+                {
+                    LocationID = l.LocationID,
+                    LocationName = l.LocationName,
+                    BranchID = l.BranchID,
+                    BranchName = l.Branch.BranchName
+                })
+                .ToListAsync();
+
+            model.DepartmentOptions = await _context.Departments
+                .OrderBy(d => d.Branch.BranchName).ThenBy(d => d.DepartmentName)
+                .Select(d => new DepartmentDTO
+                {
+                    DepartmentID = d.DepartmentID,
+                    DepartmentName = d.DepartmentName,
+                    BranchID = d.BranchID,
+                    BranchName = d.Branch.BranchName
+                })
+                .ToListAsync();
 
             ViewBag.StatusFilter = new SelectList(
                 Enum.GetValues(typeof(AssetStatus)).Cast<AssetStatus>()
                     .Select(s => new { Value = s.ToString(), Text = s.ToString() }),
-                "Value", "Text", selectedStatus?.ToString());
+                "Value", "Text", model.Status?.ToString());
 
             ViewBag.ConditionFilter = new SelectList(
                 Enum.GetValues(typeof(ConditionStatus)).Cast<ConditionStatus>()
                     .Select(c => new { Value = c.ToString(), Text = c.ToString() }),
-                "Value", "Text", selectedCondition?.ToString());
+                "Value", "Text", model.Condition?.ToString());
         }
 
         // GET /Assets
         public async Task<IActionResult> Index(
             string? keyword, int? categoryId, int? departmentId,
-            AssetStatus? status, ConditionStatus? condition, int page = 1)
+            AssetStatus? status, ConditionStatus? condition, int? locationId, int? modelId,
+            int? branchId, int page = 1)
         {
             // One query drives both the table and the KPI tiles, which is
             // what makes the tiles mirror the rows: every filter, status
             // included, narrows this set, and the tiles are just its
             // breakdown. With a status selected the other three read zero.
             var filtered = await _assetService.SearchAssetsAsync(
-                keyword, categoryId, null, null, departmentId, status, condition);
+                keyword, categoryId, modelId, branchId, departmentId, status, condition, locationId);
 
             var currentPage = Math.Max(page, 1);
             var totalFiltered = filtered.Count;
@@ -142,8 +180,6 @@ namespace SchoolInventoryManagement.Web.Controllers
                 .Skip((currentPage - 1) * PageSize)
                 .Take(PageSize)
                 .ToList();
-
-            await PopulateFilterDropdownsAsync(categoryId, departmentId, status, condition);
 
             // Unfiltered headcount, for the "N of M" caption above the tiles.
             // A COUNT(*) rather than another GetAllAssetsAsync -- the page
@@ -163,10 +199,15 @@ namespace SchoolInventoryManagement.Web.Controllers
                 DepartmentId = departmentId,
                 Status = status,
                 Condition = condition,
+                LocationId = locationId,
+                ModelId = modelId,
+                BranchId = branchId,
                 Page = currentPage,
                 PageSize = PageSize,
                 TotalFilteredCount = totalFiltered
             };
+
+            await PopulateFilterOptionsAsync(model);
 
             return View(model);
         }
@@ -174,10 +215,11 @@ namespace SchoolInventoryManagement.Web.Controllers
         // GET /Assets/ExportAssets -- same filters as Index, no paging.
         public async Task<IActionResult> ExportAssets(
             string? keyword, int? categoryId, int? departmentId,
-            AssetStatus? status, ConditionStatus? condition)
+            AssetStatus? status, ConditionStatus? condition, int? locationId, int? modelId,
+            int? branchId)
         {
             var assets = await _assetService.SearchAssetsAsync(
-                keyword, categoryId, null, null, departmentId, status, condition);
+                keyword, categoryId, modelId, branchId, departmentId, status, condition, locationId);
 
             var csv = CsvExportHelper.Build(
                 new[]
@@ -268,6 +310,63 @@ namespace SchoolInventoryManagement.Web.Controllers
 
                 var created = await _assetService.CreateAssetAsync(dto, CurrentUserId);
                 return RedirectToAction(nameof(Details), new { id = created.AssetID });
+            }
+            catch (Exception ex)
+            {
+                HandleServiceException(ex);
+                await PopulateDropdownsAsync();
+                return View(model);
+            }
+        }
+
+        // GET /Assets/BulkCreate
+        [Authorize(Roles = RoleNames.AssetOfficer + "," + RoleNames.Administrator)]
+        public async Task<IActionResult> BulkCreate()
+        {
+            await PopulateDropdownsAsync();
+            return View(new AssetBulkCreateViewModel());
+        }
+
+        // POST /Assets/BulkCreate
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        [Authorize(Roles = RoleNames.AssetOfficer + "," + RoleNames.Administrator)]
+        public async Task<IActionResult> BulkCreate(AssetBulkCreateViewModel model)
+        {
+            if (!ModelState.IsValid)
+            {
+                await PopulateDropdownsAsync();
+                return View(model);
+            }
+
+            try
+            {
+                var dto = new BulkCreateAssetsDTO
+                {
+                    ModelID = model.ModelID!.Value,
+                    Quantity = model.Quantity,
+                    CodePrefix = model.CodePrefix,
+                    StartingNumber = model.StartingNumber,
+                    BaseName = model.BaseName,
+                    SerialNumbers = model.SerialNumbers,
+                    Description = model.Description,
+                    AcquisitionDate = model.AcquisitionDate,
+                    AcquisitionCost = model.AcquisitionCost,
+                    WarrantyInformation = model.WarrantyInformation,
+                    Condition = model.Condition,
+                    CurrentLocationID = model.CurrentLocationID,
+                    BranchID = model.BranchID!.Value
+                };
+
+                var codes = await _assetService.BulkCreateAssetsAsync(dto, CurrentUserId);
+
+                TempData["StatusMessage"] = codes.Count == 1
+                    ? $"Registered 1 asset: {codes[0]}."
+                    : $"Registered {codes.Count} assets: {codes[0]} to {codes[^1]}.";
+
+                // Land on the list already searched to the new batch, so the
+                // user sees exactly what was just created.
+                return RedirectToAction(nameof(Index), new { keyword = model.CodePrefix.Trim() });
             }
             catch (Exception ex)
             {
@@ -415,10 +514,15 @@ namespace SchoolInventoryManagement.Web.Controllers
             return RedirectToAction(nameof(Details), new { id });
         }
 
+        // GET /Assets/History/5
+        //
+        // The audit trail names who did what and when, so it is management
+        // only -- the same trio that can reach Reports. Note this is the
+        // only gate on it: the action pulls AuditLogs straight from the
+        // context rather than through a service that checks permissions.
         [Authorize(Roles = RoleNames.AssetOfficer + "," + RoleNames.Administrator + "," + RoleNames.Principal)]
         public async Task<IActionResult> History(int id)
         {
-
             var asset = await _assetService.GetAssetByIdAsync(id);
             if (asset is null)
                 return NotFound();

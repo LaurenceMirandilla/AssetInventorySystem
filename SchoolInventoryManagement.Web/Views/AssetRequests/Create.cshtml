@@ -15,36 +15,50 @@
                 asp-items="Html.GetEnumSelectList<SchoolInventoryManagement.DAL.Entities.Enums.RequestType>()"
                 class="form-select"></select>
         <div class="form-text">
-            <strong>Borrow</strong> — ask for a model; staff pick the actual unit when they approve.<br />
-            <strong>Transfer</strong> — move a specific unit that already exists to another location.
+            <strong>Borrow</strong> — ask for a model to use; staff pick the actual unit when they approve.<br />
+            <strong>Transfer</strong> — ask for a model to be moved to another location; staff pick the unit that goes.
         </div>
     </div>
 
-    <div id="borrowFields">
-        <div class="mb-3">
-            <label asp-for="ModelID" class="form-label">Model</label>
-            <select asp-for="ModelID" asp-items="ViewBag.Models" class="form-select">
-                <option value="">-- Select Model --</option>
-            </select>
-            <span asp-validation-for="ModelID" class="text-danger"></span>
+    <div class="mb-3">
+        <label asp-for="ModelID" class="form-label">Model</label>
+        <select asp-for="ModelID" asp-items="ViewBag.Models" class="form-select">
+            <option value="">-- Select Model --</option>
+        </select>
+        <span asp-validation-for="ModelID" class="text-danger"></span>
+
+        @* Greyed-out entries have no units on the shelf right now, so they
+           cannot be requested. The link covers the other dead end: the
+           thing needed is not in the catalogue at all. *@
+        <div class="form-text">
+            Greyed-out models have no units available right now.
+            Not on the list?
+            <a asp-controller="NewItemRequests" asp-action="Create">Request a new item</a>
         </div>
     </div>
 
     <div id="transferFields">
-        <div class="mb-3">
-            <label asp-for="AssetID" class="form-label">Asset</label>
-            <select asp-for="AssetID" asp-items="ViewBag.Assets" class="form-select">
-                <option value="">-- Select Asset --</option>
-            </select>
-            <span asp-validation-for="AssetID" class="text-danger"></span>
-        </div>
-
         <div class="mb-3">
             <label asp-for="RequestedLocationID" class="form-label">Destination Location</label>
             <select asp-for="RequestedLocationID" asp-items="ViewBag.Locations" class="form-select">
                 <option value="">-- Select Location --</option>
             </select>
             <span asp-validation-for="RequestedLocationID" class="text-danger"></span>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-3">
+        <div class="col-md-6">
+            <label asp-for="NeededFrom" class="form-label">When do you need it?</label>
+            <input asp-for="NeededFrom" id="neededFrom" type="datetime-local" class="form-control" />
+            <span asp-validation-for="NeededFrom" class="text-danger"></span>
+        </div>
+        <div class="col-md-6">
+            <label asp-for="ReturnBy" class="form-label">
+                <span id="returnByLabel">When will you return it?</span>
+            </label>
+            <input asp-for="ReturnBy" id="returnBy" type="datetime-local" class="form-control" />
+            <span asp-validation-for="ReturnBy" class="text-danger"></span>
         </div>
     </div>
 
@@ -62,27 +76,48 @@
         await Html.RenderPartialAsync("_ValidationScriptsPartial");
     }
     <script>
-        // Only ever show the half of the form that matches the request type.
-        // The controller clears the hidden half server-side too, so a stale
-        // value can never reach the service even if this script never runs.
         (function () {
+            // Destination only applies to Transfer. The controller clears it
+            // for a Borrow server-side too, so a stale value never reaches
+            // the service even if this script never runs.
             var typeSelect = document.getElementById('requestType');
-            var borrow = document.getElementById('borrowFields');
             var transfer = document.getElementById('transferFields');
+            var returnByLabel = document.getElementById('returnByLabel');
 
             // Html.GetEnumSelectList renders the enum's numeric value, so
             // match on that rather than the name — both are accepted here
             // so the toggle survives either rendering.
             var borrowValues = ['@((int)SchoolInventoryManagement.DAL.Entities.Enums.RequestType.Borrow)', 'Borrow'];
 
-            function sync() {
+            function syncType() {
                 var isBorrow = borrowValues.indexOf(typeSelect.value) !== -1;
-                borrow.hidden = !isBorrow;
                 transfer.hidden = isBorrow;
+                returnByLabel.textContent = isBorrow
+                    ? 'When will you return it?'
+                    : 'When should it come back?';
             }
 
-            typeSelect.addEventListener('change', sync);
-            sync();
+            typeSelect.addEventListener('change', syncType);
+            syncType();
+
+            // Dates: nothing before today, and the return picker cannot be
+            // set earlier than the start. The service enforces both anyway.
+            var neededFrom = document.getElementById('neededFrom');
+            var returnBy = document.getElementById('returnBy');
+
+            function pad(n) { return String(n).padStart(2, '0'); }
+            var today = new Date();
+            neededFrom.min = today.getFullYear() + '-' + pad(today.getMonth() + 1) + '-' + pad(today.getDate()) + 'T00:00';
+
+            function syncReturnMin() {
+                returnBy.min = neededFrom.value || neededFrom.min;
+                if (returnBy.value && neededFrom.value && returnBy.value <= neededFrom.value) {
+                    returnBy.value = '';
+                }
+            }
+
+            neededFrom.addEventListener('change', syncReturnMin);
+            syncReturnMin();
         })();
     </script>
 }

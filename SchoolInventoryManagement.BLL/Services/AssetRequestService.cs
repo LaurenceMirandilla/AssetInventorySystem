@@ -38,34 +38,39 @@ namespace SchoolInventoryManagement.BLL.Services
         {
             var requestingUser = await PermissionHelper.GetUserOrThrowAsync(_context, actingUserId);
 
-            if (dto.RequestType == RequestType.Borrow)
-            {
-                if (dto.ModelID is null)
-                    throw new ArgumentException("A Borrow request must specify a Model.");
-                if (dto.AssetID is not null)
-                    throw new ArgumentException("A Borrow request cannot specify a specific Asset.");
-                if (dto.RequestedLocationID is not null)
-                    throw new ArgumentException("A Borrow request cannot include a destination location.");
-            }
-            else if (dto.RequestType == RequestType.Transfer)
-            {
-                if (dto.AssetID is null)
-                    throw new ArgumentException("A Transfer request must specify a specific Asset.");
-                if (dto.RequestedLocationID is null)
-                    throw new ArgumentException("A Transfer request must specify a destination location.");
-                if (dto.ModelID is not null)
-                    throw new ArgumentException("A Transfer request cannot specify a Model.");
-            }
-
+            // Both types ask for a Model. Which physical unit goes out is
+            // staff's call at approval, for a Transfer as much as a Borrow.
+            if (dto.ModelID is null)
+                throw new ArgumentException($"A {dto.RequestType} request must specify a Model.");
             if (dto.AssetID is not null)
-            {
-                var asset = await _context.Assets.FindAsync(dto.AssetID.Value);
-                if (asset is null)
-                    throw new KeyNotFoundException("Asset not found.");
-                if (asset.Status != AssetStatus.Available)
-                    throw new InvalidOperationException(
-                        $"Asset is currently '{asset.Status}' and cannot be requested.");
-            }
+                throw new ArgumentException(
+                    $"A {dto.RequestType} request cannot name a specific unit -- staff choose it when approving.");
+
+            if (dto.RequestType == RequestType.Borrow && dto.RequestedLocationID is not null)
+                throw new ArgumentException("A Borrow request cannot include a destination location.");
+            if (dto.RequestType == RequestType.Transfer && dto.RequestedLocationID is null)
+                throw new ArgumentException("A Transfer request must specify a destination location.");
+
+            // Dates. "Today" rather than "now" for the start, so a request
+            // for this afternoon filled in a few minutes late still goes in.
+            if (dto.NeededFrom is null)
+                throw new ArgumentException("Say when you need the item.");
+            if (dto.ReturnBy is null)
+                throw new ArgumentException("Say when the item will be returned.");
+            if (dto.NeededFrom.Value < DateTime.Today)
+                throw new ArgumentException("The date you need the item cannot be in the past.");
+            if (dto.ReturnBy.Value <= dto.NeededFrom.Value)
+                throw new ArgumentException("The return date must be after the date you need the item.");
+
+            // Nothing on the shelf, nothing to request. The form greys these
+            // models out; this is the check a hand-built post cannot skip.
+            // Pending requests do not hold units -- approval hands one over
+            // on the spot -- so the Available count is the whole story.
+            var availableUnits = await _context.Assets.CountAsync(a =>
+                a.ModelID == dto.ModelID.Value && a.Status == AssetStatus.Available);
+            if (availableUnits == 0)
+                throw new InvalidOperationException(
+                    "No units of that model are available right now, so it cannot be requested.");
 
             var request = new AssetRequest
             {
@@ -76,6 +81,8 @@ namespace SchoolInventoryManagement.BLL.Services
                 RequestedLocationID = dto.RequestedLocationID,
                 RequestType = dto.RequestType,
                 Reason = dto.Reason,
+                NeededFrom = dto.NeededFrom,
+                ReturnBy = dto.ReturnBy,
                 RequestStatus = RequestStatus.Pending
             };
 

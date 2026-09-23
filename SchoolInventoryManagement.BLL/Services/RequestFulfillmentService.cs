@@ -120,7 +120,7 @@ namespace SchoolInventoryManagement.BLL.Services
         }
 
         public async Task ApproveAndTransferAsync(
-            int requestId, ConditionStatus? conditionOnTransfer,
+            int requestId, int? assetId, ConditionStatus? conditionOnTransfer,
             byte[] requestRowVersion, int actingUserId, string? remarks)
         {
             var request = await _requestService.GetRequestByIdAsync(requestId);
@@ -131,12 +131,27 @@ namespace SchoolInventoryManagement.BLL.Services
                 throw new InvalidOperationException(
                     "This workflow only supports Transfer requests. Borrow requests use ApproveAndAssignAsync.");
 
-            // CK_AssetRequests_TypeFieldRules already guarantees both of
-            // these on a Transfer row, but the service re-checks rather than
+            // CK_AssetRequests_TypeFieldRules already guarantees this on a
+            // Transfer row, but the service re-checks rather than
             // dereferencing a nullable on the strength of a DB constraint.
-            if (request.AssetID is null || request.RequestedLocationID is null)
-                throw new ArgumentException(
-                    "This Transfer request is missing its asset or its destination location.");
+            if (request.RequestedLocationID is null)
+                throw new ArgumentException("This Transfer request is missing its destination location.");
+
+            // Transfers name a Model now, so staff pick the unit -- exactly
+            // as for Borrow. A request made before that change already names
+            // its unit; honour it rather than ask again.
+            var unitId = request.AssetID ?? assetId;
+            if (unitId is null)
+                throw new ArgumentException("Choose which unit to transfer.");
+
+            if (request.AssetID is null)
+            {
+                var unitMatchesModel = await _context.Assets
+                    .AnyAsync(a => a.AssetID == unitId.Value && a.ModelID == request.ModelID);
+                if (!unitMatchesModel)
+                    throw new ArgumentException(
+                        "The selected asset is not a unit of the model that was requested.");
+            }
 
             // Same single-transaction shape as ApproveAndAssignAsync above:
             // Approve, move, and Fulfill either all land or none do.
@@ -157,7 +172,7 @@ namespace SchoolInventoryManagement.BLL.Services
 
                 // Step 2: Move the asset (also updates Asset.CurrentLocationID)
                 await _movementService.TransferAssetAsync(
-                    request.AssetID.Value,
+                    unitId.Value,
                     request.RequestedLocationID.Value,
                     BuildTransferReason(request.RequestID, request.Reason),
                     conditionOnTransfer,
@@ -171,8 +186,15 @@ namespace SchoolInventoryManagement.BLL.Services
                     actingUserId,
                     notifyRequester: false);
 
-                // Step 4: one message covering the whole outcome.
-                var movedAsset = await _context.Assets.FindAsync(request.AssetID.Value);
+                // Step 4: record which unit went, so the request's Details
+                // page can show it. The tracked entity already carries the
+                // RowVersion from Fulfill's save, and this rides along in the
+                // same final SaveChangesAsync as the notification below.
+                var requestRow = await _context.AssetRequests.FindAsync(requestId);
+                requestRow!.AssetID = unitId.Value;
+
+                // Step 5: one message covering the whole outcome.
+                var movedAsset = await _context.Assets.FindAsync(unitId.Value);
 
                 NotificationHelper.Queue(
                     _context,

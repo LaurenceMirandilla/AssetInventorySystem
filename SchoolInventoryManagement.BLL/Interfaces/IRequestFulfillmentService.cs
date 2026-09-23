@@ -20,12 +20,13 @@ namespace SchoolInventoryManagement.BLL.Interfaces
             int requestId, int assetId, ConditionStatus conditionOnAssignment,
             int departmentId, byte[] requestRowVersion, int actingUserId, string? remarks);
 
-        // Transfer-type requests only. The asset and the destination both
-        // come from the request itself, so there is nothing for staff to
-        // pick except the condition observed at hand-over — which is
-        // optional, and leaves the asset's recorded condition alone if null.
+        // Transfer-type requests only. Like Borrow, the requester named a
+        // Model and a destination; assetId is the unit staff chose to move,
+        // and it is recorded on the request once moved. It may be null only
+        // for an older request that already named its unit. Condition at
+        // hand-over is optional and leaves the recorded condition alone.
         Task ApproveAndTransferAsync(
-            int requestId, ConditionStatus? conditionOnTransfer,
+            int requestId, int? assetId, ConditionStatus? conditionOnTransfer,
             byte[] requestRowVersion, int actingUserId, string? remarks);
     }
 }

@@ -26,6 +26,8 @@ namespace SchoolInventoryManagement.BLL.Mappings
                 RequestDate = request.RequestDate,
                 Reason = request.Reason,
                 RequestStatus = request.RequestStatus,
+                NeededFrom = request.NeededFrom,
+                ReturnBy = request.ReturnBy,
                 ApprovedByUser = request.ApprovedByUser?.ToSummaryDTO(),
                 ApprovalDate = request.ApprovalDate,
                 Remarks = request.Remarks,

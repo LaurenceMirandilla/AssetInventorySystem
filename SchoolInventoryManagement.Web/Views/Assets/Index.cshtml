@@ -24,11 +24,12 @@
            asp-route-categoryId="@Model.CategoryId"
            asp-route-departmentId="@Model.DepartmentId"
            asp-route-status="@Model.Status"
-           asp-route-condition="@Model.Condition"
+           asp-route-condition="@Model.Condition" asp-route-locationId="@Model.LocationId" asp-route-modelId="@Model.ModelId" asp-route-branchId="@Model.BranchId"
            class="btn btn-outline-secondary">Export CSV</a>
 
         @if (canManage)
         {
+            <a asp-action="BulkCreate" class="btn btn-outline-primary">+ Bulk register</a>
             <a asp-action="Create" class="btn btn-primary">+ Register asset</a>
         }
     </div>
@@ -44,7 +45,7 @@
 <div class="report-tiles mb-3">
     <a asp-action="Index"
        asp-route-keyword="@Model.Keyword" asp-route-categoryId="@Model.CategoryId"
-       asp-route-departmentId="@Model.DepartmentId" asp-route-condition="@Model.Condition"
+       asp-route-departmentId="@Model.DepartmentId" asp-route-condition="@Model.Condition" asp-route-locationId="@Model.LocationId" asp-route-modelId="@Model.ModelId" asp-route-branchId="@Model.BranchId"
        class="report-tile text-decoration-none @(activeStatus == null ? "active" : "")">
         <span class="report-tile-value">@Model.TotalFilteredCount</span>
         <span class="report-tile-label">@(Model.HasFilters ? "All matches" : "All assets")</span>
@@ -52,7 +53,7 @@
     <a asp-action="Index"
        asp-route-status="@(activeStatus == "Available" ? null : "Available")"
        asp-route-keyword="@Model.Keyword" asp-route-categoryId="@Model.CategoryId"
-       asp-route-departmentId="@Model.DepartmentId" asp-route-condition="@Model.Condition"
+       asp-route-departmentId="@Model.DepartmentId" asp-route-condition="@Model.Condition" asp-route-locationId="@Model.LocationId" asp-route-modelId="@Model.ModelId" asp-route-branchId="@Model.BranchId"
        class="report-tile text-decoration-none @(activeStatus == "Available" ? "active" : "")">
         <span class="report-tile-value">@Model.AvailableCount</span>
         <span class="report-tile-label">Available</span>
@@ -60,7 +61,7 @@
     <a asp-action="Index"
        asp-route-status="@(activeStatus == "Assigned" ? null : "Assigned")"
        asp-route-keyword="@Model.Keyword" asp-route-categoryId="@Model.CategoryId"
-       asp-route-departmentId="@Model.DepartmentId" asp-route-condition="@Model.Condition"
+       asp-route-departmentId="@Model.DepartmentId" asp-route-condition="@Model.Condition" asp-route-locationId="@Model.LocationId" asp-route-modelId="@Model.ModelId" asp-route-branchId="@Model.BranchId"
        class="report-tile text-decoration-none @(activeStatus == "Assigned" ? "active" : "")">
         <span class="report-tile-value">@Model.AssignedCount</span>
         <span class="report-tile-label">Assigned</span>
@@ -68,7 +69,7 @@
     <a asp-action="Index"
        asp-route-status="@(activeStatus == "UnderMaintenance" ? null : "UnderMaintenance")"
        asp-route-keyword="@Model.Keyword" asp-route-categoryId="@Model.CategoryId"
-       asp-route-departmentId="@Model.DepartmentId" asp-route-condition="@Model.Condition"
+       asp-route-departmentId="@Model.DepartmentId" asp-route-condition="@Model.Condition" asp-route-locationId="@Model.LocationId" asp-route-modelId="@Model.ModelId" asp-route-branchId="@Model.BranchId"
        class="report-tile text-decoration-none @(activeStatus == "UnderMaintenance" ? "active" : "")">
         <span class="report-tile-value">@Model.UnderMaintenanceCount</span>
         <span class="report-tile-label">Under maintenance</span>
@@ -76,7 +77,7 @@
     <a asp-action="Index"
        asp-route-status="@(activeStatus == "Disposed" ? null : "Disposed")"
        asp-route-keyword="@Model.Keyword" asp-route-categoryId="@Model.CategoryId"
-       asp-route-departmentId="@Model.DepartmentId" asp-route-condition="@Model.Condition"
+       asp-route-departmentId="@Model.DepartmentId" asp-route-condition="@Model.Condition" asp-route-locationId="@Model.LocationId" asp-route-modelId="@Model.ModelId" asp-route-branchId="@Model.BranchId"
        class="report-tile text-decoration-none @(activeStatus == "Disposed" ? "active" : "")">
         <span class="report-tile-value">@Model.DisposedCount</span>
         <span class="report-tile-label">Disposed</span>
@@ -90,10 +91,65 @@
         <div class="sab-table-filters">
             <input type="text" name="keyword" class="form-control" style="width:190px;"
                    placeholder="Name, code, serial…" value="@Model.Keyword" />
-            @Html.DropDownList("categoryId", (IEnumerable<SelectListItem>)ViewBag.CategoryFilter,
-                 "All categories", new { @class = "form-select", style = "width:auto;" })
-            @Html.DropDownList("departmentId", (IEnumerable<SelectListItem>)ViewBag.DepartmentFilter,
-                 "All departments", new { @class = "form-select", style = "width:auto;" })
+            @* Order follows the hierarchy: Category > Model, then
+               Branch > Location / Department. Every list is usable on its
+               own; picking a parent narrows its children, and picking a
+               child selects its parent. The script at the bottom does it. *@
+            <select name="categoryId" id="fCategory" class="form-select" style="width:auto;">
+                <option value="">All categories</option>
+                @foreach (var c in Model.CategoryOptions)
+                {
+                    <option value="@c.CategoryID" selected="@(Model.CategoryId == c.CategoryID)">@c.CategoryName</option>
+                }
+            </select>
+
+            <select name="modelId" id="fModel" class="form-select" style="width:auto;">
+                <option value="">All models</option>
+                @foreach (var g in Model.ModelOptions.GroupBy(m => m.CategoryName))
+                {
+                    <optgroup label="@g.Key">
+                        @foreach (var m in g)
+                        {
+                            <option value="@m.ModelID" data-parent="@m.CategoryID" selected="@(Model.ModelId == m.ModelID)">@m.ModelName</option>
+                        }
+                    </optgroup>
+                }
+            </select>
+
+            <select name="branchId" id="fBranch" class="form-select" style="width:auto;">
+                <option value="">All branches</option>
+                @foreach (var b in Model.BranchOptions)
+                {
+                    <option value="@b.BranchID" selected="@(Model.BranchId == b.BranchID)">@b.BranchName</option>
+                }
+            </select>
+
+            <select name="locationId" id="fLocation" class="form-select" style="width:auto;">
+                <option value="">All locations</option>
+                @foreach (var g in Model.LocationOptions.GroupBy(l => l.BranchName))
+                {
+                    <optgroup label="@g.Key">
+                        @foreach (var l in g)
+                        {
+                            <option value="@l.LocationID" data-parent="@l.BranchID" selected="@(Model.LocationId == l.LocationID)">@l.LocationName</option>
+                        }
+                    </optgroup>
+                }
+            </select>
+
+            <select name="departmentId" id="fDepartment" class="form-select" style="width:auto;">
+                <option value="">All departments</option>
+                @foreach (var g in Model.DepartmentOptions.GroupBy(d => d.BranchName))
+                {
+                    <optgroup label="@g.Key">
+                        @foreach (var d in g)
+                        {
+                            <option value="@d.DepartmentID" data-parent="@d.BranchID" selected="@(Model.DepartmentId == d.DepartmentID)">@d.DepartmentName</option>
+                        }
+                    </optgroup>
+                }
+            </select>
+
             @Html.DropDownList("status", (IEnumerable<SelectListItem>)ViewBag.StatusFilter,
                  "All statuses", new { @class = "form-select", style = "width:auto;" })
             @Html.DropDownList("condition", (IEnumerable<SelectListItem>)ViewBag.ConditionFilter,
@@ -176,12 +232,12 @@
                        asp-action="Index"
                        asp-route-keyword="@Model.Keyword" asp-route-categoryId="@Model.CategoryId"
                        asp-route-departmentId="@Model.DepartmentId" asp-route-status="@Model.Status"
-                       asp-route-condition="@Model.Condition" asp-route-page="@(Model.Page - 1)">Previous</a>
+                       asp-route-condition="@Model.Condition" asp-route-locationId="@Model.LocationId" asp-route-modelId="@Model.ModelId" asp-route-branchId="@Model.BranchId" asp-route-page="@(Model.Page - 1)">Previous</a>
                     <a class="btn btn-outline-secondary btn-sm @(Model.Page >= Model.TotalPages ? "disabled" : "")"
                        asp-action="Index"
                        asp-route-keyword="@Model.Keyword" asp-route-categoryId="@Model.CategoryId"
                        asp-route-departmentId="@Model.DepartmentId" asp-route-status="@Model.Status"
-                       asp-route-condition="@Model.Condition" asp-route-page="@(Model.Page + 1)">Next</a>
+                       asp-route-condition="@Model.Condition" asp-route-locationId="@Model.LocationId" asp-route-modelId="@Model.ModelId" asp-route-branchId="@Model.BranchId" asp-route-page="@(Model.Page + 1)">Next</a>
                 </div>
             </div>
         }
@@ -195,3 +251,127 @@
         </div>
     }
 </div>
+
+@section Scripts {
+    <script>
+        // Cascading filters. Every list can be used on its own, and the
+        // pairs keep each other consistent:
+        //   Category -> narrows Model.   Model -> selects its Category.
+        //   Branch -> narrows Location and Department.
+        //   Location or Department -> selects its Branch, which then
+        //   narrows the other one.
+        // With no parent chosen, a child list shows everything grouped
+        // under its parent's name. This only shapes the lists -- the server
+        // applies whatever is submitted.
+        (function () {
+            var categorySel = document.getElementById('fCategory');
+            var modelSel = document.getElementById('fModel');
+            var branchSel = document.getElementById('fBranch');
+            var locationSel = document.getElementById('fLocation');
+            var departmentSel = document.getElementById('fDepartment');
+            if (!categorySel || !modelSel || !branchSel || !locationSel || !departmentSel) return;
+
+            // Snapshot every child option once, with its parent id and group,
+            // so a list can be rebuilt from scratch whenever its parent changes.
+            function snapshot(select) {
+                return Array.from(select.querySelectorAll('option[data-parent]')).map(function (o) {
+                    return {
+                        value: o.value,
+                        text: o.textContent,
+                        parent: o.getAttribute('data-parent'),
+                        group: o.parentElement.tagName === 'OPTGROUP' ? o.parentElement.label : null
+                    };
+                });
+            }
+
+            var allModels = snapshot(modelSel);
+            var allLocations = snapshot(locationSel);
+            var allDepartments = snapshot(departmentSel);
+
+            // Rebuild a child list with only the options under parentValue.
+            // With no parent chosen, everything is listed under group headers;
+            // with one chosen, the headers would all say the same thing, so
+            // the list goes flat. Keeps the current choice if it survives,
+            // otherwise falls back to the first ("All ...") entry.
+            function rebuild(select, options, parentValue) {
+                var current = select.value;
+                var placeholder = select.options[0];
+                select.innerHTML = '';
+                select.appendChild(placeholder);
+
+                var groups = {};
+                options.forEach(function (o) {
+                    if (parentValue && o.parent !== parentValue) return;
+
+                    var container = select;
+                    if (!parentValue && o.group) {
+                        if (!groups[o.group]) {
+                            groups[o.group] = document.createElement('optgroup');
+                            groups[o.group].label = o.group;
+                            select.appendChild(groups[o.group]);
+                        }
+                        container = groups[o.group];
+                    }
+
+                    var opt = document.createElement('option');
+                    opt.value = o.value;
+                    opt.textContent = o.text;
+                    opt.setAttribute('data-parent', o.parent);
+                    container.appendChild(opt);
+                });
+
+                select.value = current;
+                if (select.value !== current) select.value = '';
+            }
+
+            function parentOf(options, value) {
+                for (var i = 0; i < options.length; i++) {
+                    if (options[i].value === value) return options[i].parent;
+                }
+                return '';
+            }
+
+            function syncModels() {
+                rebuild(modelSel, allModels, categorySel.value);
+            }
+
+            function syncBranchChildren() {
+                rebuild(locationSel, allLocations, branchSel.value);
+                rebuild(departmentSel, allDepartments, branchSel.value);
+            }
+
+            // Picking a child selects its parent, then re-narrows the
+            // parent's other children to match.
+            function adoptParent(childSel, childOptions, parentSel, resync) {
+                if (!childSel.value) return;
+                var parent = parentOf(childOptions, childSel.value);
+                if (parent && parentSel.value !== parent) {
+                    parentSel.value = parent;
+                    resync();
+                }
+            }
+
+            categorySel.addEventListener('change', syncModels);
+            branchSel.addEventListener('change', syncBranchChildren);
+
+            modelSel.addEventListener('change', function () {
+                adoptParent(modelSel, allModels, categorySel, syncModels);
+            });
+            locationSel.addEventListener('change', function () {
+                adoptParent(locationSel, allLocations, branchSel, syncBranchChildren);
+            });
+            departmentSel.addEventListener('change', function () {
+                adoptParent(departmentSel, allDepartments, branchSel, syncBranchChildren);
+            });
+
+            // On load: let any chosen child settle its parent first (a
+            // bookmarked URL may carry a child without its parent), then
+            // narrow everything to match.
+            adoptParent(modelSel, allModels, categorySel, function () {});
+            adoptParent(locationSel, allLocations, branchSel, function () {});
+            adoptParent(departmentSel, allDepartments, branchSel, function () {});
+            syncModels();
+            syncBranchChildren();
+        })();
+    </script>
+}

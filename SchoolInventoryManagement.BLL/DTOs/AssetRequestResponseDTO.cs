@@ -15,7 +15,9 @@ namespace SchoolInventoryManagement.BLL.DTOs
         public int DepartmentID { get; set; }
         public string DepartmentName { get; set; } = null!;
 
-        // Only one of these is populated depending on RequestType
+        // ModelID is set for both types. AssetID is set only on a Transfer
+        // that has been approved -- it is the unit that was moved.
+        // RequestedLocation is set only for Transfer.
         public int? ModelID { get; set; }
         public string? ModelName { get; set; }
         public int? AssetID { get; set; }
@@ -27,6 +29,10 @@ namespace SchoolInventoryManagement.BLL.DTOs
         public DateTime RequestDate { get; set; }
         public string? Reason { get; set; }
         public RequestStatus RequestStatus { get; set; }
+
+        // Null only on requests made before these were collected.
+        public DateTime? NeededFrom { get; set; }
+        public DateTime? ReturnBy { get; set; }
 
         public UserSummaryDTO? ApprovedByUser { get; set; }
         public DateTime? ApprovalDate { get; set; }

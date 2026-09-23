@@ -1,0 +1,246 @@
+﻿@model SchoolInventoryManagement.Web.ViewModels.AssetBulkCreateViewModel
+@{
+    ViewData["Title"] = "Bulk Register Assets";
+}
+
+<nav class="mb-2" style="font-size:0.85rem;">
+    <a asp-action="Index" class="text-muted">Assets</a>
+    <span class="text-muted mx-1">&rsaquo;</span>
+    <span>Bulk register</span>
+</nav>
+
+<div class="sab-page-head">
+    <div>
+        <h2>Bulk Register Assets</h2>
+        <p class="sab-page-sub">
+            Register many units of the same model at once. Codes and names are numbered
+            for you; everything else is shared by every unit. Nothing is saved unless
+            every unit can be — a problem with one cancels the whole batch.
+        </p>
+    </div>
+</div>
+
+<form asp-action="BulkCreate" method="post">
+    @Html.AntiForgeryToken()
+    <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+
+    <div class="row g-3">
+        <div class="col-lg-8">
+
+            <div class="card mb-3">
+                <div class="card-body">
+                    <h5 class="mb-3">What and how many</h5>
+
+                    <div class="row g-3">
+                        <div class="col-md-8">
+                            <label asp-for="ModelID" class="form-label"></label>
+                            <select asp-for="ModelID" asp-items="ViewBag.Models" class="form-select">
+                                <option value="">-- Select Model --</option>
+                            </select>
+                            <span asp-validation-for="ModelID" class="text-danger"></span>
+                        </div>
+                        <div class="col-md-4">
+                            <label asp-for="Quantity" class="form-label"></label>
+                            <input asp-for="Quantity" id="quantity" type="number" min="1" max="200" class="form-control" />
+                            <span asp-validation-for="Quantity" class="text-danger"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card mb-3">
+                <div class="card-body">
+                    <h5 class="mb-3">Numbering</h5>
+
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label asp-for="CodePrefix" class="form-label"></label>
+                            <input asp-for="CodePrefix" id="codePrefix" class="form-control" placeholder="e.g. LAP-" autocomplete="off" />
+                            <span asp-validation-for="CodePrefix" class="text-danger"></span>
+                        </div>
+                        <div class="col-md-6">
+                            <label asp-for="StartingNumber" class="form-label"></label>
+                            <input asp-for="StartingNumber" id="startingNumber" type="number" min="0" class="form-control" />
+                            <span asp-validation-for="StartingNumber" class="text-danger"></span>
+                            <div class="form-text">Continuing an existing run? Start after its last number.</div>
+                        </div>
+                        <div class="col-12">
+                            <label asp-for="BaseName" class="form-label"></label>
+                            <input asp-for="BaseName" id="baseName" class="form-control" placeholder="e.g. ThinkPad X1 Carbon Gen 13" />
+                            <span asp-validation-for="BaseName" class="text-danger"></span>
+                        </div>
+                    </div>
+
+                    <div id="preview" class="mt-3 p-3" style="background:var(--sab-bg); border-radius:var(--sab-radius-sm);">
+                        <div class="text-muted small mb-1">Will create</div>
+                        <div id="previewBody" class="small">Fill in a prefix and a name to see the codes.</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card mb-3">
+                <div class="card-body">
+                    <h5 class="mb-1">Serial numbers <span class="text-muted small fw-normal">(optional)</span></h5>
+                    <p class="text-muted small mb-2">
+                        One per line, in the same order as the codes above — paste a column
+                        straight from a spreadsheet. Leave empty to add them later.
+                    </p>
+                    <textarea asp-for="SerialNumbers" id="serialNumbers" class="form-control" rows="6"
+                              style="font-family:var(--bs-font-monospace);"></textarea>
+                    <div id="serialCount" class="form-text"></div>
+                </div>
+            </div>
+
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card mb-3">
+                <div class="card-body">
+                    <h5 class="mb-3">Shared by every unit</h5>
+
+                    <div class="mb-3">
+                        <label asp-for="BranchID" class="form-label"></label>
+                        <select asp-for="BranchID" id="branchSelect" asp-items="ViewBag.Branches" class="form-select">
+                            <option value="">-- Select Branch --</option>
+                        </select>
+                        <span asp-validation-for="BranchID" class="text-danger"></span>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="CurrentLocationID" class="form-label"></label>
+                        <select asp-for="CurrentLocationID" id="locationSelect" class="form-select">
+                            <option value="">-- None --</option>
+                            @foreach (var loc in (List<SchoolInventoryManagement.BLL.DTOs.LocationDTO>)ViewBag.LocationsByBranch)
+                            {
+                                <option value="@loc.LocationID" data-branch="@loc.BranchID">@loc.LocationName</option>
+                            }
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="Condition" class="form-label"></label>
+                        <select asp-for="Condition"
+                                asp-items="Html.GetEnumSelectList<SchoolInventoryManagement.DAL.Entities.Enums.ConditionStatus>()"
+                                class="form-select"></select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="AcquisitionDate" class="form-label"></label>
+                        <input asp-for="AcquisitionDate" type="date" class="form-control" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="AcquisitionCost" class="form-label"></label>
+                        <input asp-for="AcquisitionCost" class="form-control" />
+                        <span asp-validation-for="AcquisitionCost" class="text-danger"></span>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="WarrantyInformation" class="form-label"></label>
+                        <input asp-for="WarrantyInformation" class="form-control" />
+                    </div>
+
+                    <div class="mb-0">
+                        <label asp-for="Description" class="form-label"></label>
+                        <textarea asp-for="Description" class="form-control" rows="3"></textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <button type="submit" id="submitBtn" class="btn btn-primary">Register assets</button>
+    <a asp-action="Index" class="btn btn-secondary">Cancel</a>
+</form>
+
+@section Scripts {
+    @{
+        await Html.RenderPartialAsync("_ValidationScriptsPartial");
+    }
+    <script>
+        (function () {
+            var quantity = document.getElementById('quantity');
+            var prefix = document.getElementById('codePrefix');
+            var start = document.getElementById('startingNumber');
+            var baseName = document.getElementById('baseName');
+            var serials = document.getElementById('serialNumbers');
+            var previewBody = document.getElementById('previewBody');
+            var serialCount = document.getElementById('serialCount');
+            var submitBtn = document.getElementById('submitBtn');
+
+            // Mirrors AssetService: {prefix}{number:D4}, "{name} - Unit {number}".
+            function pad(n) {
+                var s = String(n);
+                while (s.length < 4) s = '0' + s;
+                return s;
+            }
+
+            function escapeHtml(text) {
+                var div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+
+            function update() {
+                var qty = parseInt(quantity.value, 10) || 0;
+                var first = parseInt(start.value, 10);
+                if (isNaN(first)) first = 1;
+                var p = prefix.value.trim();
+                var n = baseName.value.trim();
+
+                if (qty < 1 || !p || !n) {
+                    previewBody.textContent = 'Fill in a prefix and a name to see the codes.';
+                } else {
+                    var last = first + qty - 1;
+                    var firstLine = '<code>' + escapeHtml(p + pad(first)) + '</code> ' + escapeHtml(n + ' - Unit ' + first);
+                    if (qty === 1) {
+                        previewBody.innerHTML = firstLine;
+                    } else {
+                        var lastLine = '<code>' + escapeHtml(p + pad(last)) + '</code> ' + escapeHtml(n + ' - Unit ' + last);
+                        previewBody.innerHTML = firstLine
+                            + '<div class="text-muted">&vellip; ' + (qty - 2 > 0 ? (qty - 2) + ' more' : '') + '</div>'
+                            + lastLine;
+                    }
+                }
+
+                var lines = serials.value.split('\n').filter(function (l) { return l.trim().length > 0; }).length;
+                if (lines === 0) {
+                    serialCount.textContent = '';
+                    serialCount.className = 'form-text';
+                } else if (lines === qty) {
+                    serialCount.textContent = lines + ' of ' + qty + ' — matches.';
+                    serialCount.className = 'form-text text-success';
+                } else {
+                    serialCount.textContent = lines + ' of ' + qty + ' — needs exactly one per asset.';
+                    serialCount.className = 'form-text text-danger';
+                }
+
+                submitBtn.textContent = qty > 0
+                    ? 'Register ' + qty + ' asset' + (qty === 1 ? '' : 's')
+                    : 'Register assets';
+            }
+
+            [quantity, prefix, start, baseName, serials].forEach(function (el) {
+                el.addEventListener('input', update);
+            });
+            update();
+
+            // Location narrows to the chosen branch, as on the single form.
+            var branchSelect = document.getElementById('branchSelect');
+            var locationSelect = document.getElementById('locationSelect');
+
+            function filterLocations() {
+                var branchId = branchSelect.value;
+                Array.from(locationSelect.options).forEach(function (opt) {
+                    if (!opt.value) { opt.hidden = false; return; }
+                    opt.hidden = branchId === '' || opt.getAttribute('data-branch') !== branchId;
+                });
+                var selected = locationSelect.options[locationSelect.selectedIndex];
+                if (selected && selected.hidden) locationSelect.value = '';
+            }
+
+            branchSelect.addEventListener('change', filterLocations);
+            filterLocations();
+        })();
+    </script>
+}

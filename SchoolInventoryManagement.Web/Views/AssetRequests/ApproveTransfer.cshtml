@@ -2,6 +2,7 @@
 @{
     ViewData["Title"] = "Approve Transfer Request";
     var request = ViewBag.Request as SchoolInventoryManagement.BLL.DTOs.AssetRequestResponseDTO;
+    var candidates = ViewBag.CandidateAssets as IEnumerable<Microsoft.AspNetCore.Mvc.Rendering.SelectListItem>;
 }
 
 <h2>Approve Transfer Request #@Model.RequestID</h2>
@@ -10,9 +11,19 @@
 {
     <p class="text-muted">
         @request.RequestedByUser.FullName (@request.RequestedByUser.RoleName)
-        asked to move <strong>@request.AssetCode</strong>
-        to <strong>@request.RequestedLocationName</strong>.
+        asked for a <strong>@(request.ModelName ?? "unit")</strong>
+        to be moved to <strong>@request.RequestedLocationName</strong>.
     </p>
+    @if (request.NeededFrom is not null)
+    {
+        <p class="text-muted">
+            Needed from <strong>@request.NeededFrom.Value.ToString("MMM d, yyyy h:mm tt")</strong>
+            @if (request.ReturnBy is not null)
+            {
+                <text>until <strong>@request.ReturnBy.Value.ToString("MMM d, yyyy h:mm tt")</strong></text>
+            }
+        </p>
+    }
     @if (!string.IsNullOrWhiteSpace(request.Reason))
     {
         <p class="text-muted">Reason given: @request.Reason</p>
@@ -20,9 +31,8 @@
 }
 
 <div class="alert alert-info">
-    The asset and destination are already fixed by the request, so there is
-    nothing to pick here. Approving moves the unit and marks the request
-    fulfilled in one step — the unit must still be Available for it to go through.
+    Approving moves the unit and marks the request fulfilled in one step. If any
+    part fails, none of it is saved. The unit must still be Available when you approve.
 </div>
 
 <form asp-action="ApproveTransfer" asp-route-id="@Model.RequestID" method="post">
@@ -30,6 +40,29 @@
     <input type="hidden" asp-for="RequestID" />
     <input type="hidden" asp-for="RowVersionBase64" />
     <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+
+    @if (request?.AssetID is not null)
+    {
+        @* An older request that named its unit up front -- nothing to pick. *@
+        <div class="mb-3">
+            <div class="form-label">Unit to transfer</div>
+            <div class="fw-semibold"><span class="sab-code">@request.AssetCode</span></div>
+            <div class="form-text">This request was made before transfers asked for a model, so its unit is already set.</div>
+        </div>
+    }
+    else
+    {
+        <div class="mb-3">
+            <label asp-for="AssetID" class="form-label">Unit to transfer</label>
+            <select asp-for="AssetID" asp-items="candidates" class="form-select">
+                <option value="">-- Select Unit --</option>
+            </select>
+            <div class="form-text">
+                Only Available units of the requested model are listed, and none already at the destination.
+            </div>
+            <span asp-validation-for="AssetID" class="text-danger"></span>
+        </div>
+    }
 
     <div class="mb-3">
         <label asp-for="ConditionOnTransfer" class="form-label">

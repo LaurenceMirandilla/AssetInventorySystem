@@ -12,6 +12,16 @@
         @request.RequestedByUser.FullName (@request.RequestedByUser.RoleName)
         asked for <strong>@request.ModelName</strong>.
     </p>
+    @if (request.NeededFrom is not null)
+    {
+        <p class="text-muted">
+            Needed from <strong>@request.NeededFrom.Value.ToString("MMM d, yyyy h:mm tt")</strong>
+            @if (request.ReturnBy is not null)
+            {
+                <text>until <strong>@request.ReturnBy.Value.ToString("MMM d, yyyy h:mm tt")</strong></text>
+            }
+        </p>
+    }
     @if (!string.IsNullOrWhiteSpace(request.Reason))
     {
         <p class="text-muted">Reason given: @request.Reason</p>

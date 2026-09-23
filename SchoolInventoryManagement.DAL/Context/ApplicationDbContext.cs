@@ -313,15 +313,24 @@ namespace SchoolInventoryManagement.DAL.Context
                 .IsUnique();
 
             // =====================================================
-            // CHECK CONSTRAINT: AssetRequests must have CategoryID
-            // OR AssetID (mirrors CK_AssetRequests_AssetOrCategory in SQL)
+            // CHECK CONSTRAINTS on AssetRequests. Mirrors
+            // Scripts/002_RequestDatesAndModelTransfers.sql -- there are no
+            // migrations, so that script is what actually changes the DB.
+            //   Borrow:   a Model, no unit, no destination.
+            //   Transfer: a Model and a destination; the unit (AssetID) is
+            //             empty until approval records the one moved.
             // =====================================================
             modelBuilder.Entity<AssetRequest>()
-     .ToTable(t => t.HasCheckConstraint(
-         "CK_AssetRequests_TypeFieldRules",
-         "([RequestType] = 'Borrow' AND [ModelID] IS NOT NULL AND [AssetID] IS NULL AND [RequestedLocationID] IS NULL) " +
-         "OR ([RequestType] = 'Transfer' AND [AssetID] IS NOT NULL AND [RequestedLocationID] IS NOT NULL AND [ModelID] IS NULL)"
-     ));
+                .ToTable(t =>
+                {
+                    t.HasCheckConstraint(
+                        "CK_AssetRequests_TypeFieldRules",
+                        "([RequestType] = 'Borrow' AND [ModelID] IS NOT NULL AND [AssetID] IS NULL AND [RequestedLocationID] IS NULL) " +
+                        "OR ([RequestType] = 'Transfer' AND [ModelID] IS NOT NULL AND [RequestedLocationID] IS NOT NULL)");
+                    t.HasCheckConstraint(
+                        "CK_AssetRequests_DateOrder",
+                        "[NeededFrom] IS NULL OR [ReturnBy] IS NULL OR [ReturnBy] > [NeededFrom]");
+                });
             // =====================================================
             // DEFAULT VALUES: GETDATE() — server local time
             // =====================================================

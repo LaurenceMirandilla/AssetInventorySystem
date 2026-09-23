@@ -14,7 +14,10 @@ namespace SchoolInventoryManagement.DAL.Entities
         public int RequestedByUserID { get; set; }
         public int DepartmentID { get; set; }
 
-        // Borrow requires ModelID; Transfer requires AssetID.
+        // Both types name a Model; Transfer also names a destination.
+        // AssetID is never chosen by the requester: for a Transfer it is
+        // filled in at approval with the unit staff actually moved, and it
+        // stays null for Borrow (the assignment records that unit instead).
         // Enforced by CK_AssetRequests_TypeFieldRules at the DB level.
         public int? ModelID { get; set; }
         public int? AssetID { get; set; }
@@ -28,6 +31,13 @@ namespace SchoolInventoryManagement.DAL.Entities
 
         [MaxLength(500)]
         public string? Reason { get; set; }
+
+        // When the requester needs the item, and when they will give it
+        // back (or, for a Transfer, when it should come back). Nullable only
+        // because rows made before these columns existed have neither; the
+        // service requires both on every new request.
+        public DateTime? NeededFrom { get; set; }
+        public DateTime? ReturnBy { get; set; }
         [Required]
         public RequestStatus RequestStatus { get; set; } = RequestStatus.Pending;
 

@@ -28,19 +28,33 @@
     <dt class="col-sm-3">Department</dt>
     <dd class="col-sm-9">@Model.DepartmentName</dd>
 
-    @if (Model.RequestType == RequestType.Borrow)
-    {
-        <dt class="col-sm-3">Model Requested</dt>
-        <dd class="col-sm-9">@(Model.ModelName ?? "—")</dd>
-    }
-    else
-    {
-        <dt class="col-sm-3">Asset</dt>
-        <dd class="col-sm-9">@(Model.AssetCode ?? "—")</dd>
+    <dt class="col-sm-3">Model Requested</dt>
+    <dd class="col-sm-9">@(Model.ModelName ?? "—")</dd>
 
+    @if (Model.RequestType == RequestType.Transfer)
+    {
         <dt class="col-sm-3">Destination</dt>
         <dd class="col-sm-9">@(Model.RequestedLocationName ?? "—")</dd>
+
+        @* Filled in at approval with the unit that was actually moved. *@
+        <dt class="col-sm-3">Unit Moved</dt>
+        <dd class="col-sm-9">
+            @if (Model.AssetCode is not null)
+            {
+                <span class="sab-code">@Model.AssetCode</span>
+            }
+            else
+            {
+                <span class="text-muted">Chosen when approved</span>
+            }
+        </dd>
     }
+
+    <dt class="col-sm-3">Needed From</dt>
+    <dd class="col-sm-9">@(Model.NeededFrom?.ToString("MMM d, yyyy h:mm tt") ?? "—")</dd>
+
+    <dt class="col-sm-3">@(Model.RequestType == RequestType.Borrow ? "Return By" : "Comes Back By")</dt>
+    <dd class="col-sm-9">@(Model.ReturnBy?.ToString("MMM d, yyyy h:mm tt") ?? "—")</dd>
 
     <dt class="col-sm-3">Submitted</dt>
     <dd class="col-sm-9">@Model.RequestDate.ToString("MMM d, yyyy h:mm tt")</dd>
@@ -54,7 +68,7 @@
     <dt class="col-sm-3">Decided On</dt>
     <dd class="col-sm-9">@(Model.ApprovalDate?.ToString("MMM d, yyyy h:mm tt") ?? "—")</dd>
 
-    <dt class="col-sm-3">Comments</dt>
+    <dt class="col-sm-3">Remarks</dt>
     <dd class="col-sm-9">@(Model.Remarks ?? "—")</dd>
 </dl>
 

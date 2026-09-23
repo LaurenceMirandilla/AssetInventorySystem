@@ -34,13 +34,10 @@
                         <div style="min-width:0;">
                             <div class="sab-row-title">
                                 @requesterName &mdash;
-                                @if (request.RequestType == SchoolInventoryManagement.DAL.Entities.Enums.RequestType.Borrow)
+                                @(request.ModelName ?? "—")
+                                @if (request.RequestType == SchoolInventoryManagement.DAL.Entities.Enums.RequestType.Transfer)
                                 {
-                                    @(request.ModelName ?? "—")
-                                }
-                                else
-                                {
-                                    <span class="sab-code">@request.AssetCode</span><text> &rarr; @request.RequestedLocationName</text>
+                                    <text> &rarr; @request.RequestedLocationName</text>
                                 }
                             </div>
                             <div class="sab-row-meta">
@@ -48,6 +45,14 @@
                                 <span class="ms-1">
                                     @request.RequestedByUser.RoleName &middot; @request.DepartmentName
                                     &middot; submitted @request.RequestDate.ToString("MMM d, yyyy")
+                                    @if (request.NeededFrom is not null)
+                                    {
+                                        <text>&middot; needed @request.NeededFrom.Value.ToString("MMM d")</text>
+                                        @if (request.ReturnBy is not null)
+                                        {
+                                            <text>&ndash; @request.ReturnBy.Value.ToString("MMM d")</text>
+                                        }
+                                    }
                                 </span>
                             </div>
                         </div>

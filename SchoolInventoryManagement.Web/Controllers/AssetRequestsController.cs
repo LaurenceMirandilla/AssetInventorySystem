@@ -101,25 +101,24 @@ namespace SchoolInventoryManagement.Web.Controllers
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Create(CreateAssetRequestViewModel model)
         {
-            // Whichever half of the form was hidden may still have posted a
-            // stale value. Clear it here so the DTO matches the request type
-            // exactly, rather than tripping the service's own validation.
+            // Both types need a Model. The destination field is Transfer-only;
+            // for a Borrow it may still hold a stale value from the hidden
+            // half of the form, so clear it rather than trip the service.
+            if (model.ModelID is null)
+                ModelState.AddModelError(nameof(model.ModelID), "Choose the model you need.");
+
             if (model.RequestType == RequestType.Borrow)
-            {
-                model.AssetID = null;
                 model.RequestedLocationID = null;
+            else if (model.RequestedLocationID is null)
+                ModelState.AddModelError(nameof(model.RequestedLocationID), "Choose where it should go.");
 
-                if (model.ModelID is null)
-                    ModelState.AddModelError(nameof(model.ModelID), "Choose the model you need.");
-            }
-            else
+            // Caught here so the message sits under the field; the service
+            // checks the same rule for anything that bypasses this form.
+            if (model.NeededFrom is not null && model.ReturnBy is not null
+                && model.ReturnBy <= model.NeededFrom)
             {
-                model.ModelID = null;
-
-                if (model.AssetID is null)
-                    ModelState.AddModelError(nameof(model.AssetID), "Choose the asset to transfer.");
-                if (model.RequestedLocationID is null)
-                    ModelState.AddModelError(nameof(model.RequestedLocationID), "Choose where it should go.");
+                ModelState.AddModelError(nameof(model.ReturnBy),
+                    "The return date must be after the date you need the item.");
             }
 
             if (!ModelState.IsValid)
@@ -134,8 +133,10 @@ namespace SchoolInventoryManagement.Web.Controllers
                 {
                     RequestType = model.RequestType,
                     ModelID = model.ModelID,
-                    AssetID = model.AssetID,
+                    AssetID = null, // never the requester's choice
                     RequestedLocationID = model.RequestedLocationID,
+                    NeededFrom = model.NeededFrom,
+                    ReturnBy = model.ReturnBy,
                     Reason = model.Reason
                 };
 
@@ -151,9 +152,9 @@ namespace SchoolInventoryManagement.Web.Controllers
         }
 
         // GET /AssetRequests/Approve/5
-        // Both request types approve through here; which form you get
-        // depends on the type, because Borrow needs a unit picked and
-        // Transfer already knows everything it needs.
+        // Both request types approve through here, and both have staff pick
+        // the unit. Borrow also sets the receiving department; Transfer
+        // already knows its destination.
         [Authorize(Roles = ApproverRoles)]
         public async Task<IActionResult> Approve(int id)
         {
@@ -180,6 +181,8 @@ namespace SchoolInventoryManagement.Web.Controllers
                     RowVersionBase64 = RowVersionHelper.ToBase64(request.RowVersion)
                 });
             }
+
+            await PopulateTransferApprovalDropdownsAsync(request);
 
             return View("ApproveTransfer", new ApproveTransferRequestViewModel
             {
@@ -230,6 +233,7 @@ namespace SchoolInventoryManagement.Web.Controllers
             {
                 await _fulfillmentService.ApproveAndTransferAsync(
                     id,
+                    model.AssetID,
                     model.ConditionOnTransfer,
                     RowVersionHelper.FromBase64(model.RowVersionBase64),
                     CurrentUserId,
@@ -324,22 +328,41 @@ namespace SchoolInventoryManagement.Web.Controllers
 
         private async Task PopulateRequestDropdownsAsync()
         {
-            // Requesters browse Category -> Model, so the label carries both
-            // rather than making them guess which category a model sits in.
+            // Every model is listed, grouped under its category, with how
+            // many units are on the shelf. A model with none is shown but
+            // greyed out (disabled): the requester can see it exists, but
+            // cannot ask for it. CreateRequestAsync refuses it as well.
             var models = await _modelService.GetAllModelsAsync();
-            ViewBag.Models = new SelectList(
-                models.Select(m => new { m.ModelID, Label = $"{m.CategoryName} — {m.ModelName}" })
-                      .OrderBy(m => m.Label),
-                "ModelID", "Label");
 
-            // Only Available units can be transferred — AssetMovementService
-            // rejects anything else, so don't offer it here.
-            var assets = await _assetService.SearchAssetsAsync(
+            var available = await _assetService.SearchAssetsAsync(
                 null, null, null, null, null, AssetStatus.Available, null);
-            ViewBag.Assets = new SelectList(
-                assets.Select(a => new { a.AssetID, Label = $"{a.AssetCode} — {a.AssetName}" })
-                      .OrderBy(a => a.Label),
-                "AssetID", "Label");
+            var availableByModel = available
+                .GroupBy(a => a.ModelID)
+                .ToDictionary(g => g.Key, g => g.Count());
+
+            // One SelectListGroup instance per category -- items only land in
+            // the same <optgroup> when they share the instance, not the name.
+            var groups = models
+                .Select(m => m.CategoryName)
+                .Distinct()
+                .ToDictionary(name => name, name => new SelectListGroup { Name = name });
+
+            ViewBag.Models = models
+                .OrderBy(m => m.CategoryName).ThenBy(m => m.ModelName)
+                .Select(m =>
+                {
+                    var count = availableByModel.GetValueOrDefault(m.ModelID);
+                    return new SelectListItem
+                    {
+                        Value = m.ModelID.ToString(),
+                        Text = count > 0
+                            ? $"{m.ModelName} — {count} available"
+                            : $"{m.ModelName} — none available",
+                        Disabled = count == 0,
+                        Group = groups[m.CategoryName]
+                    };
+                })
+                .ToList();
 
             var locations = await _locationService.GetAllLocationsAsync();
             ViewBag.Locations = new SelectList(
@@ -376,9 +399,39 @@ namespace SchoolInventoryManagement.Web.Controllers
             return View("ApproveBorrow", model);
         }
 
+        private async Task PopulateTransferApprovalDropdownsAsync(AssetRequestResponseDTO? request)
+        {
+            // Nothing to pick for an older request that already named its
+            // unit -- the view shows that unit instead of a list.
+            if (request is null || request.AssetID is not null)
+            {
+                ViewBag.CandidateAssets = null;
+                return;
+            }
+
+            // Available units of the requested model, minus any already at
+            // the destination: AssetMovementService refuses a move to where
+            // the unit already is, so offering one would only fail.
+            var candidates = await _assetService.SearchAssetsAsync(
+                null, null, request.ModelID, null, null, AssetStatus.Available, null);
+
+            ViewBag.CandidateAssets = new SelectList(
+                candidates
+                    .Where(a => a.CurrentLocationID != request.RequestedLocationID)
+                    .Select(a => new
+                    {
+                        a.AssetID,
+                        Label = $"{a.AssetCode} — {a.AssetName} (now at {a.CurrentLocationName ?? "no location"})"
+                    })
+                    .OrderBy(a => a.Label),
+                "AssetID", "Label");
+        }
+
         private async Task<IActionResult> RedisplayTransferApprovalAsync(int id, ApproveTransferRequestViewModel model)
         {
-            ViewBag.Request = await _requestService.GetRequestByIdAsync(id);
+            var request = await _requestService.GetRequestByIdAsync(id);
+            ViewBag.Request = request;
+            await PopulateTransferApprovalDropdownsAsync(request);
             return View("ApproveTransfer", model);
         }
     }

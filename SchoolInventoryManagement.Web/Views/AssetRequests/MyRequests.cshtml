@@ -29,6 +29,7 @@
                     <th>#</th>
                     <th>Type</th>
                     <th>What</th>
+                    <th>When</th>
                     <th>Submitted</th>
                     <th>Status</th>
                     <th></th>
@@ -41,13 +42,24 @@
                         <td>@request.RequestID</td>
                         <td><span class="status-pill status-@request.RequestType.ToString().ToLowerInvariant()">@request.RequestType</span></td>
                         <td>
-                            @if (request.RequestType == SchoolInventoryManagement.DAL.Entities.Enums.RequestType.Borrow)
+                            @(request.ModelName ?? "—")
+                            @if (request.RequestType == SchoolInventoryManagement.DAL.Entities.Enums.RequestType.Transfer)
                             {
-                                @(request.ModelName ?? "—")
+                                <text> &rarr; @request.RequestedLocationName</text>
+                            }
+                        </td>
+                        <td class="small">
+                            @if (request.NeededFrom is not null)
+                            {
+                                @request.NeededFrom.Value.ToString("MMM d")
+                                @if (request.ReturnBy is not null)
+                                {
+                                    <text> &ndash; @request.ReturnBy.Value.ToString("MMM d")</text>
+                                }
                             }
                             else
                             {
-                                <span class="sab-code">@request.AssetCode</span><text> &rarr; @request.RequestedLocationName</text>
+                                <span class="text-muted">&mdash;</span>
                             }
                         </td>
                         <td>@request.RequestDate.ToString("MMM d, yyyy")</td>
@@ -64,9 +76,8 @@ else
     <div class="card">
         <div class="sab-empty">
             <div class="sab-empty-title">No requests yet</div>
-            <p>Borrow asks for a model and lets staff pick the unit. Transfer moves a specific unit to another location.</p>
+            <p>Borrow asks for a model to use. Transfer asks for a model to be moved to another location. Either way, staff pick the unit.</p>
             <a asp-action="Create" class="btn btn-primary">+ New Request</a>
         </div>
     </div>
 }
-
