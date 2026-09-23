@@ -24,6 +24,11 @@ namespace SchoolInventoryManagement.Web.Controllers
         private const string ApproverRoles =
             RoleNames.AssetOfficer + "," + RoleNames.Administrator + "," + RoleNames.Principal;
 
+        // Handing over and recording returns is asset work: Officers and
+        // Administrators, not the wider approver group.
+        private const string AssetManagerRoles =
+            RoleNames.AssetOfficer + "," + RoleNames.Administrator;
+
         private readonly IAssetRequestService _requestService;
         private readonly IRequestFulfillmentService _fulfillmentService;
         private readonly IAssetService _assetService;
@@ -54,11 +59,6 @@ namespace SchoolInventoryManagement.Web.Controllers
             User.IsInRole(RoleNames.AssetOfficer) ||
             User.IsInRole(RoleNames.Administrator) ||
             User.IsInRole(RoleNames.Principal);
-
-        // Handing over and recording returns is asset work: Officers and
-        // Administrators, not the wider approver group.
-        private const string AssetManagerRoles =
-            RoleNames.AssetOfficer + "," + RoleNames.Administrator;
 
         // GET /AssetRequests
         public IActionResult Index() => RedirectToAction(nameof(MyRequests));
@@ -109,12 +109,19 @@ namespace SchoolInventoryManagement.Web.Controllers
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Create(CreateAssetRequestViewModel model)
         {
-            // Both types need a Model. The destination field is Transfer-only;
-            // for a Borrow it may still hold a stale value from the hidden
-            // half of the form, so clear it rather than trip the service.
-            if (model.ModelID is null)
-                ModelState.AddModelError(nameof(model.ModelID), "Choose the model you need.");
+            // Blank rows (an added "+" row left empty) are simply dropped;
+            // at least one model has to be chosen.
+            var modelIds = model.ModelIDs
+                .Where(id => id is not null)
+                .Select(id => id!.Value)
+                .ToList();
 
+            if (modelIds.Count == 0)
+                ModelState.AddModelError(nameof(model.ModelIDs), "Choose at least one model.");
+
+            // The destination field is Transfer-only; for a Borrow it may
+            // still hold a stale value from the hidden half of the form, so
+            // clear it rather than trip the service.
             if (model.RequestType == RequestType.Borrow)
                 model.RequestedLocationID = null;
             else if (model.RequestedLocationID is null)
@@ -137,19 +144,26 @@ namespace SchoolInventoryManagement.Web.Controllers
 
             try
             {
-                var dto = new CreateAssetRequestDTO
+                var dtos = modelIds.Select(modelId => new CreateAssetRequestDTO
                 {
                     RequestType = model.RequestType,
-                    ModelID = model.ModelID,
+                    ModelID = modelId,
                     AssetID = null, // never the requester's choice
                     RequestedLocationID = model.RequestedLocationID,
                     NeededFrom = model.NeededFrom,
                     ReturnBy = model.ReturnBy,
                     Reason = model.Reason
-                };
+                }).ToList();
 
-                var created = await _requestService.CreateRequestAsync(dto, CurrentUserId);
-                return RedirectToAction(nameof(Details), new { id = created.RequestID });
+                var created = await _requestService.CreateRequestsAsync(dtos, CurrentUserId);
+
+                // One item: straight to it. Several: the list, where they
+                // all show up together.
+                if (created.Count == 1)
+                    return RedirectToAction(nameof(Details), new { id = created[0].RequestID });
+
+                TempData["StatusMessage"] = $"{created.Count} requests submitted.";
+                return RedirectToAction(nameof(MyRequests));
             }
             catch (Exception ex)
             {
@@ -365,7 +379,7 @@ namespace SchoolInventoryManagement.Web.Controllers
             // Every model is listed, grouped under its category, with how
             // many units are on the shelf. A model with none is shown but
             // greyed out (disabled): the requester can see it exists, but
-            // cannot ask for it. CreateRequestAsync refuses it as well.
+            // cannot ask for it. CreateRequestsAsync refuses it as well.
             var models = await _modelService.GetAllModelsAsync();
 
             var available = await _assetService.SearchAssetsAsync(
@@ -451,8 +465,8 @@ namespace SchoolInventoryManagement.Web.Controllers
             }
 
             // Available units of the requested model, minus any already at
-            // the destination: AssetMovementService refuses a move to where
-            // the unit already is, so offering one would only fail.
+            // the destination: moving a unit to where it already is would
+            // only fail.
             var candidates = await _assetService.SearchAssetsAsync(
                 null, null, request.ModelID, null, null, AssetStatus.Available, null);
 

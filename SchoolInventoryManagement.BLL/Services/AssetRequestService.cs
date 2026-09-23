@@ -36,77 +36,143 @@ namespace SchoolInventoryManagement.BLL.Services
                     .ThenInclude(u => u!.Role);
         }
 
+        // Matches the form's limit. Enforced here too, since the service is
+        // the boundary a hand-built post cannot skip.
+        private const int MaxItemsPerSubmission = 20;
+
         public async Task<AssetRequestResponseDTO> CreateRequestAsync(CreateAssetRequestDTO dto, int actingUserId)
+        {
+            var created = await CreateRequestsAsync(new List<CreateAssetRequestDTO> { dto }, actingUserId);
+            return created[0];
+        }
+
+        // Several models asked for in one go (the form's "+ Add another
+        // item"). Each becomes its own request, so each is approved, handed
+        // over and returned on its own. All are checked before any is
+        // saved, and they are saved together: either every item goes in,
+        // or none does.
+        public async Task<List<AssetRequestResponseDTO>> CreateRequestsAsync(
+            List<CreateAssetRequestDTO> dtos, int actingUserId)
         {
             var requestingUser = await PermissionHelper.GetUserOrThrowAsync(_context, actingUserId);
 
-            // Both types ask for a Model. Which physical unit goes out is
-            // staff's call at approval, for a Transfer as much as a Borrow.
-            if (dto.ModelID is null)
-                throw new ArgumentException($"A {dto.RequestType} request must specify a Model.");
-            if (dto.AssetID is not null)
-                throw new ArgumentException(
-                    $"A {dto.RequestType} request cannot name a specific unit -- staff choose it when approving.");
+            if (dtos.Count == 0)
+                throw new ArgumentException("Add at least one item.");
+            if (dtos.Count > MaxItemsPerSubmission)
+                throw new ArgumentException($"You can ask for at most {MaxItemsPerSubmission} items at once.");
 
-            if (dto.RequestType == RequestType.Borrow && dto.RequestedLocationID is not null)
-                throw new ArgumentException("A Borrow request cannot include a destination location.");
-            if (dto.RequestType == RequestType.Transfer && dto.RequestedLocationID is null)
-                throw new ArgumentException("A Transfer request must specify a destination location.");
+            foreach (var dto in dtos)
+            {
+                // Both types ask for a Model. Which physical unit goes out is
+                // staff's call at approval, for a Transfer as much as a Borrow.
+                if (dto.ModelID is null)
+                    throw new ArgumentException($"A {dto.RequestType} request must specify a Model.");
+                if (dto.AssetID is not null)
+                    throw new ArgumentException(
+                        $"A {dto.RequestType} request cannot name a specific unit -- staff choose it when approving.");
 
-            // Dates. "Today" rather than "now" for the start, so a request
-            // for this afternoon filled in a few minutes late still goes in.
-            if (dto.NeededFrom is null)
-                throw new ArgumentException("Say when you need the item.");
-            if (dto.ReturnBy is null)
-                throw new ArgumentException("Say when the item will be returned.");
-            if (dto.NeededFrom.Value < DateTime.Today)
-                throw new ArgumentException("The date you need the item cannot be in the past.");
-            if (dto.ReturnBy.Value <= dto.NeededFrom.Value)
-                throw new ArgumentException("The return date must be after the date you need the item.");
+                if (dto.RequestType == RequestType.Borrow && dto.RequestedLocationID is not null)
+                    throw new ArgumentException("A Borrow request cannot include a destination location.");
+                if (dto.RequestType == RequestType.Transfer && dto.RequestedLocationID is null)
+                    throw new ArgumentException("A Transfer request must specify a destination location.");
 
-            // Nothing on the shelf, nothing to request. The form greys these
-            // models out; this is the check a hand-built post cannot skip.
-            // Pending requests do not hold units -- approval reserves one on
-            // the spot -- so the Available count is the whole story.
-            var availableUnits = await _context.Assets.CountAsync(a =>
-                a.ModelID == dto.ModelID.Value && a.Status == AssetStatus.Available);
-            if (availableUnits == 0)
-                throw new InvalidOperationException(
-                    "No units of that model are available right now, so it cannot be requested.");
+                // Dates. "Today" rather than "now" for the start, so a request
+                // for this afternoon filled in a few minutes late still goes in.
+                if (dto.NeededFrom is null)
+                    throw new ArgumentException("Say when you need the item.");
+                if (dto.ReturnBy is null)
+                    throw new ArgumentException("Say when the item will be returned.");
+                if (dto.NeededFrom.Value < DateTime.Today)
+                    throw new ArgumentException("The date you need the item cannot be in the past.");
+                if (dto.ReturnBy.Value <= dto.NeededFrom.Value)
+                    throw new ArgumentException("The return date must be after the date you need the item.");
+            }
 
-            var request = new AssetRequest
+            // Nothing on the shelf, nothing to request -- and no asking for
+            // more units of a model than are on the shelf. The form greys
+            // out empty models; this is the check a hand-built post cannot
+            // skip. Pending requests do not hold units -- approval reserves
+            // one on the spot -- so the Available count is the whole story.
+            var modelIds = dtos.Select(d => d.ModelID!.Value).Distinct().ToList();
+
+            var availableByModel = await _context.Assets
+                .Where(a => modelIds.Contains(a.ModelID) && a.Status == AssetStatus.Available)
+                .GroupBy(a => a.ModelID)
+                .Select(g => new { ModelID = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.ModelID, x => x.Count);
+
+            var modelNames = await _context.Models
+                .Where(m => modelIds.Contains(m.ModelID))
+                .ToDictionaryAsync(m => m.ModelID, m => m.ModelName);
+
+            foreach (var group in dtos.GroupBy(d => d.ModelID!.Value))
+            {
+                if (!modelNames.TryGetValue(group.Key, out var modelName))
+                    throw new KeyNotFoundException("Model not found.");
+
+                var available = availableByModel.GetValueOrDefault(group.Key);
+                if (available == 0)
+                    throw new InvalidOperationException(
+                        $"No units of {modelName} are available right now, so it cannot be requested.");
+
+                var asked = group.Count();
+                if (asked > available)
+                    throw new InvalidOperationException(
+                        $"You asked for {asked} of {modelName}, but only {available} " +
+                        $"{(available == 1 ? "is" : "are")} available.");
+            }
+
+            var requests = dtos.Select(dto => new AssetRequest
             {
                 RequestedByUserID = actingUserId,
                 DepartmentID = requestingUser.DepartmentID,
                 ModelID = dto.ModelID,
-                AssetID = dto.AssetID,
+                AssetID = null,
                 RequestedLocationID = dto.RequestedLocationID,
                 RequestType = dto.RequestType,
                 Reason = dto.Reason,
                 NeededFrom = dto.NeededFrom,
                 ReturnBy = dto.ReturnBy,
                 RequestStatus = RequestStatus.Pending
-            };
+            }).ToList();
 
-            _context.AssetRequests.Add(request);
+            _context.AssetRequests.AddRange(requests);
             await _context.SaveChangesAsync();
 
             // Queued only AFTER the first save, because RequestID is still 0
-            // until the INSERT actually runs and the ActionURL needs the real
-            // id. The second save is deliberate: if it fails, the request
-            // itself still stands rather than being lost for the sake of a
-            // notification.
-            await NotificationHelper.QueueForApproversAsync(
-                _context,
-                requestingUser.RoleID,
-                $"New {request.RequestType} request from {requestingUser.FirstName} " +
-                $"{requestingUser.LastName} is awaiting approval.",
-                $"/AssetRequests/Details/{request.RequestID}");
+            // until the INSERT actually runs and the link needs the real id.
+            // One message per submission, not one per item: five items
+            // should not mean five notifications for every approver. The
+            // second save is deliberate: if it fails, the requests
+            // themselves still stand.
+            var requesterName = $"{requestingUser.FirstName} {requestingUser.LastName}";
+            if (requests.Count == 1)
+            {
+                await NotificationHelper.QueueForApproversAsync(
+                    _context,
+                    requestingUser.RoleID,
+                    $"New {requests[0].RequestType} request from {requesterName} is awaiting approval.",
+                    $"/AssetRequests/Details/{requests[0].RequestID}");
+            }
+            else
+            {
+                await NotificationHelper.QueueForApproversAsync(
+                    _context,
+                    requestingUser.RoleID,
+                    $"{requests.Count} new {requests[0].RequestType} requests from {requesterName} " +
+                    $"are awaiting approval.",
+                    "/AssetRequests/Pending");
+            }
 
             await _context.SaveChangesAsync();
 
-            var created = await RequestQueryWithIncludes().FirstAsync(r => r.RequestID == request.RequestID);
-            return created.ToResponseDTO();
+            var ids = requests.Select(r => r.RequestID).ToList();
+            var created = await RequestQueryWithIncludes()
+                .Where(r => ids.Contains(r.RequestID))
+                .OrderBy(r => r.RequestID)
+                .ToListAsync();
+
+            return created.Select(r => r.ToResponseDTO()).ToList();
         }
 
         public async Task<AssetRequestResponseDTO?> GetRequestByIdAsync(int requestId)

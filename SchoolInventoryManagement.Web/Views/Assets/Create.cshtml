@@ -55,10 +55,6 @@
     </div>
 
     <div class="mb-3">
-        <label asp-for="ImageURL" class="form-label"></label>
-        <input asp-for="ImageURL" class="form-control" />
-    </div>
-    <div class="mb-3">
         <label asp-for="ImageFile" class="form-label">Photo <span class="text-muted">(optional)</span></label>
         <input asp-for="ImageFile" type="file" accept="image/jpeg,image/png,image/webp" class="form-control" />
     </div>
@@ -73,18 +69,19 @@
             <option value="">-- Select Branch --</option>
         </select>
         <span asp-validation-for="BranchID" class="text-danger"></span>
-        <div class="form-text">Pick a branch first — Location below will narrow to it.</div>
     </div>
 
     <div class="mb-3">
         <label asp-for="CurrentLocationID" class="form-label">Location</label>
         <select asp-for="CurrentLocationID" id="locationSelect" class="form-select">
-            <option value="">-- None --</option>
+            <option value="">-- Pick a branch first --</option>
             @foreach (var loc in (List<SchoolInventoryManagement.BLL.DTOs.LocationDTO>)ViewBag.LocationsByBranch)
             {
-                <option value="@loc.LocationID" data-branch="@loc.BranchID">@loc.LocationName</option>
+                <option value="@loc.LocationID" data-branch="@loc.BranchID"
+                        selected="@(loc.LocationID == Model.CurrentLocationID)">@loc.LocationName</option>
             }
         </select>
+        <div class="form-text">Only locations in the chosen branch are listed.</div>
     </div>
 
     <button type="submit" class="btn btn-primary">Create</button>
@@ -96,34 +93,53 @@
         await Html.RenderPartialAsync("_ValidationScriptsPartial");
     }
     <script>
-        (function() {
+        (function () {
+            // Location is chosen within a branch: the list only ever holds
+            // that branch's locations, and stays locked until a branch is
+            // picked. The options are rebuilt rather than hidden, because
+            // some browsers ignore "hidden" on <option>.
             var branchSelect = document.getElementById('branchSelect');
             var locationSelect = document.getElementById('locationSelect');
-            var departmentSelect = document.getElementById('departmentSelect');
+            if (!branchSelect || !locationSelect) return;
 
-            if (!branchSelect) return;
+            var allLocations = Array.from(locationSelect.options)
+                .filter(function (o) { return o.value; })
+                .map(function (o) {
+                    return { value: o.value, text: o.text, branch: o.getAttribute('data-branch') };
+                });
+            var selected = locationSelect.value;
 
-            function filterByBranch() {
+            function rebuild() {
                 var branchId = branchSelect.value;
+                locationSelect.innerHTML = '';
 
-                [locationSelect, departmentSelect].forEach(function(select) {
-                    if (!select) return; // Guard against missing elements on this view
-                    
-                    Array.from(select.options).forEach(function(opt) {
-                        if (!opt.value) { opt.hidden = false; return; } // keep "-- None --" always visible
-                        opt.hidden = branchId === '' || opt.getAttribute('data-branch') !== branchId;
+                var placeholder = document.createElement('option');
+                placeholder.value = '';
+                placeholder.text = branchId ? '-- None --' : '-- Pick a branch first --';
+                locationSelect.appendChild(placeholder);
+
+                allLocations
+                    .filter(function (l) { return l.branch === branchId; })
+                    .forEach(function (l) {
+                        var opt = document.createElement('option');
+                        opt.value = l.value;
+                        opt.text = l.text;
+                        if (l.value === selected) opt.selected = true;
+                        locationSelect.appendChild(opt);
                     });
 
-                    // If the currently selected option got hidden by the filter, reset it
-                    var selected = select.options[select.selectedIndex];
-                    if (selected && selected.hidden) {
-                        select.value = '';
-                    }
-                });
+                locationSelect.disabled = !branchId;
             }
 
-            branchSelect.addEventListener('change', filterByBranch);
-            filterByBranch(); // run on load too, so a failed-validation redisplay re-filters correctly
+            branchSelect.addEventListener('change', function () {
+                selected = ''; // a new branch means its own location
+                rebuild();
+            });
+            locationSelect.addEventListener('change', function () {
+                selected = locationSelect.value;
+            });
+
+            rebuild(); // on load too, so an edit or a failed post shows the right list
         })();
     </script>
 }

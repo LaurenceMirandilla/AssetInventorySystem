@@ -1,6 +1,16 @@
 ﻿@model SchoolInventoryManagement.Web.ViewModels.CreateAssetRequestViewModel
+@using Microsoft.AspNetCore.Mvc.Rendering
 @{
     ViewData["Title"] = "New Request";
+
+    // Grouped by category, with models that have nothing on the shelf
+    // disabled (greyed out). Rendered by hand rather than with asp-items
+    // because every row needs its own selected value.
+    var modelItems = (List<SelectListItem>)ViewBag.Models;
+    var modelGroups = modelItems.GroupBy(m => m.Group?.Name ?? "").ToList();
+
+    // Always at least one row, even after a post that removed them all.
+    var rows = Model.ModelIDs.Count > 0 ? Model.ModelIDs : new List<int?> { null };
 }
 
 <h2>New Request</h2>
@@ -21,16 +31,39 @@
     </div>
 
     <div class="mb-3">
-        <label asp-for="ModelID" class="form-label">Model</label>
-        <select asp-for="ModelID" asp-items="ViewBag.Models" class="form-select">
-            <option value="">-- Select Model --</option>
-        </select>
-        <span asp-validation-for="ModelID" class="text-danger"></span>
+        <label class="form-label">Items</label>
+
+        <div id="modelRows">
+            @foreach (var selectedId in rows)
+            {
+                <div class="input-group mb-2 model-row">
+                    <select name="ModelIDs" class="form-select">
+                        <option value="">-- Select Model --</option>
+                        @foreach (var group in modelGroups)
+                        {
+                            <optgroup label="@group.Key">
+                                @foreach (var item in group)
+                                {
+                                    <option value="@item.Value"
+                                            disabled="@item.Disabled"
+                                            selected="@(item.Value == selectedId?.ToString())">@item.Text</option>
+                                }
+                            </optgroup>
+                        }
+                    </select>
+                    <button type="button" class="btn btn-outline-danger remove-row" title="Remove this item">&times;</button>
+                </div>
+            }
+        </div>
+
+        <button type="button" id="addModelRow" class="btn btn-outline-primary btn-sm">+ Add another item</button>
+        <span asp-validation-for="ModelIDs" class="text-danger d-block"></span>
 
         @* Greyed-out entries have no units on the shelf right now, so they
            cannot be requested. The link covers the other dead end: the
            thing needed is not in the catalogue at all. *@
         <div class="form-text">
+            Each item becomes its own request. Need two of the same? Add it twice.
             Greyed-out models have no units available right now.
             Not on the list?
             <a asp-controller="NewItemRequests" asp-action="Create">Request a new item</a>
@@ -118,6 +151,44 @@
 
             neededFrom.addEventListener('change', syncReturnMin);
             syncReturnMin();
+
+            // "+ Add another item": copy the first row with nothing chosen.
+            // Every row posts as ModelIDs, which binds to the list. The x
+            // removes a row; the last one is only cleared, so there is
+            // always somewhere to pick a model.
+            var rowsBox = document.getElementById('modelRows');
+            var maxRows = 20; // the service refuses more than this anyway
+
+            function syncRemoveButtons() {
+                var rowsNow = rowsBox.querySelectorAll('.model-row');
+                rowsNow.forEach(function (row) {
+                    row.querySelector('.remove-row').hidden = rowsNow.length === 1;
+                });
+                document.getElementById('addModelRow').disabled = rowsNow.length >= maxRows;
+            }
+
+            document.getElementById('addModelRow').addEventListener('click', function () {
+                var copy = rowsBox.querySelector('.model-row').cloneNode(true);
+                copy.querySelector('select').value = '';
+                rowsBox.appendChild(copy);
+                syncRemoveButtons();
+                copy.querySelector('select').focus();
+            });
+
+            rowsBox.addEventListener('click', function (e) {
+                var button = e.target.closest('.remove-row');
+                if (!button) return;
+                var rowsNow = rowsBox.querySelectorAll('.model-row');
+                var row = button.closest('.model-row');
+                if (rowsNow.length > 1) {
+                    row.remove();
+                } else {
+                    row.querySelector('select').value = '';
+                }
+                syncRemoveButtons();
+            });
+
+            syncRemoveButtons();
         })();
     </script>
 }

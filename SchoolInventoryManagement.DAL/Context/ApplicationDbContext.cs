@@ -24,9 +24,34 @@ namespace SchoolInventoryManagement.DAL.Context
         public DbSet<AuditLog> AuditLogs { get; set; } = null!;
         public DbSet<Notification> Notifications { get; set; } = null!;
         public DbSet<Model> Models { get; set; } = null!;
+        public DbSet<NewItemRequest> NewItemRequests { get; set; } = null!;
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
+            modelBuilder.Entity<NewItemRequest>()
+    .Property(n => n.RequestStatus)
+    .HasConversion<string>()
+    .HasMaxLength(20);
+
+            modelBuilder.Entity<NewItemRequest>()
+                .Property(n => n.RequestDate)
+                .HasDefaultValueSql("GETDATE()");
+
+            modelBuilder.Entity<NewItemRequest>()
+                .HasOne(n => n.RequestedByUser).WithMany()
+                .HasForeignKey(n => n.RequestedByUserID).OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<NewItemRequest>()
+                .HasOne(n => n.ReviewedByUser).WithMany()
+                .HasForeignKey(n => n.ReviewedByUserID).OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<NewItemRequest>()
+                .HasOne(n => n.Department).WithMany()
+                .HasForeignKey(n => n.DepartmentID).OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<NewItemRequest>()
+                .HasOne(n => n.Category).WithMany()
+                .HasForeignKey(n => n.CategoryID).OnDelete(DeleteBehavior.Restrict);
             base.OnModelCreating(modelBuilder);
 
             // =====================================================

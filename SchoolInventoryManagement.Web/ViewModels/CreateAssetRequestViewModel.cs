@@ -1,22 +1,26 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using SchoolInventoryManagement.DAL.Entities.Enums;
 
 namespace SchoolInventoryManagement.Web.ViewModels
 {
-    // One form serves both request types. Both name a Model -- staff pick
-    // the actual unit when approving -- and both carry the dates. Transfer
-    // adds a destination; the controller nulls it for Borrow so a stale
-    // value from a toggled-away field never reaches the service, which
-    // CK_AssetRequests_TypeFieldRules would reject.
+    // One form serves both request types. Both name Models -- staff pick
+    // the actual units when approving -- and all items share the type,
+    // destination, dates and reason. Each chosen model becomes its own
+    // request. Transfer adds a destination; the controller nulls it for
+    // Borrow so a stale value from a toggled-away field never reaches the
+    // service, which CK_AssetRequests_TypeFieldRules would reject.
     public class CreateAssetRequestViewModel
     {
         [Required]
         public RequestType RequestType { get; set; } = RequestType.Borrow;
 
-        public int? ModelID { get; set; }
+        // One entry per "+ Add another item" row. Pick the same model twice
+        // to ask for two units of it. Starts with one empty row.
+        public List<int?> ModelIDs { get; set; } = new() { null };
 
-        // Transfer only: where the unit should go.
+        // Transfer only: where the units should go.
         public int? RequestedLocationID { get; set; }
 
         [Required(ErrorMessage = "Say when you need the item.")]

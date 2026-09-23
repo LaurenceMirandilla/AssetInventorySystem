@@ -1,0 +1,104 @@
+﻿@model SchoolInventoryManagement.Web.ViewModels.CreateNewItemRequestViewModel
+@{
+    ViewData["Title"] = "Request a New Item";
+
+    // Always at least one row, even after a post that removed them all.
+    var rows = Model.ItemNames.Count > 0 ? Model.ItemNames : new List<string?> { "" };
+}
+
+<div class="sab-page-head">
+    <div>
+        <h2>Request a New Item</h2>
+        <p class="sab-page-sub">
+            For something the school does not have yet. If it is already in the catalogue,
+            <a asp-controller="AssetRequests" asp-action="Create">borrow it instead</a>.
+        </p>
+    </div>
+</div>
+
+<form asp-action="Create" method="post">
+    @Html.AntiForgeryToken()
+    <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+
+    <div class="mb-3">
+        <label class="form-label">Item to be added</label>
+
+        <div id="itemRows">
+            @foreach (var name in rows)
+            {
+                <div class="input-group mb-2 item-row">
+                    <input type="text" name="ItemNames" value="@name" maxlength="150"
+                           class="form-control" placeholder="e.g. Document camera" />
+                    <button type="button" class="btn btn-outline-danger remove-row" title="Remove this item">&times;</button>
+                </div>
+            }
+        </div>
+
+        <button type="button" id="addItemRow" class="btn btn-outline-primary btn-sm">+ Add another item</button>
+        <span asp-validation-for="ItemNames" class="text-danger d-block"></span>
+        <div class="form-text">Each item becomes its own request. The reason and date below apply to all of them.</div>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="Reason" class="form-label">Reason</label>
+        <textarea asp-for="Reason" class="form-control" rows="4"
+                  placeholder="What it is for and who will use it."></textarea>
+        <span asp-validation-for="Reason" class="text-danger"></span>
+    </div>
+
+    <div class="mb-3" style="max-width:260px;">
+        <label asp-for="NeededBy" class="form-label">When do you need it?</label>
+        <input asp-for="NeededBy" type="date" class="form-control"
+               min="@DateTime.Today.ToString("yyyy-MM-dd")" />
+        <span asp-validation-for="NeededBy" class="text-danger"></span>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Submit Request</button>
+    <a asp-action="MyRequests" class="btn btn-secondary">Cancel</a>
+</form>
+
+@section Scripts {
+    @{
+        await Html.RenderPartialAsync("_ValidationScriptsPartial");
+    }
+    <script>
+        (function () {
+            // "+ Add another item": copy the first row, emptied. Every row
+            // posts as ItemNames, which binds to the list. The x removes a
+            // row; the last one is only cleared.
+            var rowsBox = document.getElementById('itemRows');
+            var maxRows = 20; // the service refuses more than this anyway
+
+            function syncRemoveButtons() {
+                var rowsNow = rowsBox.querySelectorAll('.item-row');
+                rowsNow.forEach(function (row) {
+                    row.querySelector('.remove-row').hidden = rowsNow.length === 1;
+                });
+                document.getElementById('addItemRow').disabled = rowsNow.length >= maxRows;
+            }
+
+            document.getElementById('addItemRow').addEventListener('click', function () {
+                var copy = rowsBox.querySelector('.item-row').cloneNode(true);
+                copy.querySelector('input').value = '';
+                rowsBox.appendChild(copy);
+                syncRemoveButtons();
+                copy.querySelector('input').focus();
+            });
+
+            rowsBox.addEventListener('click', function (e) {
+                var button = e.target.closest('.remove-row');
+                if (!button) return;
+                var rowsNow = rowsBox.querySelectorAll('.item-row');
+                var row = button.closest('.item-row');
+                if (rowsNow.length > 1) {
+                    row.remove();
+                } else {
+                    row.querySelector('input').value = '';
+                }
+                syncRemoveButtons();
+            });
+
+            syncRemoveButtons();
+        })();
+    </script>
+}

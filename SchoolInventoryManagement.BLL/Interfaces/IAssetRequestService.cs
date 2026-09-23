@@ -7,6 +7,12 @@ namespace SchoolInventoryManagement.BLL.Interfaces
     public interface IAssetRequestService
     {
         Task<AssetRequestResponseDTO> CreateRequestAsync(CreateAssetRequestDTO dto, int actingUserId);
+
+        // Several items in one submission: one request each, all saved
+        // together or not at all.
+        Task<List<AssetRequestResponseDTO>> CreateRequestsAsync(
+            List<CreateAssetRequestDTO> dtos, int actingUserId);
+
         Task<AssetRequestResponseDTO?> GetRequestByIdAsync(int requestId);
         Task<List<AssetRequestResponseDTO>> GetMyRequestsAsync(int actingUserId);
         Task<List<AssetRequestResponseDTO>> GetPendingRequestsAsync(int actingUserId);
@@ -16,8 +22,7 @@ namespace SchoolInventoryManagement.BLL.Interfaces
 
         // notifyRequester exists so RequestFulfillmentService can suppress
         // the per-step notifications and send one message for the whole
-        // approve-assign-fulfil sequence. Optional, so existing call sites
-        // are unaffected.
+        // approval. Optional, so existing call sites are unaffected.
         Task ApproveRequestAsync(
             int requestId, byte[] rowVersion, int actingUserId, bool notifyRequester = true);
         Task RejectRequestAsync(int requestId, byte[] rowVersion, int actingUserId, string? remarks);

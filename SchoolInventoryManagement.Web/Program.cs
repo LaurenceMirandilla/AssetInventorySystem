@@ -40,6 +40,7 @@ builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddControllersWithViews();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<AuditSaveChangesInterceptor>();
+builder.Services.AddScoped<INewItemRequestService, NewItemRequestService>();
 
 
 var app = builder.Build();

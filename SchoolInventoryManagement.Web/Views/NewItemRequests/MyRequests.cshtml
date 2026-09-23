@@ -1,0 +1,82 @@
+﻿@model List<SchoolInventoryManagement.BLL.DTOs.NewItemRequestResponseDTO>
+@{
+    ViewData["Title"] = "My New-Item Requests";
+}
+@if (TempData["ErrorMessage"] != null)
+{
+    <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
+}
+
+<div class="sab-page-head">
+    <div>
+        <h2>My New-Item Requests</h2>
+        <p class="sab-page-sub">Things you have asked the school to acquire.</p>
+    </div>
+    <div class="sab-page-actions">
+        <a asp-action="Create" class="btn btn-primary">+ Request an item</a>
+    </div>
+</div>
+
+@if (Model.Any())
+{
+    <div class="sab-table-card">
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Item</th>
+                    <th>Needed by</th>
+                    <th>Submitted</th>
+                    <th>Status</th>
+                    <th>Outcome</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var request in Model)
+                {
+                    <tr>
+                        <td>@request.NewItemRequestID</td>
+                        <td>
+                            <div class="fw-semibold">@request.ItemName</div>
+                            @if (!string.IsNullOrWhiteSpace(request.Reason))
+                            {
+                                <div class="text-muted small">@request.Reason</div>
+                            }
+                        </td>
+                        <td>@(request.NeededBy?.ToString("MMM d, yyyy") ?? "—")</td>
+                        <td>@request.RequestDate.ToString("MMM d, yyyy")</td>
+                        <td>
+                            <span class="status-pill status-@request.RequestStatus.ToString().ToLowerInvariant()">
+                                @request.RequestStatus
+                            </span>
+                        </td>
+                        <td>
+                            @if (request.ReviewedByUserName is null)
+                            {
+                                <span class="text-muted">Awaiting review</span>
+                            }
+                            else
+                            {
+                                <div class="small">@request.ReviewedByUserName</div>
+                                @if (!string.IsNullOrWhiteSpace(request.Remarks))
+                                {
+                                    <div class="text-muted small">@request.Remarks</div>
+                                }
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+else
+{
+    <div class="card">
+        <div class="sab-empty">
+            <div class="sab-empty-title">No requests yet</div>
+            <p>Need something the school does not have? Ask for it here.</p>
+            <a asp-action="Create" class="btn btn-primary">+ Request an item</a>
+        </div>
+    </div>
+}
