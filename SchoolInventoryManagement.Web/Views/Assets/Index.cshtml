@@ -9,7 +9,14 @@
 <div class="sab-page-head">
     <div>
         <h2>Assets</h2>
-        <p class="sab-page-sub">@Model.TotalCount registered unit@(Model.TotalCount == 1 ? "" : "s").</p>
+        @if (Model.HasFilters)
+        {
+            <p class="sab-page-sub">@Model.TotalFilteredCount of @Model.GrandTotalCount registered unit@(Model.GrandTotalCount == 1 ? "" : "s") match@(Model.TotalFilteredCount == 1 ? "es" : "") your filters.</p>
+        }
+        else
+        {
+            <p class="sab-page-sub">@Model.TotalFilteredCount registered unit@(Model.TotalFilteredCount == 1 ? "" : "s").</p>
+        }
     </div>
     <div class="sab-page-actions">
         <a asp-action="ExportAssets"
@@ -27,30 +34,49 @@
     </div>
 </div>
 
-@* KPI tiles -- always the WHOLE inventory, regardless of the active filter.
-   Clicking one jumps straight to that status; "All assets" clears it. The
-   tinted tile is the view you are looking at. *@
+@* KPI tiles -- a live breakdown of the rows below, so they always add up
+   to what the table is showing. Every filter narrows them, status
+   included, which means selecting a status zeroes the other four. That is
+   the honest count, so the highlighted tile doubles as the way out:
+   clicking it drops the status and restores the full breakdown, as does
+   "All assets". The other filters ride along on every tile, so you never
+   lose your search by clicking one. *@
 <div class="report-tiles mb-3">
-    <a asp-action="Index" class="report-tile text-decoration-none @(activeStatus == null ? "active" : "")">
-        <span class="report-tile-value">@Model.TotalCount</span>
-        <span class="report-tile-label">All assets</span>
+    <a asp-action="Index"
+       asp-route-keyword="@Model.Keyword" asp-route-categoryId="@Model.CategoryId"
+       asp-route-departmentId="@Model.DepartmentId" asp-route-condition="@Model.Condition"
+       class="report-tile text-decoration-none @(activeStatus == null ? "active" : "")">
+        <span class="report-tile-value">@Model.TotalFilteredCount</span>
+        <span class="report-tile-label">@(Model.HasFilters ? "All matches" : "All assets")</span>
     </a>
-    <a asp-action="Index" asp-route-status="Available"
+    <a asp-action="Index"
+       asp-route-status="@(activeStatus == "Available" ? null : "Available")"
+       asp-route-keyword="@Model.Keyword" asp-route-categoryId="@Model.CategoryId"
+       asp-route-departmentId="@Model.DepartmentId" asp-route-condition="@Model.Condition"
        class="report-tile text-decoration-none @(activeStatus == "Available" ? "active" : "")">
         <span class="report-tile-value">@Model.AvailableCount</span>
         <span class="report-tile-label">Available</span>
     </a>
-    <a asp-action="Index" asp-route-status="Assigned"
+    <a asp-action="Index"
+       asp-route-status="@(activeStatus == "Assigned" ? null : "Assigned")"
+       asp-route-keyword="@Model.Keyword" asp-route-categoryId="@Model.CategoryId"
+       asp-route-departmentId="@Model.DepartmentId" asp-route-condition="@Model.Condition"
        class="report-tile text-decoration-none @(activeStatus == "Assigned" ? "active" : "")">
         <span class="report-tile-value">@Model.AssignedCount</span>
         <span class="report-tile-label">Assigned</span>
     </a>
-    <a asp-action="Index" asp-route-status="UnderMaintenance"
+    <a asp-action="Index"
+       asp-route-status="@(activeStatus == "UnderMaintenance" ? null : "UnderMaintenance")"
+       asp-route-keyword="@Model.Keyword" asp-route-categoryId="@Model.CategoryId"
+       asp-route-departmentId="@Model.DepartmentId" asp-route-condition="@Model.Condition"
        class="report-tile text-decoration-none @(activeStatus == "UnderMaintenance" ? "active" : "")">
         <span class="report-tile-value">@Model.UnderMaintenanceCount</span>
         <span class="report-tile-label">Under maintenance</span>
     </a>
-    <a asp-action="Index" asp-route-status="Disposed"
+    <a asp-action="Index"
+       asp-route-status="@(activeStatus == "Disposed" ? null : "Disposed")"
+       asp-route-keyword="@Model.Keyword" asp-route-categoryId="@Model.CategoryId"
+       asp-route-departmentId="@Model.DepartmentId" asp-route-condition="@Model.Condition"
        class="report-tile text-decoration-none @(activeStatus == "Disposed" ? "active" : "")">
         <span class="report-tile-value">@Model.DisposedCount</span>
         <span class="report-tile-label">Disposed</span>

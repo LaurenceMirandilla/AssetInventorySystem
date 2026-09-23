@@ -27,12 +27,12 @@ namespace SchoolInventoryManagement.Web.Controllers
         private readonly IAssetAssignmentService _assignmentService;
         private readonly IAssetMovementService _movementService;
         private readonly IAssetService _assetService;
-        private readonly ApplicationDbContext _context; // dropdown lookups only
+        private readonly ApplicationDbContext _context; // dropdown lookups and simple counts
         private readonly IDisposalService _disposalService;
         private readonly IWebHostEnvironment _webHostEnvironment;
 
-        // Matches the mockup's page size. Not the same number as the KPI
-        // tiles above it -- those are always the whole-inventory counts.
+        // Matches the mockup's page size. Unrelated to the KPI tiles above
+        // it -- those count the whole filtered scope, not just this page.
         private const int PageSize = 20;
 
         public AssetsController(
@@ -128,11 +128,10 @@ namespace SchoolInventoryManagement.Web.Controllers
             string? keyword, int? categoryId, int? departmentId,
             AssetStatus? status, ConditionStatus? condition, int page = 1)
         {
-            // Whole-inventory counts for the KPI tiles -- deliberately NOT
-            // filtered, so the tiles read as fixed totals rather than
-            // reshaping themselves every time the table below is narrowed.
-            var allAssets = await _assetService.GetAllAssetsAsync();
-
+            // One query drives both the table and the KPI tiles, which is
+            // what makes the tiles mirror the rows: every filter, status
+            // included, narrows this set, and the tiles are just its
+            // breakdown. With a status selected the other three read zero.
             var filtered = await _assetService.SearchAssetsAsync(
                 keyword, categoryId, null, null, departmentId, status, condition);
 
@@ -146,14 +145,19 @@ namespace SchoolInventoryManagement.Web.Controllers
 
             await PopulateFilterDropdownsAsync(categoryId, departmentId, status, condition);
 
+            // Unfiltered headcount, for the "N of M" caption above the tiles.
+            // A COUNT(*) rather than another GetAllAssetsAsync -- the page
+            // needs the number, not the rows.
+            var grandTotal = await _context.Assets.CountAsync();
+
             var model = new AssetIndexViewModel
             {
                 Assets = paged,
-                TotalCount = allAssets.Count,
-                AvailableCount = allAssets.Count(a => a.Status == AssetStatus.Available),
-                AssignedCount = allAssets.Count(a => a.Status == AssetStatus.Assigned),
-                UnderMaintenanceCount = allAssets.Count(a => a.Status == AssetStatus.UnderMaintenance),
-                DisposedCount = allAssets.Count(a => a.Status == AssetStatus.Disposed),
+                AvailableCount = filtered.Count(a => a.Status == AssetStatus.Available),
+                AssignedCount = filtered.Count(a => a.Status == AssetStatus.Assigned),
+                UnderMaintenanceCount = filtered.Count(a => a.Status == AssetStatus.UnderMaintenance),
+                DisposedCount = filtered.Count(a => a.Status == AssetStatus.Disposed),
+                GrandTotalCount = grandTotal,
                 Keyword = keyword,
                 CategoryId = categoryId,
                 DepartmentId = departmentId,
@@ -411,8 +415,10 @@ namespace SchoolInventoryManagement.Web.Controllers
             return RedirectToAction(nameof(Details), new { id });
         }
 
+        [Authorize(Roles = RoleNames.AssetOfficer + "," + RoleNames.Administrator + "," + RoleNames.Principal)]
         public async Task<IActionResult> History(int id)
         {
+
             var asset = await _assetService.GetAssetByIdAsync(id);
             if (asset is null)
                 return NotFound();

@@ -1,6 +1,14 @@
 ﻿@model SchoolInventoryManagement.BLL.DTOs.AssetResponseDTO
+@using SchoolInventoryManagement.DAL.Constants
 @{
     ViewData["Title"] = Model.AssetName;
+
+    // Mirrors the [Authorize] on AssetsController.History. The card below is
+    // hidden rather than left to 403 on click -- but hiding it is cosmetic,
+    // the action's own attribute is what actually stops a typed-in URL.
+    var canViewHistory = User.IsInRole(RoleNames.AssetOfficer)
+        || User.IsInRole(RoleNames.Administrator)
+        || User.IsInRole(RoleNames.Principal);
 }
 
 @if (TempData["ErrorMessage"] != null)
@@ -126,15 +134,18 @@
             </div>
         </div>
 
-        <div class="card">
-            <div class="card-body d-flex justify-content-between align-items-center">
-                <div>
-                    <h5 class="mb-1">History</h5>
-                    <p class="text-muted mb-0 small">Assignments, movements, disposals and the audit trail for this unit.</p>
+        @if (canViewHistory)
+        {
+            <div class="card">
+                <div class="card-body d-flex justify-content-between align-items-center">
+                    <div>
+                        <h5 class="mb-1">History</h5>
+                        <p class="text-muted mb-0 small">Assignments, movements, disposals and the audit trail for this unit.</p>
+                    </div>
+                    <a asp-action="History" asp-route-id="@Model.AssetID" class="btn btn-outline-secondary">View History</a>
                 </div>
-                <a asp-action="History" asp-route-id="@Model.AssetID" class="btn btn-outline-secondary">View History</a>
             </div>
-        </div>
+        }
     </div>
 
     <div class="col-lg-4">
