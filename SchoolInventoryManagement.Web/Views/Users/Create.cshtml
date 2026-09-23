@@ -38,16 +38,21 @@
 
     <div class="mb-3">
         <label asp-for="BranchID" class="form-label"></label>
-        <select asp-for="BranchID" asp-items="ViewBag.Branches" class="form-select">
+        <select asp-for="BranchID" id="branchSelect" asp-items="ViewBag.Branches" class="form-select">
             <option value="">-- Select Branch --</option>
         </select>
         <span asp-validation-for="BranchID" class="text-danger"></span>
+        <div class="form-text">Pick a branch first — Department below will narrow to it.</div>
     </div>
 
     <div class="mb-3">
         <label asp-for="DepartmentID" class="form-label"></label>
-        <select asp-for="DepartmentID" asp-items="ViewBag.Departments" class="form-select">
+        <select asp-for="DepartmentID" id="departmentSelect" class="form-select">
             <option value="">-- Select Department --</option>
+            @foreach (var dept in (List<SchoolInventoryManagement.BLL.DTOs.DepartmentDTO>)ViewBag.DepartmentsByBranch)
+            {
+                <option value="@dept.DepartmentID" data-branch="@dept.BranchID">@dept.DepartmentName</option>
+            }
         </select>
         <span asp-validation-for="DepartmentID" class="text-danger"></span>
     </div>
@@ -72,4 +77,32 @@
     @{
         await Html.RenderPartialAsync("_ValidationScriptsPartial");
     }
+    <script>
+        // Same approach as Assets/Create: every department is rendered with
+        // a data-branch tag, and choosing a branch hides the ones that belong
+        // elsewhere. UserService re-checks the pair on save.
+        (function () {
+            var branchSelect = document.getElementById('branchSelect');
+            var departmentSelect = document.getElementById('departmentSelect');
+            if (!branchSelect || !departmentSelect) return;
+
+            function filterDepartments() {
+                var branchId = branchSelect.value;
+
+                Array.from(departmentSelect.options).forEach(function (opt) {
+                    if (!opt.value) { opt.hidden = false; return; } // keep the placeholder
+                    opt.hidden = branchId === '' || opt.getAttribute('data-branch') !== branchId;
+                });
+
+                // Switching branch must not leave a department from the old one selected.
+                var selected = departmentSelect.options[departmentSelect.selectedIndex];
+                if (selected && selected.hidden) {
+                    departmentSelect.value = '';
+                }
+            }
+
+            branchSelect.addEventListener('change', filterDepartments);
+            filterDepartments(); // also on load, so a failed-validation redisplay stays filtered
+        })();
+    </script>
 }

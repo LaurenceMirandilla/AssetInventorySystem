@@ -343,6 +343,10 @@ namespace SchoolInventoryManagement.Web.Controllers
             ViewBag.Departments = new SelectList(
                 departments.Select(d => new { d.DepartmentID, Label = $"{d.BranchName} — {d.DepartmentName}" }),
                 "DepartmentID", "Label");
+
+            // Same list with BranchID kept, so Create can tag each option
+            // with data-branch and filter it to the chosen branch.
+            ViewBag.DepartmentsByBranch = departments;
         }
     }
 }

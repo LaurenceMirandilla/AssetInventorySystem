@@ -76,7 +76,7 @@ namespace SchoolInventoryManagement.DAL.Seed
                     BranchID = branch.BranchID,
                     FirstName = "System",
                     LastName = "Administrator",
-                    Email = "admin@schoolinventory.local",
+                    Email = "Admin@sabs.edu.ph",
                     Status = "Active",
                     PasswordHash = string.Empty // placeholder, hashed below
                 };

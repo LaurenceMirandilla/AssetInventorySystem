@@ -40,6 +40,14 @@ namespace SchoolInventoryManagement.BLL.Services
             if (emailExists)
                 throw new InvalidOperationException("A user with this email already exists.");
 
+            // The form only offers departments of the chosen branch, but that
+            // filter is JavaScript and a stale or hand-built post skips it.
+            // This is the check that actually keeps the pair consistent.
+            var departmentInBranch = await _context.Departments
+                .AnyAsync(d => d.DepartmentID == dto.DepartmentID && d.BranchID == dto.BranchID);
+            if (!departmentInBranch)
+                throw new ArgumentException("That department does not belong to the selected branch.");
+
             var user = new User
             {
                 RoleID = dto.RoleID,
