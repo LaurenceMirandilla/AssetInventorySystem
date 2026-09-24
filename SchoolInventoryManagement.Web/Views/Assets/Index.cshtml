@@ -1,4 +1,4 @@
-@model SchoolInventoryManagement.Web.ViewModels.AssetIndexViewModel
+﻿@model SchoolInventoryManagement.Web.ViewModels.AssetIndexViewModel
 @using Microsoft.AspNetCore.Mvc.Rendering
 @{
     ViewData["Title"] = "Assets";
@@ -73,6 +73,14 @@
        class="report-tile text-decoration-none @(activeStatus == "InTransit" ? "active" : "")">
         <span class="report-tile-value">@Model.InTransitCount</span>
         <span class="report-tile-label">In transit</span>
+    </a>
+    <a asp-action="Index"
+       asp-route-status="@(activeStatus == "Overdue" ? null : "Overdue")"
+       asp-route-keyword="@Model.Keyword" asp-route-categoryId="@Model.CategoryId"
+       asp-route-departmentId="@Model.DepartmentId" asp-route-condition="@Model.Condition" asp-route-locationId="@Model.LocationId" asp-route-modelId="@Model.ModelId" asp-route-branchId="@Model.BranchId"
+       class="report-tile text-decoration-none @(activeStatus == "Overdue" ? "active" : "")">
+        <span class="report-tile-value @(Model.OverdueCount > 0 ? "text-danger" : "")">@Model.OverdueCount</span>
+        <span class="report-tile-label">Overdue</span>
     </a>
     <a asp-action="Index"
        asp-route-status="@(activeStatus == "UnderMaintenance" ? null : "UnderMaintenance")"

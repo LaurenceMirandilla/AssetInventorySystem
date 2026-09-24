@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using SchoolInventoryManagement.BLL.Interfaces;
+using SchoolInventoryManagement.DAL.Constants;
 using SchoolInventoryManagement.DAL.Context;
 using SchoolInventoryManagement.DAL.Entities;
 using SchoolInventoryManagement.DAL.Entities.Enums;
@@ -385,6 +386,104 @@ namespace SchoolInventoryManagement.BLL.Services
                 $"/AssetRequests/Details/{requestId}");
 
             await SaveWithConcurrencyGuardAsync();
+        }
+
+        // Only units that were picked up can go overdue: an InTransit unit
+        // never reached the requester, and a direct assignment has no
+        // ReturnBy. Alerts go out on the Assigned -> Overdue flip, so each
+        // request is announced once. If two page loads race, the second
+        // save hits the asset RowVersion and is dropped, so nobody is
+        // told twice.
+        public async Task<int> MarkOverdueAsync()
+        {
+            var now = DateTime.Now;
+
+            var late = await _context.AssetAssignments
+                .Include(a => a.Asset)
+                .Include(a => a.Request!)
+                    .ThenInclude(r => r.RequestedByUser)
+                .Where(a => a.ReturnDate == null
+                            && a.RequestID != null
+                            && a.Request!.RequestStatus == RequestStatus.Assigned
+                            && a.Request.ReturnBy < now
+                            && a.Asset.Status == AssetStatus.Assigned)
+                .ToListAsync();
+
+            if (late.Count == 0)
+                return 0;
+
+            var managerIds = await _context.Users
+                .Where(u => u.Status == "Active"
+                            && (u.Role.RoleName == RoleNames.AssetOfficer
+                                || u.Role.RoleName == RoleNames.Administrator))
+                .Select(u => u.UserID)
+                .ToListAsync();
+
+            foreach (var group in late.GroupBy(a => a.RequestID!.Value))
+            {
+                var request = group.First().Request!;
+                var due = request.ReturnBy!.Value.ToString("MMM d, h:mm tt");
+
+                foreach (var assignment in group)
+                {
+                    assignment.Asset.Status = AssetStatus.Overdue;
+
+                    // Written by hand, not by the audit interceptor: that
+                    // one would credit whoever happened to load a page.
+                    // This names the person holding the unit.
+                    _context.AuditLogs.Add(new AuditLog
+                    {
+                        UserID = assignment.AssignedToUserID,
+                        ActionPerformed = "Asset Overdue",
+                        TargetAssetID = assignment.AssetID,
+                        EntityType = nameof(AssetRequest),
+                        EntityID = request.RequestID,
+                        LogDateTime = now,
+                        Description = $"Not returned by {due} on request #{request.RequestID}. " +
+                                      "Status: 'Assigned' -> 'Overdue' (set automatically)."
+                    });
+                }
+
+                var units = group.Select(a => a.Asset).ToList();
+                var what = units.Count == 1
+                    ? $"{units[0].AssetName} ({units[0].AssetCode}) was"
+                    : $"{units.Count} items were";
+                var url = $"/AssetRequests/Details/{request.RequestID}";
+
+                // The requester, plus whoever holds a unit if that is
+                // someone else.
+                var holderIds = group.Select(a => a.AssignedToUserID)
+                    .Append(request.RequestedByUserID)
+                    .Distinct()
+                    .ToList();
+
+                foreach (var userId in holderIds)
+                    NotificationHelper.Queue(_context, userId,
+                        $"Overdue: on your request #{request.RequestID}, {what} due back {due}. Please return it.",
+                        url);
+
+                var requester = $"{request.RequestedByUser.FirstName} {request.RequestedByUser.LastName}";
+                foreach (var userId in managerIds.Except(holderIds))
+                    NotificationHelper.Queue(_context, userId,
+                        $"Overdue: request #{request.RequestID} by {requester}: {what} due back {due}.",
+                        url);
+            }
+
+            _context.SkipAutoAudit = true;
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                return 0;
+            }
+            finally
+            {
+                _context.SkipAutoAudit = false;
+            }
+
+            return late.Count;
         }
 
         private async Task SaveWithConcurrencyGuardAsync()

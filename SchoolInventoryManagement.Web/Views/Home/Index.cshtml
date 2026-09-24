@@ -101,7 +101,7 @@ else
             <span class="report-tile-label">Under maintenance</span>
         </div>
         <div class="report-tile">
-            <span class="report-tile-value">@Model.ValueInService.ToString("C0")</span>
+            <span class="report-tile-value">@DisplayText.Peso(Model.ValueInService)</span>
             <span class="report-tile-label">Value in service</span>
             <span class="report-tile-note">excludes disposed units</span>
         </div>

@@ -210,6 +210,7 @@ namespace SchoolInventoryManagement.Web.Controllers
                 AvailableCount = filtered.Count(a => a.Status == AssetStatus.Available),
                 AssignedCount = filtered.Count(a => a.Status == AssetStatus.Assigned),
                 InTransitCount = filtered.Count(a => a.Status == AssetStatus.InTransit),
+                OverdueCount = filtered.Count(a => a.Status == AssetStatus.Overdue),
                 UnderMaintenanceCount = filtered.Count(a => a.Status == AssetStatus.UnderMaintenance),
                 DisposedCount = filtered.Count(a => a.Status == AssetStatus.Disposed),
                 GrandTotalCount = grandTotal,
@@ -244,7 +245,7 @@ namespace SchoolInventoryManagement.Web.Controllers
                 new[]
                 {
                     "Code", "Name", "Model", "Category", "Status", "Condition",
-                    "Location", "Holder", "Department", "Branch", "Acquisition Cost"
+                    "Location", "Holder", "Department", "Branch", "Acquisition Cost (PHP)"
                 },
                 assets.Select(a => new string?[]
                 {
@@ -260,6 +261,11 @@ namespace SchoolInventoryManagement.Web.Controllers
                     a.BranchName,
                     a.AcquisitionCost?.ToString("0.00", CultureInfo.InvariantCulture)
                 }));
+
+            var filters = Request.QueryString.HasValue
+                ? " " + System.Net.WebUtility.UrlDecode(Request.QueryString.Value)
+                : "";
+            await RecordAccessAsync("Data Exported", $"Assets list{filters}");
 
             return File(csv, "text/csv", CsvExportHelper.TimestampedFileName("assets"));
         }
@@ -402,9 +408,10 @@ namespace SchoolInventoryManagement.Web.Controllers
                 return NotFound();
 
             // Out on a request -- reserved and waiting (InTransit) or with
-            // someone (Assigned). Editing its location now would pull it
-            // out from under the request.
-            if (asset.Status == AssetStatus.Assigned || asset.Status == AssetStatus.InTransit)
+            // someone (Assigned, or Overdue once late). Editing its location
+            // now would pull it out from under the request.
+            if (asset.Status == AssetStatus.Assigned || asset.Status == AssetStatus.InTransit ||
+                asset.Status == AssetStatus.Overdue)
             {
                 TempData["ErrorMessage"] = "This asset is out on a request and cannot be edited until it's returned.";
                 return RedirectToAction(nameof(Details), new { id });
@@ -528,7 +535,7 @@ namespace SchoolInventoryManagement.Web.Controllers
             }
             catch (Exception ex)
             {
-                TempData["ErrorMessage"] = ex.Message;
+                TempData["ErrorMessage"] = UserMessageFor(ex);
             }
 
             return RedirectToAction(nameof(Details), new { id });
@@ -638,7 +645,7 @@ namespace SchoolInventoryManagement.Web.Controllers
             }
             catch (Exception ex)
             {
-                TempData["ErrorMessage"] = ex.Message;
+                TempData["ErrorMessage"] = UserMessageFor(ex);
             }
 
             return RedirectToAction(nameof(Details), new { id });
@@ -657,7 +664,7 @@ namespace SchoolInventoryManagement.Web.Controllers
             }
             catch (Exception ex)
             {
-                TempData["ErrorMessage"] = ex.Message;
+                TempData["ErrorMessage"] = UserMessageFor(ex);
             }
 
             return RedirectToAction(nameof(Details), new { id });

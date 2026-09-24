@@ -1,4 +1,4 @@
-@using SchoolInventoryManagement.Web.Controllers
+﻿@using SchoolInventoryManagement.Web.Controllers
 @using SchoolInventoryManagement.DAL.Constants
 @model List<SchoolInventoryManagement.BLL.DTOs.UserResponseDTO>
 @{
@@ -9,10 +9,6 @@
     var currentUserId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
 
     var statusFilter = (ViewData["StatusFilter"] as string) ?? UsersController.StatusFilterActive;
-}
-@if (TempData["StatusMessage"] != null)
-{
-    <div class="alert alert-success">@TempData["StatusMessage"]</div>
 }
 @if (TempData["ErrorMessage"] != null)
 {
@@ -63,7 +59,6 @@
             @foreach (var user in Model)
             {
                 var isSelf = user.UserID.ToString() == currentUserId;
-                var isAnonymized = AnonymizedUser.IsAnonymizedEmail(user.Email);
 
                 <tr>
                     <td>
@@ -90,21 +85,12 @@
                     <td>@user.DepartmentName</td>
                     <td>@user.BranchName</td>
                     <td>
-                        @if (isAnonymized)
-                        {
-                            <span class="status-pill status-cancelled">Anonymized</span>
-                        }
-                        else
-                        {
-                            <span class="status-pill status-@user.Status.ToLowerInvariant()">@user.Status</span>
-                        }
+                        <span class="status-pill status-@user.Status.ToLowerInvariant()">@user.Status</span>
                     </td>
                     <td>
                         <a asp-action="Edit" asp-route-id="@user.UserID">Edit</a>
 
-                        @* Pointless on an anonymized account -- nobody is left to
-                           hand the new password to. *@
-                        @if (!isSelf && !isAnonymized)
+                        @if (!isSelf)
                         {
                             <a asp-action="ResetPassword" asp-route-id="@user.UserID" class="ms-2">Reset Password</a>
                         }
@@ -127,16 +113,6 @@
                             </form>
                         }
 
-                        @* Irreversible, so it is worded bluntly and asks twice. *@
-                        @if (!isSelf && !isAnonymized)
-                        {
-                            <form asp-action="Anonymize" asp-route-id="@user.UserID" method="post" class="d-inline"
-                                  onsubmit="return confirm('Permanently remove the name and email for @user.Email?\n\nThis CANNOT be undone. Their history stays, but will no longer name them.');">
-                                @Html.AntiForgeryToken()
-                                <input type="hidden" name="rowVersionBase64" value="@Convert.ToBase64String(user.RowVersion)" />
-                                <button type="submit" class="btn btn-link text-danger p-0 ms-2">Anonymize</button>
-                            </form>
-                        }
                     </td>
                 </tr>
             }
@@ -154,18 +130,11 @@
 </div>
 
 <div class="row g-3 mt-1">
-    <div class="col-md-6">
+    <div class="col-md-12">
         <div class="sab-callout">
             <span class="sab-callout-label">Deactivate</span>
             Reversible. Blocks sign-in and takes effect on any open session at
             once — it does not wait for their cookie to expire.
-        </div>
-    </div>
-    <div class="col-md-6">
-        <div class="sab-callout sab-callout-danger">
-            <span class="sab-callout-label">Anonymize</span>
-            Permanent. Clears the name and email for someone who has asked to be
-            forgotten, leaving their records pointing at a tombstone.
         </div>
     </div>
 </div>

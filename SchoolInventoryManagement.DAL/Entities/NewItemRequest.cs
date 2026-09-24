@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using SchoolInventoryManagement.DAL.Entities.Enums;
@@ -36,6 +37,7 @@ namespace SchoolInventoryManagement.DAL.Entities
         // Kept so the entity matches the table; new rows get the defaults.
         public int? CategoryID { get; set; }
 
+        // How many are wanted. The form asks for it on every item.
         public int Quantity { get; set; } = 1;
 
         [MaxLength(500)]
@@ -44,8 +46,10 @@ namespace SchoolInventoryManagement.DAL.Entities
         public DateTime RequestDate { get; set; }
 
         [Required]
-        public RequestStatus RequestStatus { get; set; } = RequestStatus.Pending;
+        public NewItemStatus RequestStatus { get; set; } = NewItemStatus.AwaitingDeptHead;
 
+        // Whoever acted last, and their remarks -- the list pages' "Outcome".
+        // The full story is in Steps.
         public int? ReviewedByUserID { get; set; }
         public DateTime? ReviewDate { get; set; }
 
@@ -68,5 +72,8 @@ namespace SchoolInventoryManagement.DAL.Entities
 
         [ForeignKey(nameof(ReviewedByUserID))]
         public User? ReviewedByUser { get; set; }
+
+        // Every stage it has been through, oldest first.
+        public ICollection<NewItemRequestStep> Steps { get; set; } = new List<NewItemRequestStep>();
     }
 }

@@ -14,6 +14,8 @@ namespace SchoolInventoryManagement.BLL.DTOs
         public string ActionPerformed { get; set; } = null!;
         public int? TargetAssetID { get; set; }
         public string? TargetAssetCode { get; set; }
+        public string? EntityType { get; set; }
+        public int? EntityID { get; set; }
         public string? Description { get; set; }
         public string? IPAddress { get; set; }
     }

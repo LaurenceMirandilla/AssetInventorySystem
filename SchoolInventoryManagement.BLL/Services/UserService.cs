@@ -32,6 +32,39 @@ namespace SchoolInventoryManagement.BLL.Services
                 .Include(u => u.Branch);
         }
 
+        // One active Department Head per department: new-item requests go
+        // to "the" department head, so two would split who approves.
+        // Deactivated heads do not count, so a department can get a new
+        // head once the old one is deactivated -- but reactivating the old
+        // one then needs the new one moved or deactivated first.
+        private async Task EnsureDepartmentHeadFreeAsync(int roleId, int departmentId, int exceptUserId)
+        {
+            var isHeadRole = await _context.Roles
+                .AnyAsync(r => r.RoleID == roleId && r.RoleName == RoleNames.DepartmentHead);
+            if (!isHeadRole)
+                return;
+
+            var currentHead = await _context.Users
+                .Where(u => u.DepartmentID == departmentId
+                            && u.UserID != exceptUserId
+                            && u.Status == "Active"
+                            && u.Role.RoleName == RoleNames.DepartmentHead)
+                .Select(u => u.FirstName + " " + u.LastName)
+                .FirstOrDefaultAsync();
+
+            if (currentHead is null)
+                return;
+
+            var department = await _context.Departments
+                .Where(d => d.DepartmentID == departmentId)
+                .Select(d => d.DepartmentName)
+                .FirstOrDefaultAsync();
+
+            throw new InvalidOperationException(
+                $"{department ?? "This department"} already has a department head ({currentHead}). " +
+                "A department can have only one. Change their role or deactivate them first.");
+        }
+
         public async Task<UserResponseDTO> CreateUserAsync(CreateUserDTO dto, int actingUserId)
         {
             await PermissionHelper.EnsureIsUserManagerAsync(_context, actingUserId);
@@ -47,6 +80,8 @@ namespace SchoolInventoryManagement.BLL.Services
                 .AnyAsync(d => d.DepartmentID == dto.DepartmentID && d.BranchID == dto.BranchID);
             if (!departmentInBranch)
                 throw new ArgumentException("That department does not belong to the selected branch.");
+
+            await EnsureDepartmentHeadFreeAsync(dto.RoleID, dto.DepartmentID, exceptUserId: 0);
 
             var user = new User
             {
@@ -96,6 +131,11 @@ namespace SchoolInventoryManagement.BLL.Services
             var user = await _context.Users.FindAsync(userId);
             if (user is null)
                 throw new KeyNotFoundException("User not found.");
+
+            // Only an active user holds the post; an inactive one being
+            // edited is checked again if they are reactivated.
+            if (user.Status == "Active")
+                await EnsureDepartmentHeadFreeAsync(dto.RoleID, dto.DepartmentID, exceptUserId: userId);
 
             _context.Entry(user).Property(u => u.RowVersion).OriginalValue = dto.RowVersion;
 
@@ -149,6 +189,8 @@ namespace SchoolInventoryManagement.BLL.Services
             var user = await _context.Users.FindAsync(userId);
             if (user is null)
                 throw new KeyNotFoundException("User not found.");
+
+            await EnsureDepartmentHeadFreeAsync(user.RoleID, user.DepartmentID, exceptUserId: userId);
 
             _context.Entry(user).Property(u => u.RowVersion).OriginalValue = rowVersion;
 
@@ -209,51 +251,6 @@ namespace SchoolInventoryManagement.BLL.Services
                 user.UserID,
                 "Your password was reset by an administrator. " +
                 "If you did not expect this, report it immediately.");
-
-            try
-            {
-                await _context.SaveChangesAsync();
-            }
-            catch (DbUpdateConcurrencyException)
-            {
-                throw new ConcurrencyConflictException(
-                    "This user was modified by someone else. Please reload and try again.");
-            }
-        }
-
-        // Anonymization, not deletion. See IUserService for why a hard
-        // delete is not available.
-        public async Task AnonymizeUserAsync(int userId, byte[] rowVersion, int actingUserId)
-        {
-            await PermissionHelper.EnsureIsUserManagerAsync(_context, actingUserId);
-
-            var user = await _context.Users.FindAsync(userId);
-            if (user is null)
-                throw new KeyNotFoundException("User not found.");
-
-            // Refusing to act on your own account is what makes a lockout
-            // impossible here: whoever runs this is a user manager and
-            // survives it, so the system can never be left with nobody able
-            // to manage users. It also stops anyone quietly erasing their own
-            // identity from the audit trail.
-            if (user.UserID == actingUserId)
-                throw new InvalidOperationException("You cannot anonymize your own account.");
-
-            if (AnonymizedUser.IsAnonymizedEmail(user.Email))
-                throw new InvalidOperationException("This account has already been anonymized.");
-
-            _context.Entry(user).Property(u => u.RowVersion).OriginalValue = rowVersion;
-
-            user.FirstName = AnonymizedUser.FirstName;
-            user.LastName = AnonymizedUser.LastName;
-            user.Email = AnonymizedUser.EmailFor(user.UserID);
-            user.Status = "Inactive";
-
-            // Status already blocks sign-in, but the old password must not
-            // survive the erasure -- if the account were ever reactivated,
-            // the former holder could still sign in with what they remember.
-            // A random value nobody holds makes that impossible.
-            user.PasswordHash = _passwordHasher.HashPassword(user, Guid.NewGuid().ToString());
 
             try
             {

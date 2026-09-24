@@ -16,6 +16,9 @@
                     still counted in the breakdowns below so nothing disappears from the record.
                 </p>
             </div>
+            <div class="sab-page-actions">
+                <a asp-action="ExportSummary" class="btn btn-primary">Export CSV</a>
+            </div>
         </div>
 
         <div class="report-tiles is-quad">
@@ -26,7 +29,7 @@
             </div>
             <div class="report-tile">
                 <span class="report-tile-label">Total value</span>
-                <span class="report-tile-value">@Model.TotalValue.ToString("C0")</span>
+                <span class="report-tile-value">@DisplayText.Peso(Model.TotalValue)</span>
                 <span class="report-tile-note">in service only</span>
             </div>
             <div class="report-tile">
@@ -71,7 +74,7 @@
                         <tr>
                             <td><span class="status-pill status-@row.Label.ToLowerInvariant()">@DisplayText.Humanize(row.Label)</span></td>
                             <td class="text-end">@row.Count</td>
-                            <td class="text-end">@row.TotalValue.ToString("C0")</td>
+                            <td class="text-end">@DisplayText.Peso(row.TotalValue)</td>
                             <td>
                                 <a asp-controller="Assets" asp-action="Index" asp-route-status="@row.Label">View assets</a>
                             </td>
@@ -91,7 +94,7 @@
                         <tr>
                             <td><span class="status-pill status-@row.Label.ToLowerInvariant()">@DisplayText.Humanize(row.Label)</span></td>
                             <td class="text-end">@row.Count</td>
-                            <td class="text-end">@row.TotalValue.ToString("C0")</td>
+                            <td class="text-end">@DisplayText.Peso(row.TotalValue)</td>
                         </tr>
                     }
                 </tbody>
@@ -108,7 +111,7 @@
                         <tr>
                             <td>@row.Label</td>
                             <td class="text-end">@row.Count</td>
-                            <td class="text-end">@row.TotalValue.ToString("C0")</td>
+                            <td class="text-end">@DisplayText.Peso(row.TotalValue)</td>
                         </tr>
                     }
                 </tbody>
@@ -125,7 +128,7 @@
                         <tr>
                             <td>@row.Label</td>
                             <td class="text-end">@row.Count</td>
-                            <td class="text-end">@row.TotalValue.ToString("C0")</td>
+                            <td class="text-end">@DisplayText.Peso(row.TotalValue)</td>
                         </tr>
                     }
                 </tbody>
@@ -142,7 +145,7 @@
                         <tr>
                             <td>@row.Label</td>
                             <td class="text-end">@row.Count</td>
-                            <td class="text-end">@row.TotalValue.ToString("C0")</td>
+                            <td class="text-end">@DisplayText.Peso(row.TotalValue)</td>
                         </tr>
                     }
                 </tbody>

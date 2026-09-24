@@ -55,7 +55,7 @@
         <div class="sab-table-card">
             <div class="sab-table-head">
                 <h5>Disposals</h5>
-                <span class="sab-table-count">@Model.Count disposal(s), original acquisition cost @totalCost.ToString("C0").</span>
+                <span class="sab-table-count">@Model.Count disposal(s), original acquisition cost @DisplayText.Peso(totalCost).</span>
             </div>
             <table class="table table-striped">
                 <thead>
@@ -83,7 +83,7 @@
                             <td>@row.ReasonForDisposal</td>
                             <td>@row.DisposalMethod</td>
                             <td>@row.ApprovedByName</td>
-                            <td class="text-end">@(row.AcquisitionCost?.ToString("C0") ?? "—")</td>
+                            <td class="text-end">@DisplayText.Peso(row.AcquisitionCost)</td>
                             <td>
                                 @if (row.IsRestored)
                                 {

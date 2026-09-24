@@ -17,6 +17,17 @@ namespace SchoolInventoryManagement.DAL.Entities
 
         public int? TargetAssetID { get; set; }
 
+        // The record the entry is about, e.g. "Location" + 5, so each
+        // screen can show its own history. Request lines, and units that
+        // went out on a request, file under their request ("AssetRequest").
+        // Report views and exports use "Report" with no ID. Added by
+        // script 009; older entries have neither.
+        [MaxLength(50)]
+        [Column(TypeName = "varchar(50)")]
+        public string? EntityType { get; set; }
+
+        public int? EntityID { get; set; }
+
         public DateTime LogDateTime { get; set; }
 
         [MaxLength(500)]

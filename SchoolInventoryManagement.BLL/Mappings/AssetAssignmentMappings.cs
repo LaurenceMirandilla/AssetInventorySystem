@@ -6,7 +6,8 @@ namespace SchoolInventoryManagement.BLL.Mappings
     public static class AssetAssignmentMappings
     {
         // Requires assignment.Asset, assignment.AssignedToUser(.Role),
-        // assignment.AssignedByUser(.Role) to be loaded
+        // assignment.AssignedByUser(.Role) to be loaded. assignment.Request
+        // is optional; without it the request fields stay empty.
         public static AssetAssignmentResponseDTO ToResponseDTO(this AssetAssignment assignment)
         {
             return new AssetAssignmentResponseDTO
@@ -15,6 +16,11 @@ namespace SchoolInventoryManagement.BLL.Mappings
                 AssetID = assignment.AssetID,
                 AssetCode = assignment.Asset.AssetCode,
                 AssetName = assignment.Asset.AssetName,
+                ModelName = assignment.Asset.Model?.ModelName ?? assignment.Asset.AssetName,
+                AssetStatus = assignment.Asset.Status,
+                RequestID = assignment.RequestID,
+                RequestType = assignment.Request?.RequestType,
+                RequestReturnBy = assignment.Request?.ReturnBy,
                 AssignedToUser = assignment.AssignedToUser.ToSummaryDTO(),
                 AssignedByUser = assignment.AssignedByUser.ToSummaryDTO(),
                 AssignmentDate = assignment.AssignmentDate,

@@ -1,4 +1,4 @@
-@model SchoolInventoryManagement.BLL.DTOs.UpdateBranchDTO
+﻿@model SchoolInventoryManagement.BLL.DTOs.UpdateBranchDTO
 @{
     ViewData["Title"] = "Edit Branch";
 }
@@ -28,6 +28,11 @@
     <button type="submit" class="btn btn-primary">Save</button>
     <a asp-action="Index" class="btn btn-secondary">Cancel</a>
 </form>
+
+@if (ViewBag.AuditHistory is List<SchoolInventoryManagement.BLL.DTOs.AuditReportRowDTO> history)
+{
+    <partial name="_AuditHistory" model="history" />
+}
 
 @section Scripts {
     @{

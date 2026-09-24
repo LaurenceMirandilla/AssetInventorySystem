@@ -15,5 +15,9 @@ namespace SchoolInventoryManagement.BLL.DTOs
 
         [Required]
         public DateTime? NeededBy { get; set; }
+
+        // How many are wanted.
+        [Range(1, 1000)]
+        public int Quantity { get; set; } = 1;
     }
 }

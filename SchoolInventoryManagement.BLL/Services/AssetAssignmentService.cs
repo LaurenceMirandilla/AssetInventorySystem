@@ -25,10 +25,12 @@ namespace SchoolInventoryManagement.BLL.Services
         {
             return _context.AssetAssignments
                 .Include(a => a.Asset)
+                    .ThenInclude(a => a.Model)
                 .Include(a => a.AssignedToUser)
                     .ThenInclude(u => u.Role)
                 .Include(a => a.AssignedByUser)
-                    .ThenInclude(u => u.Role);
+                    .ThenInclude(u => u.Role)
+                .Include(a => a.Request);
         }
 
         // notifyRecipient is false when RequestFulfillmentService drives this

@@ -24,14 +24,6 @@ namespace SchoolInventoryManagement.BLL.Interfaces
         // self-service path does not have.
         Task ResetPasswordAsync(int userId, string newPassword, byte[] rowVersion, int actingUserId);
 
-        // Blanks the account's name and email and locks it, while leaving
-        // every FK row that references it intact. This is the answer to
-        // "this person left and asked to be forgotten" -- a hard delete
-        // would either cascade real history away or fail on FK constraints.
-        // IRREVERSIBLE: the original name and email are not stored anywhere
-        // afterwards.
-        Task AnonymizeUserAsync(int userId, byte[] rowVersion, int actingUserId);
-
         // Roles are fixed, seeded reference data — there is no RoleService
         // and nothing creates or edits them, so the one thing anybody needs
         // is the list, for the user form's dropdown.

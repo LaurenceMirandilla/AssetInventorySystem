@@ -10,6 +10,11 @@ namespace SchoolInventoryManagement.DAL.Context
         {
         }
 
+        // Set for a save that writes its own AuditLog rows, so the audit
+        // interceptor does not add a second set credited to whoever is
+        // signed in. Used by the overdue check.
+        public bool SkipAutoAudit { get; set; }
+
         public DbSet<Asset> Assets { get; set; } = null!;
         public DbSet<User> Users { get; set; } = null!;
         public DbSet<Role> Roles { get; set; } = null!;
@@ -26,6 +31,7 @@ namespace SchoolInventoryManagement.DAL.Context
         public DbSet<Notification> Notifications { get; set; } = null!;
         public DbSet<Model> Models { get; set; } = null!;
         public DbSet<NewItemRequest> NewItemRequests { get; set; } = null!;
+        public DbSet<NewItemRequestStep> NewItemRequestSteps { get; set; } = null!;
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -341,6 +347,27 @@ namespace SchoolInventoryManagement.DAL.Context
             // would otherwise configure cascading deletes down both, which
             // SQL Server rejects as multiple cascade paths. Restrict on all
             // four, matching the NO ACTION the table script declares.
+            modelBuilder.Entity<NewItemRequestStep>()
+                .Property(s => s.Status)
+                .HasConversion<string>()
+                .HasMaxLength(20);
+
+            modelBuilder.Entity<NewItemRequestStep>()
+                .Property(s => s.ActedAt)
+                .HasDefaultValueSql("GETDATE()");
+
+            modelBuilder.Entity<NewItemRequestStep>()
+                .HasOne(s => s.Request)
+                .WithMany(n => n.Steps)
+                .HasForeignKey(s => s.NewItemRequestID)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<NewItemRequestStep>()
+                .HasOne(s => s.ActedByUser)
+                .WithMany()
+                .HasForeignKey(s => s.ActedByUserID)
+                .OnDelete(DeleteBehavior.Restrict);
+
             modelBuilder.Entity<NewItemRequest>()
                 .HasOne(n => n.RequestedByUser)
                 .WithMany()

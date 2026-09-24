@@ -1,10 +1,11 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using SchoolInventoryManagement.BLL.DTOs;
 using SchoolInventoryManagement.BLL.Interfaces;
+using SchoolInventoryManagement.DAL.Constants;
 using SchoolInventoryManagement.DAL.Context;
 using SchoolInventoryManagement.DAL.Entities;
 using SchoolInventoryManagement.DAL.Entities.Enums;
@@ -45,7 +46,9 @@ namespace SchoolInventoryManagement.BLL.Services
                 TotalValue = await inService.SumAsync(a => a.AcquisitionCost ?? 0m),
 
                 AvailableCount = await assets.CountAsync(a => a.Status == AssetStatus.Available),
-                AssignedCount = await assets.CountAsync(a => a.Status == AssetStatus.Assigned),
+                // Overdue units are still out with someone, just late.
+                AssignedCount = await assets.CountAsync(a =>
+                    a.Status == AssetStatus.Assigned || a.Status == AssetStatus.Overdue),
                 UnderMaintenanceCount = await assets.CountAsync(a => a.Status == AssetStatus.UnderMaintenance),
                 DisposedCount = await assets.CountAsync(a => a.Status == AssetStatus.Disposed),
                 LostOrDamagedCount = await assets.CountAsync(a =>
@@ -350,7 +353,7 @@ namespace SchoolInventoryManagement.BLL.Services
             DateTime? fromDate, DateTime? toDate, int? userId,
             string? actionContains, int maxRows, int actingUserId)
         {
-            await PermissionHelper.EnsureCanViewReportsAsync(_context, actingUserId);
+            var viewer = await PermissionHelper.EnsureCanViewReportsAsync(_context, actingUserId);
 
             // AuditLogs grows without bound and nothing prunes it, so this
             // is always capped. The view tells the reader when the cap bit.
@@ -375,12 +378,64 @@ namespace SchoolInventoryManagement.BLL.Services
             if (!string.IsNullOrWhiteSpace(actionContains))
                 query = query.Where(l => l.ActionPerformed.Contains(actionContains));
 
+            // App errors carry technical detail (paths, database messages),
+            // so only Administrators see them.
+            if (viewer.Role.RoleName != RoleNames.Administrator)
+                query = query.Where(l => l.EntityType == null || l.EntityType != "Error");
+
             var logs = await query
                 .OrderByDescending(l => l.LogDateTime)
                 .Take(maxRows)
                 .ToListAsync();
 
-            return logs.Select(l => new AuditReportRowDTO
+            return logs.Select(ToAuditRow).ToList();
+        }
+
+        public async Task<List<AuditReportRowDTO>> GetEntityHistoryAsync(
+            string entityType, IReadOnlyCollection<int> entityIds, int actingUserId)
+        {
+            await PermissionHelper.EnsureCanViewReportsAsync(_context, actingUserId);
+
+            if (entityIds.Count == 0)
+                return new List<AuditReportRowDTO>();
+
+            // Capped like the audit report; a busy request can build up
+            // a long history, and the full list is on Reports > Audit.
+            var logs = await _context.AuditLogs
+                .Include(l => l.User)
+                    .ThenInclude(u => u.Role)
+                .Include(l => l.TargetAsset)
+                .Where(l => l.EntityType == entityType
+                            && l.EntityID != null
+                            && entityIds.Contains(l.EntityID.Value))
+                .OrderByDescending(l => l.LogDateTime)
+                .ThenByDescending(l => l.LogID)
+                .Take(200)
+                .ToListAsync();
+
+            return logs.Select(ToAuditRow).ToList();
+        }
+
+        public async Task RecordEventAsync(
+            string action, string description, string? ipAddress, int actingUserId,
+            string entityType = "Report")
+        {
+            _context.AuditLogs.Add(new AuditLog
+            {
+                UserID = actingUserId,
+                ActionPerformed = action,
+                Description = description.Length > 500 ? description[..497] + "..." : description,
+                IPAddress = ipAddress,
+                EntityType = entityType,
+                LogDateTime = DateTime.Now
+            });
+
+            await _context.SaveChangesAsync();
+        }
+
+        private static AuditReportRowDTO ToAuditRow(AuditLog l)
+        {
+            return new AuditReportRowDTO
             {
                 LogID = l.LogID,
                 LogDateTime = l.LogDateTime,
@@ -390,9 +445,11 @@ namespace SchoolInventoryManagement.BLL.Services
                 ActionPerformed = l.ActionPerformed,
                 TargetAssetID = l.TargetAssetID,
                 TargetAssetCode = l.TargetAsset?.AssetCode,
+                EntityType = l.EntityType,
+                EntityID = l.EntityID,
                 Description = l.Description,
                 IPAddress = l.IPAddress
-            }).ToList();
+            };
         }
     }
 }

@@ -47,7 +47,7 @@ namespace SchoolInventoryManagement.Web.Controllers
             int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
         // GET /Users?status=Active
-        // Defaults to Active: deactivated and anonymized accounts are never
+        // Defaults to Active: deactivated accounts are never
         // removed, so without a filter they accumulate in the list forever
         // and bury the people who can actually sign in.
         [Authorize(Roles = UserManagerRoles)]
@@ -60,34 +60,6 @@ namespace SchoolInventoryManagement.Web.Controllers
 
             ViewData["StatusFilter"] = status;
             return View(users);
-        }
-
-        // POST /Users/Anonymize/5 — irreversible. Blanks the name and email
-        // and locks the account, keeping the FK history pointing at a
-        // tombstone. Distinct from Deactivate, which is reversible and keeps
-        // the identity.
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        [Authorize(Roles = UserManagerRoles)]
-        public async Task<IActionResult> Anonymize(int id, string rowVersionBase64)
-        {
-            try
-            {
-                await _userService.AnonymizeUserAsync(
-                    id, RowVersionHelper.FromBase64(rowVersionBase64), CurrentUserId);
-
-                TempData["StatusMessage"] =
-                    "Account anonymized. The records it is attached to are intact, " +
-                    "but no longer name the person.";
-            }
-            catch (Exception ex)
-            {
-                TempData["ErrorMessage"] = ex.Message;
-            }
-
-            // Anonymized accounts are Inactive, so send the manager to a view
-            // that actually contains the row they just changed.
-            return RedirectToAction(nameof(Index), new { status = StatusFilterInactive });
         }
 
         // GET /Users/Create
@@ -206,7 +178,7 @@ namespace SchoolInventoryManagement.Web.Controllers
             }
             catch (Exception ex)
             {
-                TempData["ErrorMessage"] = ex.Message;
+                TempData["ErrorMessage"] = UserMessageFor(ex);
             }
 
             return RedirectToAction(nameof(Index));
@@ -225,7 +197,7 @@ namespace SchoolInventoryManagement.Web.Controllers
             }
             catch (Exception ex)
             {
-                TempData["ErrorMessage"] = ex.Message;
+                TempData["ErrorMessage"] = UserMessageFor(ex);
             }
 
             return RedirectToAction(nameof(Index));

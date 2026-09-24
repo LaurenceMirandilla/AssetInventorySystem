@@ -31,6 +31,12 @@ namespace SchoolInventoryManagement.BLL.Interfaces
         // destination. Asset Officers and Administrators only.
         Task MarkAssignedAsync(int requestId, byte[] requestRowVersion, int actingUserId);
 
+        // Assigned -> Overdue for every unit past its request's ReturnBy,
+        // with alerts to the holder, Asset Officers and Administrators.
+        // Runs on every page load (NotificationBellViewComponent), so it
+        // needs no acting user. Returns how many units it marked.
+        Task<int> MarkOverdueAsync();
+
         // Some or all of the ticket's units come back to returnLocationId.
         // The request is Returned once none are left out. Asset Officers and
         // Administrators only.

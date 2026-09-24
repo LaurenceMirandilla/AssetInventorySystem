@@ -1,6 +1,19 @@
 ﻿@model List<SchoolInventoryManagement.BLL.DTOs.NewItemRequestResponseDTO>
+@using SchoolInventoryManagement.DAL.Entities.Enums
 @{
-    ViewData["Title"] = "My New-Item Requests";
+    // Two modes. MyRequests: the signed-in user's own requests. All
+    // (NewItemRequestsController.All): everyone's, with a requester column
+    // and a stage filter. Each request's steps are on its own page.
+    var showAll = ViewBag.ShowAll == true;
+    var status = ViewBag.Status as NewItemStatus?;
+    var search = ViewBag.Search as string;
+    var sort = ViewBag.Sort as string ?? "newest";
+    var filtered = status is not null || !string.IsNullOrEmpty(search);
+
+    var stages = new[] { NewItemStatus.AwaitingDeptHead, NewItemStatus.AwaitingBudget, NewItemStatus.Procuring,
+                         NewItemStatus.Arrived, NewItemStatus.Rejected, NewItemStatus.Cancelled };
+
+    ViewData["Title"] = showAll ? "All New-Item Requests" : "My New-Item Requests";
 }
 @if (TempData["ErrorMessage"] != null)
 {
@@ -9,13 +22,57 @@
 
 <div class="sab-page-head">
     <div>
-        <h2>My New-Item Requests</h2>
-        <p class="sab-page-sub">Things you have asked the school to acquire.</p>
+        <h2>@ViewData["Title"]</h2>
+        <p class="sab-page-sub">
+            @(showAll
+                ? $"{Model.Count} request{(Model.Count == 1 ? "" : "s")}{(status is null ? "" : " " + DisplayText.Stage(status.Value).ToLowerInvariant())}{(string.IsNullOrEmpty(search) ? "" : " matching '" + search + "'")}, {sort} first. Every request from everyone, wherever it has got to."
+                : "Things you have asked the school to acquire. Open one to see each step and who took it.")
+        </p>
     </div>
     <div class="sab-page-actions">
         <a asp-action="Create" class="btn btn-primary">+ Request an item</a>
     </div>
 </div>
+
+@if (showAll)
+{
+    @* Search and order. The stage rides along as a hidden field, so
+       searching keeps the stage chosen below. *@
+    <div class="sab-filter-card">
+        <form asp-action="All" method="get" class="row g-2 align-items-end">
+            <input type="hidden" name="status" value="@status" />
+            <div class="col-md-6">
+                <label class="form-label" for="nirSearch">Search</label>
+                <input id="nirSearch" type="search" name="q" value="@search" class="form-control"
+                       placeholder="Item, reason, requester, department or #number" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="nirSort">Order by request time</label>
+                <select id="nirSort" name="sort" class="form-select">
+                    <option value="newest" selected="@(sort != "oldest")">Newest first (descending)</option>
+                    <option value="oldest" selected="@(sort == "oldest")">Oldest first (ascending)</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <button type="submit" class="btn btn-secondary">Apply</button>
+                <a asp-action="All" class="btn btn-outline-secondary">Reset</a>
+            </div>
+        </form>
+    </div>
+
+    @* Stage: one chip per stage, click the active one to clear. The
+       search and order carry over. *@
+    <div class="mb-3 small">
+        <span class="text-muted me-1">Stage:</span>
+        <a asp-action="All" asp-route-q="@search" asp-route-sort="@sort"
+           class="sab-chip @(status is null ? "active" : "")">All</a>
+        @foreach (var s in stages)
+        {
+            <a asp-action="All" asp-route-status="@(status == s ? null : s.ToString())" asp-route-q="@search" asp-route-sort="@sort"
+               class="sab-chip @(status == s ? "active" : "")">@DisplayText.Stage(s)</a>
+        }
+    </div>
+}
 
 @if (Model.Any())
 {
@@ -25,35 +82,48 @@
                 <tr>
                     <th>#</th>
                     <th>Item</th>
+                    <th class="text-end">Amount</th>
+                    @if (showAll)
+                    {
+                        <th>Requested by</th>
+                    }
                     <th>Needed by</th>
                     <th>Submitted</th>
-                    <th>Status</th>
-                    <th>Outcome</th>
+                    <th>Stage</th>
+                    <th>Last action</th>
                 </tr>
             </thead>
             <tbody>
                 @foreach (var request in Model)
                 {
                     <tr>
-                        <td>@request.NewItemRequestID</td>
+                        <td><a asp-action="Details" asp-route-id="@request.NewItemRequestID">@request.NewItemRequestID</a></td>
                         <td>
-                            <div class="fw-semibold">@request.ItemName</div>
+                            <a asp-action="Details" asp-route-id="@request.NewItemRequestID" class="fw-semibold">@request.ItemName</a>
                             @if (!string.IsNullOrWhiteSpace(request.Reason))
                             {
                                 <div class="text-muted small">@request.Reason</div>
                             }
                         </td>
+                        <td class="text-end">@request.Quantity</td>
+                        @if (showAll)
+                        {
+                            <td>
+                                <div>@request.RequestedByUserName</div>
+                                <div class="text-muted small">@request.DepartmentName</div>
+                            </td>
+                        }
                         <td>@(request.NeededBy?.ToString("MMM d, yyyy") ?? "—")</td>
                         <td>@request.RequestDate.ToString("MMM d, yyyy")</td>
                         <td>
                             <span class="status-pill status-@request.RequestStatus.ToString().ToLowerInvariant()">
-                                @request.RequestStatus
+                                @DisplayText.Stage(request.RequestStatus)
                             </span>
                         </td>
                         <td>
                             @if (request.ReviewedByUserName is null)
                             {
-                                <span class="text-muted">Awaiting review</span>
+                                <span class="text-muted small">Waiting for the first approval</span>
                             }
                             else
                             {
@@ -68,6 +138,15 @@
                 }
             </tbody>
         </table>
+    </div>
+}
+else if (showAll)
+{
+    <div class="card">
+        <div class="sab-empty">
+            <div class="sab-empty-title">@(filtered ? "No requests match these filters" : "No requests yet")</div>
+            <p>@(filtered ? "Try another stage or search, or reset the filters." : "New-item requests appear here once anyone submits one.")</p>
+        </div>
     </div>
 }
 else

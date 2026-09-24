@@ -1,4 +1,4 @@
-/* ==========================================================================
+﻿/* ==========================================================================
    Ste. Anne De Beaupre — Inventory theme
    Green re-skin of the default Bootstrap 5 look. Drop this in at
    wwwroot/css/site.css, replacing the existing file. Nothing here renames
@@ -413,6 +413,7 @@ a.report-tile:hover {
 .status-lost             { background: var(--sab-red-bg);     color: var(--sab-red-text); }
 .status-damaged          { background: var(--sab-red-bg);     color: var(--sab-red-text); }
 .status-disposed         { background: var(--sab-gray-bg);    color: var(--sab-gray-text); }
+.status-overdue          { background: var(--sab-red-bg);     color: var(--sab-red-text); }
 
 /* Users.Status is a plain string column, not an enum, but it renders through
    the same pill so it needs the same two classes. */
@@ -844,3 +845,49 @@ h2 { font-weight: 700; font-size: 1.35rem; color: var(--sab-text); }
 @media (min-width: 1200px) {
   .report-tiles.is-quad { grid-template-columns: repeat(4, 1fr); }
 }
+
+/* Model picker (Views/Assets/_ModelPicker): a typeable dropdown. The list
+   scrolls instead of running off the page when there are many models. */
+.model-picker-list {
+  max-height: 280px;
+  overflow-y: auto;
+}
+.model-picker-list .dropdown-item {
+  white-space: normal;
+}
+
+/* New-item request stages (NewItemStatus). Rejected and Cancelled reuse
+   the request pills above. */
+.status-awaitingdepthead { background: var(--sab-amber-bg);    color: var(--sab-amber-text); }
+.status-awaitingbudget   { background: var(--sab-amber-bg);    color: var(--sab-amber-text); }
+.status-procuring        { background: var(--sab-purple-bg);   color: var(--sab-purple-text); }
+.status-arrived          { background: var(--sab-green-light); color: var(--sab-green-dark); }
+
+/* The four-stage progress bar on a new-item request's page. */
+.nir-stages { display: flex; gap: 6px; margin: 0; padding: 0; list-style: none; flex-wrap: wrap; }
+.nir-stages li {
+  flex: 1 1 140px; padding: 8px 10px; border-radius: 8px; font-size: .85rem;
+  background: var(--sab-gray-bg); color: var(--sab-gray-text);
+}
+.nir-stages li.done    { background: var(--sab-green-light); color: var(--sab-green-dark); }
+.nir-stages li.current { background: var(--sab-blue-bg); color: var(--sab-blue-text); font-weight: 600; }
+.nir-stages li.stopped { background: var(--sab-red-bg); color: var(--sab-red-text); font-weight: 600; }
+
+/* My Assets: a request row opens to show its units. */
+.my-assets .is-expandable { cursor: pointer; }
+.my-assets .is-expandable:hover > td { background: var(--sab-blue-bg); }
+.my-assets .my-assets-caret { display: inline-block; transition: transform .15s; }
+.my-assets .is-open .my-assets-caret { transform: rotate(90deg); }
+.my-assets .my-assets-units > td { background: var(--sab-gray-bg); }
+
+/* Filter chips: a row of small toggle links (Audit shortcuts, new-item
+   stages). Our own style because this project's Bootstrap (5.1) has no
+   text-bg-* helpers, and a plain .badge is white text. */
+.sab-chip {
+  display: inline-block; margin: 0 4px 4px 0; padding: 3px 10px;
+  border: 1px solid var(--sab-border); border-radius: 999px;
+  background: var(--sab-surface); color: var(--sab-text);
+  font-size: .78rem; font-weight: 500; text-decoration: none; line-height: 1.5;
+}
+.sab-chip:hover { background: var(--sab-green-light); border-color: var(--sab-green-border); color: var(--sab-green-dark); }
+.sab-chip.active { background: var(--sab-green); border-color: var(--sab-green); color: #fff; }

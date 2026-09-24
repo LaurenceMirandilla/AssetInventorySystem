@@ -82,6 +82,7 @@ namespace SchoolInventoryManagement.Web.Controllers
             };
 
             ViewBag.LocationID = id;
+            await LoadAuditHistoryAsync("Location", id);
             return View(dto);
         }
 
@@ -120,7 +121,7 @@ namespace SchoolInventoryManagement.Web.Controllers
             }
             catch (Exception ex)
             {
-                TempData["ErrorMessage"] = ex.Message;
+                TempData["ErrorMessage"] = UserMessageFor(ex);
             }
 
             return RedirectToAction(nameof(Index));

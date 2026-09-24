@@ -85,6 +85,7 @@ namespace SchoolInventoryManagement.Web.Controllers
             };
 
             ViewBag.DepartmentID = id;
+            await LoadAuditHistoryAsync("Department", id);
             return View(dto);
         }
 
@@ -123,7 +124,7 @@ namespace SchoolInventoryManagement.Web.Controllers
             }
             catch (Exception ex)
             {
-                TempData["ErrorMessage"] = ex.Message;
+                TempData["ErrorMessage"] = UserMessageFor(ex);
             }
 
             return RedirectToAction(nameof(Index));

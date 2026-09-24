@@ -313,9 +313,10 @@ namespace SchoolInventoryManagement.BLL.Services
                 throw new KeyNotFoundException("Asset not found.");
 
             // Out on a request -- reserved and waiting (InTransit) or with
-            // someone (Assigned). Editing it now would pull it out from
-            // under the request.
-            if (asset.Status == AssetStatus.Assigned || asset.Status == AssetStatus.InTransit)
+            // someone (Assigned, or Overdue once late). Editing it now would
+            // pull it out from under the request.
+            if (asset.Status == AssetStatus.Assigned || asset.Status == AssetStatus.InTransit ||
+                asset.Status == AssetStatus.Overdue)
                 throw new InvalidOperationException(
                     "This asset is out on a request and cannot be edited until it's returned.");
 
@@ -378,6 +379,12 @@ namespace SchoolInventoryManagement.BLL.Services
             if (asset.Status == AssetStatus.Disposed)
                 throw new InvalidOperationException(
                     "This asset is disposed. Use the Disposal service to restore it — this also updates the disposal record.");
+
+            // Overdue is worked out from the request's return time, and a
+            // return clears it. Setting it by hand would skip the alerts.
+            if (newStatus == AssetStatus.Overdue)
+                throw new InvalidOperationException(
+                    "Overdue is set automatically when a borrowed item passes its return time.");
 
             _context.Entry(asset).Property(a => a.RowVersion).OriginalValue = rowVersion;
 

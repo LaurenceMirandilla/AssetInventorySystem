@@ -1,6 +1,14 @@
 ﻿@model List<SchoolInventoryManagement.BLL.DTOs.NewItemRequestResponseDTO>
+@using SchoolInventoryManagement.DAL.Entities.Enums
 @{
-    ViewData["Title"] = "New-Item Requests";
+    ViewData["Title"] = "New-Item Requests to Act On";
+
+    // What waits on whom, for the sub-heading.
+    var queueFor = User.IsInRole("Administrator")
+        ? "department head approvals (as backup), budget checks and items being procured"
+        : User.IsInRole("Asset Officer")
+            ? "budget checks and items being procured"
+            : "requests from your department waiting for your approval";
 }
 @if (TempData["ErrorMessage"] != null)
 {
@@ -11,8 +19,7 @@
     <div>
         <h2>New-Item Requests</h2>
         <p class="sab-page-sub">
-            @Model.Count request@(Model.Count == 1 ? "" : "s") awaiting a decision, soonest needed first.
-            You cannot decide one raised by someone holding your own role.
+            @Model.Count waiting on you: @queueFor. Earliest stage first, then soonest needed.
         </p>
     </div>
 </div>
@@ -25,26 +32,29 @@
                 <tr>
                     <th>#</th>
                     <th>Item</th>
+                    <th class="text-end">Amount</th>
                     <th>Needed by</th>
                     <th>Requested by</th>
-                    <th>Submitted</th>
-                    <th style="width:38%;">Decision</th>
+                    <th>Stage</th>
+                    <th style="width:34%;">Action</th>
                 </tr>
             </thead>
             <tbody>
                 @foreach (var request in Model)
                 {
                     var late = request.NeededBy is not null && request.NeededBy.Value.Date < DateTime.Today;
+                    var canReject = request.RequestStatus is NewItemStatus.AwaitingDeptHead or NewItemStatus.AwaitingBudget;
 
                     <tr>
-                        <td>@request.NewItemRequestID</td>
+                        <td><a asp-action="Details" asp-route-id="@request.NewItemRequestID">@request.NewItemRequestID</a></td>
                         <td>
-                            <div class="fw-semibold">@request.ItemName</div>
+                            <a asp-action="Details" asp-route-id="@request.NewItemRequestID" class="fw-semibold">@request.ItemName</a>
                             @if (!string.IsNullOrWhiteSpace(request.Reason))
                             {
                                 <div class="text-muted small"><em>@request.Reason</em></div>
                             }
                         </td>
+                        <td class="text-end">@request.Quantity</td>
                         <td class="@(late ? "text-danger fw-semibold" : "")">
                             @(request.NeededBy?.ToString("MMM d, yyyy") ?? "—")
                             @if (late)
@@ -54,24 +64,39 @@
                         </td>
                         <td>
                             <div>@request.RequestedByUserName</div>
-                            <div class="text-muted small">@request.DepartmentName</div>
+                            <div class="text-muted small">@request.DepartmentName · @request.RequestDate.ToString("MMM d, yyyy")</div>
                         </td>
-                        <td>@request.RequestDate.ToString("MMM d, yyyy")</td>
                         <td>
-                            @* One form, two submits: Reject overrides the action via
-                               formaction so both buttons share the remarks box. *@
-                            <form asp-action="Approve" asp-route-id="@request.NewItemRequestID" method="post">
-                                @Html.AntiForgeryToken()
-                                <input type="hidden" name="rowVersionBase64"
-                                       value="@RowVersionHelper.ToBase64(request.RowVersion)" />
-                                <input type="text" name="remarks" class="form-control form-control-sm mb-2"
-                                       placeholder="Remarks (optional — sent to the requester)" />
-                                <button type="submit" class="btn btn-success btn-sm">Approve</button>
-                                <button type="submit" class="btn btn-outline-danger btn-sm"
-                                        formaction="@Url.Action("Reject", new { id = request.NewItemRequestID })">
-                                    Reject
-                                </button>
-                            </form>
+                            <span class="status-pill status-@request.RequestStatus.ToString().ToLowerInvariant()">
+                                @DisplayText.Stage(request.RequestStatus)
+                            </span>
+                        </td>
+                        <td>
+                            @if (request.CanAct)
+                            {
+                                @* One form: the main button moves it on, Reject
+                                   overrides the action via formaction so both
+                                   share the remarks box. *@
+                                <form asp-action="Advance" asp-route-id="@request.NewItemRequestID" method="post">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="rowVersionBase64"
+                                           value="@RowVersionHelper.ToBase64(request.RowVersion)" />
+                                    <input type="text" name="remarks" maxlength="500" class="form-control form-control-sm mb-2"
+                                           placeholder="Remarks (optional — shown in the history)" />
+                                    <button type="submit" class="btn btn-success btn-sm">@DisplayText.AdvanceButton(request.RequestStatus)</button>
+                                    @if (canReject)
+                                    {
+                                        <button type="submit" class="btn btn-outline-danger btn-sm"
+                                                formaction="@Url.Action("Reject", new { id = request.NewItemRequestID })">
+                                            Reject
+                                        </button>
+                                    }
+                                </form>
+                            }
+                            else
+                            {
+                                <span class="text-muted small">Not yours to act on at this stage.</span>
+                            }
                         </td>
                     </tr>
                 }
@@ -83,8 +108,8 @@ else
 {
     <div class="card">
         <div class="sab-empty">
-            <div class="sab-empty-title">Nothing waiting</div>
-            <p>New-item requests land here when someone asks for something the school does not have.</p>
+            <div class="sab-empty-title">Nothing waiting on you</div>
+            <p>New-item requests show up here when they reach a step you handle.</p>
         </div>
     </div>
 }

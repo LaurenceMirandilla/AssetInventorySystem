@@ -16,6 +16,8 @@
     var isApprover = User.IsInRole("Asset Officer") || User.IsInRole("Administrator") || User.IsInRole("Principal");
     var isUserManager = User.IsInRole("Administrator") || User.IsInRole("Principal");
     var isAssetManager = User.IsInRole("Asset Officer") || User.IsInRole("Administrator");
+    // Who has new-item requests to act on (NewItemRequestsController.Pending).
+    var actsOnNewItems = isAssetManager || User.IsInRole("Department Head");
     var roleName = User.FindFirst(ClaimTypes.Role)?.Value;
     var displayName = User.Identity?.Name ?? "";
     var initials = string.Concat(displayName.Split(' ', StringSplitOptions.RemoveEmptyEntries)
@@ -38,10 +40,12 @@
 
     // NewItemRequestsController splits the same way: Pending/Approve/Reject
     // are the reviewer's screens, MyRequests/Create the requester's.
-    var newItemApprovalActions = new[] { "Pending", "Approve", "Reject" };
+    var newItemApprovalActions = new[] { "Pending", "Advance", "Reject" };
     var inNewItemRequests = isActive(new[] { "NewItemRequests" });
     var onNewItemApprovals = inNewItemRequests
         && newItemApprovalActions.Contains(currentAction, StringComparer.OrdinalIgnoreCase);
+    var onNewItemAll = inNewItemRequests
+        && string.Equals(currentAction, "All", StringComparison.OrdinalIgnoreCase);
 
     // Line icons matching the mockup's sidebar. 18x18, currentColor, so the
     // .sab-nav-link active and hover colours carry straight through.
@@ -105,22 +109,36 @@
                     </a>
                 </li>
                 <li class="sab-nav-item">
-                    <a class="sab-nav-link @(inNewItemRequests && !onNewItemApprovals ? "active" : "")" asp-controller="NewItemRequests" asp-action="MyRequests">
+                    <a class="sab-nav-link @(inNewItemRequests && !onNewItemApprovals && !onNewItemAll ? "active" : "")" asp-controller="NewItemRequests" asp-action="MyRequests">
                         <span class="sab-nav-label">@Html.Raw(navIcon("requests"))New-Item Requests</span>
                     </a>
                 </li>
 
-                @if (isApprover)
+                @if (isApprover || actsOnNewItems)
                 {
                     <li class="sab-nav-heading">Approvals</li>
+                }
+                @if (isApprover)
+                {
                     <li class="sab-nav-item">
                         <a class="sab-nav-link @(onApprovals ? "active" : "")" asp-controller="AssetRequests" asp-action="Pending">
                             <span class="sab-nav-label">@Html.Raw(navIcon("approvals"))Approvals</span>
                         </a>
                     </li>
+                }
+                @if (actsOnNewItems)
+                {
                     <li class="sab-nav-item">
                         <a class="sab-nav-link @(onNewItemApprovals ? "active" : "")" asp-controller="NewItemRequests" asp-action="Pending">
                             <span class="sab-nav-label">@Html.Raw(navIcon("approvals"))New-Item Requests</span>
+                        </a>
+                    </li>
+                }
+                @if (isApprover)
+                {
+                    <li class="sab-nav-item">
+                        <a class="sab-nav-link @(onNewItemAll ? "active" : "")" asp-controller="NewItemRequests" asp-action="All">
+                            <span class="sab-nav-label">@Html.Raw(navIcon("requests"))All New-Item Requests</span>
                         </a>
                     </li>
                     <li class="sab-nav-item">

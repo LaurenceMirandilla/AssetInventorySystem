@@ -32,6 +32,11 @@
     <a asp-action="Index" class="btn btn-secondary">Cancel</a>
 </form>
 
+@if (ViewBag.AuditHistory is List<SchoolInventoryManagement.BLL.DTOs.AuditReportRowDTO> history)
+{
+    <partial name="_AuditHistory" model="history" />
+}
+
 @section Scripts {
     @{
         await Html.RenderPartialAsync("_ValidationScriptsPartial");

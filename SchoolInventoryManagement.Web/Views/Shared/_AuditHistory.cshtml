@@ -1,0 +1,43 @@
+@model List<SchoolInventoryManagement.BLL.DTOs.AuditReportRowDTO>
+@* The History box on a record's own page. Controllers load it only for
+   the roles that can read the audit trail (Administrator, Principal,
+   Asset Officer) -- see BaseController.LoadAuditHistoryAsync -- so a
+   page renders it only when ViewBag.AuditHistory is set. *@
+
+<div class="sab-table-card mt-4">
+    <div class="sab-table-head">
+        <h5>History</h5>
+        <span class="sab-table-count">@Model.Count entr@(Model.Count == 1 ? "y" : "ies"), newest first.</span>
+    </div>
+    @if (Model.Any())
+    {
+        <table class="table table-striped table-sm">
+            <thead>
+                <tr>
+                    <th>When</th>
+                    <th>By</th>
+                    <th>Action</th>
+                    <th>Details</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var row in Model)
+                {
+                    <tr>
+                        <td class="text-nowrap">@row.LogDateTime.ToString("MMM d, yyyy h:mm tt")</td>
+                        <td>
+                            <div>@row.UserName</div>
+                            <div class="text-muted small">@row.UserRole</div>
+                        </td>
+                        <td>@row.ActionPerformed</td>
+                        <td class="small">@(row.Description ?? "—")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+    else
+    {
+        <div class="sab-empty"><p class="mb-0">No recorded changes yet. Changes made before the history was added show only on Reports &gt; Audit.</p></div>
+    }
+</div>

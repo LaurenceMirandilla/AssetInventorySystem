@@ -20,6 +20,7 @@ namespace SchoolInventoryManagement.Web.ViewModels
         public int AvailableCount { get; set; }
         public int AssignedCount { get; set; }
         public int InTransitCount { get; set; }
+        public int OverdueCount { get; set; }
         public int UnderMaintenanceCount { get; set; }
         public int DisposedCount { get; set; }
 

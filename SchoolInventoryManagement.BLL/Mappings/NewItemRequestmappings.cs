@@ -1,4 +1,5 @@
-﻿using SchoolInventoryManagement.BLL.DTOs;
+﻿using System.Linq;
+using SchoolInventoryManagement.BLL.DTOs;
 using SchoolInventoryManagement.DAL.Entities;
 
 namespace SchoolInventoryManagement.BLL.Mappings
@@ -16,8 +17,10 @@ namespace SchoolInventoryManagement.BLL.Mappings
                 RequestedByUserID = request.RequestedByUserID,
                 RequestedByUserName =
                     $"{request.RequestedByUser.FirstName} {request.RequestedByUser.LastName}",
+                DepartmentID = request.DepartmentID,
                 DepartmentName = request.Department.DepartmentName,
                 ItemName = request.ItemName,
+                Quantity = request.Quantity,
                 Reason = request.Reason,
                 NeededBy = request.NeededBy,
                 RequestDate = request.RequestDate,
@@ -27,7 +30,20 @@ namespace SchoolInventoryManagement.BLL.Mappings
                     : $"{request.ReviewedByUser.FirstName} {request.ReviewedByUser.LastName}",
                 ReviewDate = request.ReviewDate,
                 Remarks = request.Remarks,
-                RowVersion = request.RowVersion
+                RowVersion = request.RowVersion,
+                Steps = request.Steps
+                    .OrderBy(s => s.ActedAt).ThenBy(s => s.StepID)
+                    .Select(s => new NewItemRequestStepDTO
+                    {
+                        Status = s.Status,
+                        ActedByName = s.ActedByUser is null
+                            ? "(unknown)"
+                            : $"{s.ActedByUser.FirstName} {s.ActedByUser.LastName}",
+                        ActedByRole = s.ActedByUser?.Role?.RoleName ?? "",
+                        ActedAt = s.ActedAt,
+                        Remarks = s.Remarks
+                    })
+                    .ToList()
             };
         }
     }

@@ -14,7 +14,8 @@
     // delivered (InTransit), or with them (Assigned). Either way it cannot
     // be edited until it comes back.
     var isInTransit = Model.Status == SchoolInventoryManagement.DAL.Entities.Enums.AssetStatus.InTransit;
-    var isOut = isInTransit || Model.Status == SchoolInventoryManagement.DAL.Entities.Enums.AssetStatus.Assigned;
+    var isOut = isInTransit || Model.Status == SchoolInventoryManagement.DAL.Entities.Enums.AssetStatus.Assigned
+        || Model.Status == SchoolInventoryManagement.DAL.Entities.Enums.AssetStatus.Overdue;
 }
 
 @if (TempData["ErrorMessage"] != null)
@@ -113,7 +114,7 @@
                     </div>
                     <div class="col">
                         <div class="text-muted small">Cost</div>
-                        <div class="fw-semibold">@(Model.AcquisitionCost?.ToString("C") ?? "—")</div>
+                        <div class="fw-semibold">@DisplayText.Peso(Model.AcquisitionCost)</div>
                     </div>
                     <div class="col">
                         <div class="text-muted small">Warranty</div>

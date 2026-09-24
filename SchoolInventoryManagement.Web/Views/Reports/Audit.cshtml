@@ -12,8 +12,10 @@
             <div>
                 <h2>Audit Trail</h2>
                 <p class="sab-page-sub">
-                    Written automatically by the save interceptor whenever an asset, request,
-                    assignment, movement, disposal, user, category or model changes. Newest first.
+                    Written automatically whenever an asset, request (and its lines), assignment,
+                    movement, disposal, user, category, model, branch, department, location, role
+                    or new-item request changes, whenever someone opens a report or exports data,
+                    and (Administrators only) whenever the app hits an unexpected error. Newest first.
                 </p>
             </div>
             <div class="sab-page-actions">
@@ -21,7 +23,7 @@
                asp-route-fromDate="@Context.Request.Query["fromDate"]"
                asp-route-toDate="@Context.Request.Query["toDate"]"
                asp-route-userId="@Context.Request.Query["userId"]"
-               asp-route-action="@Context.Request.Query["action"]"
+               asp-route-actionContains="@Context.Request.Query["actionContains"]"
                class="btn btn-primary">Export CSV</a>
             </div>
         </div>
@@ -45,7 +47,7 @@
                 </div>
                 <div class="col-auto">
                     <label class="form-label">Action contains</label>
-                    <input type="text" name="action" class="form-control"
+                    <input type="text" name="actionContains" class="form-control"
                            placeholder="e.g. Disposed" value="@ViewBag.Action" />
                 </div>
                 <div class="col-auto">
@@ -58,6 +60,24 @@
                     <a asp-action="Audit" class="btn btn-outline-secondary">Reset</a>
                 </div>
             </form>
+        </div>
+
+        @* Shortcuts for the "Action contains" filter. *@
+        <div class="mb-3 small">
+            <span class="text-muted me-1">Show:</span>
+            @foreach (var (label, filter) in new[]
+            {
+                ("Branches", "Branch"), ("Departments", "Department"), ("Locations", "Location"),
+                ("Roles", "Role"), ("New-item requests", "NewItemRequest"),
+                ("Request lines", "AssetRequestItem"), ("Report views", "Report Viewed"),
+                ("Exports", "Data Exported"), ("Overdue", "Overdue")
+            }.Concat(User.IsInRole(SchoolInventoryManagement.DAL.Constants.RoleNames.Administrator)
+                ? new[] { ("App errors", "Error") }
+                : Array.Empty<(string, string)>()))
+            {
+                <a asp-action="Audit" asp-route-actionContains="@filter"
+                   class="sab-chip @(ViewBag.Action as string == filter ? "active" : "")">@label</a>
+            }
         </div>
 
         @if (ViewBag.WasTruncated == true)
@@ -80,7 +100,7 @@
                         <th>User</th>
                         <th>Role</th>
                         <th>Action</th>
-                        <th>Asset</th>
+                        <th>Target</th>
                         <th>Details</th>
                         <th>IP</th>
                     </tr>
@@ -97,6 +117,14 @@
                                 @if (row.TargetAssetID.HasValue)
                                 {
                                     <a asp-controller="Assets" asp-action="Details" asp-route-id="@row.TargetAssetID">@row.TargetAssetCode</a>
+                                }
+                                else if (row.EntityType == "AssetRequest" && row.EntityID.HasValue)
+                                {
+                                    <a asp-controller="AssetRequests" asp-action="Details" asp-route-id="@row.EntityID">Request #@row.EntityID</a>
+                                }
+                                else if (row.EntityType is not null && row.EntityType != "Report" && row.EntityID.HasValue)
+                                {
+                                    <span>@DisplayText.Humanize(row.EntityType) #@row.EntityID</span>
                                 }
                                 else
                                 {

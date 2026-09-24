@@ -50,6 +50,10 @@
         <div class="text-end">
             <span class="status-pill status-@Model.RequestType.ToString().ToLowerInvariant()">@Model.RequestType</span>
             <span class="status-pill status-@Model.RequestStatus.ToString().ToLowerInvariant()">@DisplayText.Humanize(Model.RequestStatus.ToString())</span>
+            @if (Model.RequestStatus == RequestStatus.Assigned && Model.ReturnBy < DateTime.Now)
+            {
+                <span class="status-pill status-overdue">Overdue</span>
+            }
             <div class="small mt-2">
                 <strong>@Model.RequestedByUser.FullName</strong>
                 <span class="text-muted">&middot; @Model.RequestedByUser.RoleName &middot; @Model.DepartmentName</span>
@@ -242,3 +246,8 @@
         }
     </div>
 </div>
+
+@if (ViewBag.AuditHistory is List<SchoolInventoryManagement.BLL.DTOs.AuditReportRowDTO> history)
+{
+    <partial name="_AuditHistory" model="history" />
+}

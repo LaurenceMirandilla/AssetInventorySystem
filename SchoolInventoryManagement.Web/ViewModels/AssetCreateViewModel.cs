@@ -27,6 +27,7 @@ namespace SchoolInventoryManagement.Web.ViewModels
         [Display(Name = "Acquisition date")]
         public DateTime? AcquisitionDate { get; set; }
 
+        [Range(0, 9999999999.99)]
         [Display(Name = "Acquisition cost")]
         public decimal? AcquisitionCost { get; set; }
 

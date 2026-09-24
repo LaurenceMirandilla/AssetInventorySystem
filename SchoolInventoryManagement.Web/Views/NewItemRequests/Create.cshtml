@@ -3,7 +3,10 @@
     ViewData["Title"] = "Request a New Item";
 
     // Always at least one row, even after a post that removed them all.
-    var rows = Model.ItemNames.Count > 0 ? Model.ItemNames : new List<string?> { "" };
+    // Each row is a name and an amount; a missing amount shows as 1.
+    var names = Model.ItemNames.Count > 0 ? Model.ItemNames : new List<string?> { "" };
+    var rows = names.Select((name, i) => (Name: name,
+        Quantity: i < Model.Quantities.Count && Model.Quantities[i] is int q ? q : 1)).ToList();
 }
 
 <div class="sab-page-head">
@@ -21,15 +24,21 @@
     <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
 
     <div class="mb-3">
-        <label class="form-label">Item to be added</label>
+        <div class="d-flex gap-2 mb-1">
+            <label class="form-label mb-0 flex-grow-1">Item to be added</label>
+            <label class="form-label mb-0" style="width:110px;">Amount</label>
+            <span style="width:42px;"></span>
+        </div>
 
         <div id="itemRows">
-            @foreach (var name in rows)
+            @foreach (var row in rows)
             {
-                <div class="input-group mb-2 item-row">
-                    <input type="text" name="ItemNames" value="@name" maxlength="150"
-                           class="form-control" placeholder="e.g. Document camera" />
-                    <button type="button" class="btn btn-outline-danger remove-row" title="Remove this item">&times;</button>
+                <div class="d-flex gap-2 mb-2 item-row">
+                    <input type="text" name="ItemNames" value="@row.Name" maxlength="150"
+                           class="form-control flex-grow-1" placeholder="e.g. Document camera" />
+                    <input type="number" name="Quantities" value="@row.Quantity" min="1" max="1000" step="1"
+                           class="form-control" style="width:110px;" aria-label="Amount" required />
+                    <button type="button" class="btn btn-outline-danger remove-row" style="width:42px;" title="Remove this item">&times;</button>
                 </div>
             }
         </div>
@@ -63,9 +72,10 @@
     }
     <script>
         (function () {
-            // "+ Add another item": copy the first row, emptied. Every row
-            // posts as ItemNames, which binds to the list. The x removes a
-            // row; the last one is only cleared.
+            // "+ Add another item": copy the first row, emptied, amount 1.
+            // Every row posts as ItemNames + Quantities, which bind to the
+            // two lists in order. The x removes a row; the last one is only
+            // cleared.
             var rowsBox = document.getElementById('itemRows');
             var maxRows = 20; // the service refuses more than this anyway
 
@@ -79,7 +89,8 @@
 
             document.getElementById('addItemRow').addEventListener('click', function () {
                 var copy = rowsBox.querySelector('.item-row').cloneNode(true);
-                copy.querySelector('input').value = '';
+                copy.querySelector('input[name="ItemNames"]').value = '';
+                copy.querySelector('input[name="Quantities"]').value = 1;
                 rowsBox.appendChild(copy);
                 syncRemoveButtons();
                 copy.querySelector('input').focus();
@@ -93,7 +104,8 @@
                 if (rowsNow.length > 1) {
                     row.remove();
                 } else {
-                    row.querySelector('input').value = '';
+                    row.querySelector('input[name="ItemNames"]').value = '';
+                    row.querySelector('input[name="Quantities"]').value = 1;
                 }
                 syncRemoveButtons();
             });

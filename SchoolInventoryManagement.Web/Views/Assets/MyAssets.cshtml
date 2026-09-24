@@ -1,6 +1,19 @@
-﻿@model List<SchoolInventoryManagement.BLL.DTOs.AssetAssignmentResponseDTO>
+@model List<SchoolInventoryManagement.BLL.DTOs.AssetAssignmentResponseDTO>
+@using SchoolInventoryManagement.DAL.Entities.Enums
 @{
     ViewData["Title"] = "My Assets";
+
+    // One row per request, laid out like My Requests: what is inside it
+    // summarised as "Model ×N", one View link, and a click on the row
+    // opens the units underneath. A unit assigned directly from an asset
+    // page has no request, so it is a row of its own. Newest first.
+    var rows = Model
+        .GroupBy(a => a.RequestID is int id ? $"r{id}" : $"a{a.AssignmentID}")
+        .Select(g => g.OrderBy(a => a.AssetCode).ToList())
+        .OrderByDescending(units => units.Max(a => a.AssignmentDate))
+        .ToList();
+
+    var requestCount = rows.Count(units => units[0].RequestID is not null);
 }
 
 @if (TempData["ErrorMessage"] != null)
@@ -12,7 +25,8 @@
     <div>
         <h2>My Assets</h2>
         <p class="sab-page-sub">
-            @Model.Count unit@(Model.Count == 1 ? "" : "s") currently signed out to you.
+            @Model.Count unit@(Model.Count == 1 ? "" : "s") signed out to you@(requestCount > 0 ? $", from {requestCount} request{(requestCount == 1 ? "" : "s")}" : "").
+            Click a request to see the units in it. They stay here until an Asset Officer records their return.
         </p>
     </div>
     <div class="sab-page-actions">
@@ -22,49 +36,127 @@
 
 @if (Model.Any())
 {
-    <p class="text-muted">
-        A unit stays on this list until an Asset Officer records its return, so
-        this is what you are accountable for right now. Returns and transfers
-        are recorded by an Asset Officer, not from here.
-    </p>
-
     <div class="sab-table-card">
-        <table class="table table-striped">
+        <table class="table mb-0 my-assets">
             <thead>
                 <tr>
-                    <th>Code</th>
-                    <th>Asset</th>
+                    <th style="width:28px;"></th>
+                    <th>#</th>
+                    <th>Type</th>
+                    <th>What</th>
                     <th>Issued</th>
-                    <th>Condition when issued</th>
-                    <th>Issued by</th>
-                    <th>Remarks</th>
+                    <th>Return by</th>
+                    <th>Status</th>
                     <th></th>
                 </tr>
             </thead>
             <tbody>
-                @foreach (var assignment in Model)
+                @foreach (var units in rows)
                 {
-                    var daysHeld = (int)(DateTime.Now.Date - assignment.AssignmentDate.Date).TotalDays;
-                    var heldLabel = daysHeld == 0
-                        ? "today"
-                        : daysHeld == 1 ? "1 day ago" : daysHeld + " days ago";
+                    var first = units[0];
+                    var isRequest = first.RequestID is not null;
+                    var rowId = isRequest ? $"req-{first.RequestID}" : $"asg-{first.AssignmentID}";
 
-                    <tr>
-                        <td><a asp-action="Details" asp-route-id="@assignment.AssetID" class="sab-code">@assignment.AssetCode</a></td>
-                        <td><div class="fw-semibold">@assignment.AssetName</div></td>
+                    // "Asahi Stand Fan ×5, Aspire Laptop ×5", as on My Requests.
+                    var what = string.Join(", ", units
+                        .GroupBy(a => a.ModelName)
+                        .Select(g => g.Count() > 1 ? $"{g.Key} ×{g.Count()}" : g.Key));
+
+                    // One pill per status present, with its count.
+                    var statuses = units
+                        .GroupBy(a => a.AssetStatus)
+                        .OrderBy(g => g.Key == AssetStatus.Overdue ? 0 : 1)
+                        .ToList();
+
+                    var returnBy = first.RequestReturnBy;
+                    var anyOverdue = units.Any(a => a.AssetStatus == AssetStatus.Overdue);
+
+                    <tr class="my-assets-row @(isRequest ? "is-expandable" : "")"
+                        @(isRequest ? Html.Raw($"data-toggle-units=\"{rowId}\" aria-expanded=\"false\" tabindex=\"0\"") : Html.Raw(""))>
+                        <td class="text-muted">
+                            @if (isRequest)
+                            {
+                                <span class="my-assets-caret" aria-hidden="true">&#9656;</span>
+                            }
+                        </td>
+                        <td>@(isRequest ? first.RequestID.ToString() : "—")</td>
                         <td>
-                            <div>@assignment.AssignmentDate.ToString("MMM d, yyyy")</div>
-                            <div class="text-muted small">@heldLabel</div>
+                            @if (isRequest && first.RequestType is not null)
+                            {
+                                <span class="status-pill status-@first.RequestType.ToString()!.ToLowerInvariant()">@first.RequestType</span>
+                            }
+                            else
+                            {
+                                <span class="status-pill status-cancelled">Direct</span>
+                            }
                         </td>
                         <td>
-                            <span class="status-pill status-@assignment.ConditionOnAssignment.ToString().ToLowerInvariant()">
-                                @DisplayText.Humanize(assignment.ConditionOnAssignment.ToString())
-                            </span>
+                            @(isRequest ? what : first.AssetName)
+                            <div class="text-muted small">@units.Count unit@(units.Count == 1 ? "" : "s")</div>
                         </td>
-                        <td>@assignment.AssignedByUser.FullName</td>
-                        <td>@(string.IsNullOrWhiteSpace(assignment.Remarks) ? "—" : assignment.Remarks)</td>
-                        <td><a asp-action="Details" asp-route-id="@assignment.AssetID">View</a></td>
+                        <td>@first.AssignmentDate.ToString("MMM d, yyyy")</td>
+                        <td class="@(anyOverdue ? "text-danger fw-semibold" : "")">
+                            @(returnBy?.ToString("MMM d, yyyy") ?? "—")
+                        </td>
+                        <td>
+                            @foreach (var s in statuses)
+                            {
+                                <span class="status-pill status-@s.Key.ToString().ToLowerInvariant() me-1">
+                                    @(statuses.Count > 1 || units.Count > 1 ? $"{s.Count()} " : "")@DisplayText.Humanize(s.Key.ToString())
+                                </span>
+                            }
+                        </td>
+                        <td>
+                            @if (isRequest)
+                            {
+                                <a asp-controller="AssetRequests" asp-action="Details" asp-route-id="@first.RequestID">View</a>
+                            }
+                            else
+                            {
+                                <a asp-action="Details" asp-route-id="@first.AssetID">View</a>
+                            }
+                        </td>
                     </tr>
+
+                    @if (isRequest)
+                    {
+                        <tr class="my-assets-units" id="@rowId" hidden>
+                            <td></td>
+                            <td colspan="7" class="pt-0">
+                                <table class="table table-sm mb-2">
+                                    <thead>
+                                        <tr>
+                                            <th>Code</th>
+                                            <th>Asset</th>
+                                            <th>Status</th>
+                                            <th>Condition when issued</th>
+                                            <th>Issued by</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var unit in units)
+                                        {
+                                            <tr>
+                                                <td><a asp-action="Details" asp-route-id="@unit.AssetID" class="sab-code">@unit.AssetCode</a></td>
+                                                <td>@unit.AssetName</td>
+                                                <td>
+                                                    <span class="status-pill status-@unit.AssetStatus.ToString().ToLowerInvariant()">@DisplayText.Humanize(unit.AssetStatus.ToString())</span>
+                                                    @if (unit.AssetStatus == AssetStatus.InTransit)
+                                                    {
+                                                        <span class="text-muted small ms-1">not picked up yet</span>
+                                                    }
+                                                </td>
+                                                <td>
+                                                    <span class="status-pill status-@unit.ConditionOnAssignment.ToString().ToLowerInvariant()">@DisplayText.Humanize(unit.ConditionOnAssignment.ToString())</span>
+                                                </td>
+                                                <td>@unit.AssignedByUser.FullName</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </td>
+                        </tr>
+                    }
                 }
             </tbody>
         </table>
@@ -79,4 +171,25 @@ else
             <a asp-controller="AssetRequests" asp-action="Create" class="btn btn-primary">Request an asset</a>
         </div>
     </div>
+}
+
+@section Scripts {
+    <script>
+        // A click (or Enter/Space) on a request row shows or hides its
+        // units. Clicks on links inside the row still go where they point.
+        document.querySelectorAll('tr[data-toggle-units]').forEach(function (row) {
+            function toggle(e) {
+                if (e.target.closest('a')) return;
+                var units = document.getElementById(row.dataset.toggleUnits);
+                var open = units.hidden;
+                units.hidden = !open;
+                row.setAttribute('aria-expanded', open ? 'true' : 'false');
+                row.classList.toggle('is-open', open);
+            }
+            row.addEventListener('click', toggle);
+            row.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(e); }
+            });
+        });
+    </script>
 }

@@ -7,6 +7,7 @@ using SchoolInventoryManagement.BLL.Interfaces;
 using SchoolInventoryManagement.BLL.Mappings;
 using SchoolInventoryManagement.DAL.Context;
 using SchoolInventoryManagement.DAL.Entities;
+using SchoolInventoryManagement.DAL.Entities.Enums;
 
 namespace SchoolInventoryManagement.BLL.Services
 {
@@ -58,10 +59,23 @@ namespace SchoolInventoryManagement.BLL.Services
             return model?.ToDTO();
         }
 
+        // With how many assets each model has, for the Models list.
+        // Counted in the database, not by loading assets.
         public async Task<List<ModelDTO>> GetAllModelsAsync()
         {
-            var models = await ModelQueryWithIncludes().OrderBy(m => m.ModelName).ToListAsync();
-            return models.Select(m => m.ToDTO()).ToList();
+            return await _context.Models
+                .OrderBy(m => m.ModelName)
+                .Select(m => new ModelDTO
+                {
+                    ModelID = m.ModelID,
+                    ModelName = m.ModelName,
+                    CategoryID = m.CategoryID,
+                    CategoryName = m.Category.CategoryName,
+                    Description = m.Description,
+                    AssetCount = m.Assets.Count,
+                    AvailableCount = m.Assets.Count(a => a.Status == AssetStatus.Available)
+                })
+                .ToListAsync();
         }
 
         public async Task<List<ModelDTO>> GetModelsByCategoryAsync(int categoryId)

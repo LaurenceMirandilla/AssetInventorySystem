@@ -44,6 +44,7 @@ namespace SchoolInventoryManagement.BLL.Services
 
             if (asset.Status == AssetStatus.Assigned ||
                 asset.Status == AssetStatus.InTransit ||
+                asset.Status == AssetStatus.Overdue ||
                 asset.Status == AssetStatus.Reserved)
             {
                 throw new InvalidOperationException(

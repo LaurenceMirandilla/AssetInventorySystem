@@ -1,13 +1,9 @@
-@model List<SchoolInventoryManagement.BLL.DTOs.NotificationResponseDTO>
+﻿@model List<SchoolInventoryManagement.BLL.DTOs.NotificationResponseDTO>
 @{
     ViewData["Title"] = "Notifications";
     var unreadOnly = ViewData["UnreadOnly"] as bool? ?? false;
     var hasUnread = Model.Any(n => !n.IsRead);
     var unreadCount = Model.Count(n => !n.IsRead);
-}
-@if (TempData["StatusMessage"] != null)
-{
-    <div class="alert alert-success">@TempData["StatusMessage"]</div>
 }
 @if (TempData["ErrorMessage"] != null)
 {

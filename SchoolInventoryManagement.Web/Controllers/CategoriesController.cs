@@ -105,7 +105,7 @@ namespace SchoolInventoryManagement.Web.Controllers
             }
             catch (Exception ex)
             {
-                TempData["ErrorMessage"] = ex.Message;
+                TempData["ErrorMessage"] = UserMessageFor(ex);
             }
 
             return RedirectToAction(nameof(Index));

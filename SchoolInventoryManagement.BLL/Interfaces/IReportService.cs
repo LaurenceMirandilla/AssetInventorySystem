@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using SchoolInventoryManagement.BLL.DTOs;
@@ -35,5 +35,16 @@ namespace SchoolInventoryManagement.BLL.Interfaces
         Task<List<AuditReportRowDTO>> GetAuditTrailAsync(
             DateTime? fromDate, DateTime? toDate, int? userId,
             string? actionContains, int maxRows, int actingUserId);
+
+        // The audit entries for one or more records of a type, e.g.
+        // ("Location", [5]), newest first. Same roles as the audit report.
+        Task<List<AuditReportRowDTO>> GetEntityHistoryAsync(
+            string entityType, IReadOnlyCollection<int> entityIds, int actingUserId);
+
+        // Writes one audit entry that is not a data change: a report view
+        // or export (entityType "Report"), or an app error ("Error").
+        Task RecordEventAsync(
+            string action, string description, string? ipAddress, int actingUserId,
+            string entityType = "Report");
     }
 }

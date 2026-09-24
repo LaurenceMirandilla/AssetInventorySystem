@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Security.Claims;
@@ -94,6 +94,9 @@ namespace SchoolInventoryManagement.Web.Controllers
             // check of its own, so this is the gate.
             if (request.RequestedByUser.UserID != CurrentUserId && !IsApprover)
                 return Forbid();
+
+            // Status changes, the ticket's lines and the units handed out.
+            await LoadAuditHistoryAsync("AssetRequest", id);
 
             return View(request);
         }
@@ -231,6 +234,19 @@ namespace SchoolInventoryManagement.Web.Controllers
             if (pickupLocationId is null)
                 ModelState.AddModelError(nameof(model.PickupLocationID), "Say where the requester can collect it.");
 
+            // Same for the department: a requester who named the location
+            // gets the units in their own department, and the approver is
+            // not asked. Set here rather than trusted from the form.
+            if (request.RequestedLocationID is not null)
+            {
+                model.DepartmentID = request.DepartmentID;
+                ModelState.Remove(nameof(model.DepartmentID));
+            }
+            else if (model.DepartmentID <= 0)
+            {
+                ModelState.AddModelError(nameof(model.DepartmentID), "Choose the department the units go to.");
+            }
+
             if (!ModelState.IsValid)
                 return await RedisplayBorrowApprovalAsync(id, model);
 
@@ -299,7 +315,7 @@ namespace SchoolInventoryManagement.Web.Controllers
             }
             catch (Exception ex)
             {
-                TempData["ErrorMessage"] = ex.Message;
+                TempData["ErrorMessage"] = UserMessageFor(ex);
             }
 
             // Back to wherever the button was pressed.
@@ -443,7 +459,7 @@ namespace SchoolInventoryManagement.Web.Controllers
             }
             catch (Exception ex)
             {
-                TempData["ErrorMessage"] = ex.Message;
+                TempData["ErrorMessage"] = UserMessageFor(ex);
             }
 
             return RedirectToAction(nameof(Details), new { id });

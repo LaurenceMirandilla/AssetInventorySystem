@@ -10,7 +10,7 @@
 <div class="sab-page-head">
     <div>
         <h2>Models</h2>
-        <p class="sab-page-sub">@Model.Count model@(Model.Count == 1 ? "" : "s"). A requester picks a model, never a specific unit.</p>
+        <p class="sab-page-sub">@Model.Count model@(Model.Count == 1 ? "" : "s"), @Model.Sum(m => m.AssetCount) asset@(Model.Sum(m => m.AssetCount) == 1 ? "" : "s") in all. A requester picks a model, never a specific unit.</p>
     </div>
     <div class="sab-page-actions">
         <a asp-action="Create" class="btn btn-primary">+ New Model</a>
@@ -25,6 +25,7 @@
                 <tr>
                     <th>Name</th>
                     <th>Category</th>
+                    <th class="text-end">Assets</th>
                     <th>Description</th>
                     <th></th>
                 </tr>
@@ -35,6 +36,11 @@
                     <tr>
                         <td>@item.ModelName</td>
                         <td>@item.CategoryName</td>
+                        <td class="text-end">
+                            @* Clicking the count opens the asset list filtered to the model. *@
+                            <a asp-controller="Assets" asp-action="Index" asp-route-modelId="@item.ModelID" class="fw-semibold">@item.AssetCount</a>
+                            <div class="text-muted small">@item.AvailableCount available</div>
+                        </td>
                         <td>@(string.IsNullOrWhiteSpace(item.Description) ? "—" : item.Description)</td>
                         <td>
                             <a asp-action="Edit" asp-route-id="@item.ModelID">Edit</a>

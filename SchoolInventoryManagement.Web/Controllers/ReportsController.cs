@@ -1,11 +1,13 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
+using System.Net;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using SchoolInventoryManagement.BLL.Interfaces;
 using SchoolInventoryManagement.DAL.Constants;
@@ -42,6 +44,33 @@ namespace SchoolInventoryManagement.Web.Controllers
         private int CurrentUserId =>
             int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
+        // Every report page and every export is written to the audit trail
+        // with its filters, so who looked at or downloaded which data can be
+        // checked on Reports > Audit. Done here once rather than in each
+        // action, so a report added later is covered too. Only recorded
+        // when the action succeeded.
+        public override async Task OnActionExecutionAsync(
+            ActionExecutingContext context, ActionExecutionDelegate next)
+        {
+            var executed = await next();
+            if (executed.Exception is not null && !executed.ExceptionHandled)
+                return;
+
+            var actionName = context.RouteData.Values["action"]?.ToString() ?? "";
+            var isExport = actionName.StartsWith("Export", StringComparison.Ordinal);
+            var report = isExport ? actionName["Export".Length..] : actionName;
+            if (report == "Index")
+                report = "Dashboard";
+
+            var filters = Request.QueryString.HasValue
+                ? " " + WebUtility.UrlDecode(Request.QueryString.Value)
+                : "";
+
+            await RecordAccessAsync(
+                isExport ? "Data Exported" : "Report Viewed",
+                $"{report} report{filters}");
+        }
+
         // ==================================================================
         // Dashboard
         // ==================================================================
@@ -51,6 +80,55 @@ namespace SchoolInventoryManagement.Web.Controllers
         {
             var summary = await _reportService.GetInventorySummaryAsync(CurrentUserId);
             return View(summary);
+        }
+
+        // GET /Reports/ExportSummary
+        // The summary page as one sheet: a Section column, then each figure.
+        // Values are plain 0.00 so a spreadsheet can add them up.
+        public async Task<IActionResult> ExportSummary()
+        {
+            var s = await _reportService.GetInventorySummaryAsync(CurrentUserId);
+
+            static string Money(decimal value) => value.ToString("0.00", CultureInfo.InvariantCulture);
+            static string Num(int value) => value.ToString(CultureInfo.InvariantCulture);
+
+            var rows = new List<string?[]>
+            {
+                new[] { "Totals", "Assets on record", Num(s.TotalAssets), null },
+                new[] { "Totals", "Assets in service", Num(s.InServiceAssets), Money(s.TotalValue) },
+                new[] { "Totals", "Available", Num(s.AvailableCount), null },
+                new[] { "Totals", "Assigned out", Num(s.AssignedCount), null },
+                new[] { "Totals", "Open assignments", Num(s.OutstandingAssignmentCount), null },
+                new[] { "Totals", "Under maintenance", Num(s.UnderMaintenanceCount), null },
+                new[] { "Totals", "Lost or damaged", Num(s.LostOrDamagedCount), null },
+                new[] { "Totals", "Disposed", Num(s.DisposedCount), null },
+                new[] { "Totals", "Pending requests", Num(s.PendingRequestCount), null },
+                new[] { "Totals", "Active users", Num(s.ActiveUserCount), null }
+            };
+
+            void AddSection(string section, List<SchoolInventoryManagement.BLL.DTOs.CountByLabelDTO> items, bool humanize = false)
+            {
+                foreach (var item in items)
+                    rows.Add(new[]
+                    {
+                        section,
+                        humanize ? DisplayText.Humanize(item.Label) : item.Label,
+                        Num(item.Count),
+                        Money(item.TotalValue)
+                    });
+            }
+
+            AddSection("By status", s.ByStatus, humanize: true);
+            AddSection("By condition", s.ByCondition, humanize: true);
+            AddSection("By category", s.ByCategory);
+            AddSection("By branch", s.ByBranch);
+            AddSection("By department", s.ByDepartment);
+
+            var csv = CsvExportHelper.Build(
+                new[] { "Section", "Item", "Count", "Value (PHP)" },
+                rows);
+
+            return File(csv, "text/csv", CsvExportHelper.TimestampedFileName("inventory-summary"));
         }
 
         // ==================================================================
@@ -126,7 +204,7 @@ namespace SchoolInventoryManagement.Web.Controllers
                 new[]
                 {
                     "Asset Code", "Asset Name", "Category", "Disposal Date",
-                    "Reason", "Method", "Approved By", "Acquisition Cost",
+                    "Reason", "Method", "Approved By", "Acquisition Cost (PHP)",
                     "Restored", "Restored Date", "Restored By"
                 },
                 rows.Select(r => new string?[]
@@ -206,17 +284,17 @@ namespace SchoolInventoryManagement.Web.Controllers
 
         // GET /Reports/Audit
         public async Task<IActionResult> Audit(
-            DateTime? fromDate, DateTime? toDate, int? userId, string? action, int maxRows = 500)
+            DateTime? fromDate, DateTime? toDate, int? userId, string? actionContains, int maxRows = 500)
         {
             ViewBag.FromDate = fromDate;
             ViewBag.ToDate = toDate;
-            ViewBag.Action = action;
+            ViewBag.Action = actionContains;
             ViewBag.MaxRows = maxRows;
 
             await PopulateUserDropdownAsync(userId);
 
             var rows = await _reportService.GetAuditTrailAsync(
-                fromDate, toDate, userId, action, maxRows, CurrentUserId);
+                fromDate, toDate, userId, actionContains, maxRows, CurrentUserId);
 
             // The service caps the row count; tell the reader when the cap
             // actually bit, so a truncated report is never mistaken for a
@@ -228,10 +306,10 @@ namespace SchoolInventoryManagement.Web.Controllers
 
         // GET /Reports/ExportAudit
         public async Task<IActionResult> ExportAudit(
-            DateTime? fromDate, DateTime? toDate, int? userId, string? action, int maxRows = 2000)
+            DateTime? fromDate, DateTime? toDate, int? userId, string? actionContains, int maxRows = 2000)
         {
             var rows = await _reportService.GetAuditTrailAsync(
-                fromDate, toDate, userId, action, maxRows, CurrentUserId);
+                fromDate, toDate, userId, actionContains, maxRows, CurrentUserId);
 
             var csv = CsvExportHelper.Build(
                 new[]

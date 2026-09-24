@@ -54,19 +54,16 @@
                 class="form-select"></select>
     </div>
 
-    <div class="mb-3">
-        <label asp-for="DepartmentID" class="form-label">Department the units go to</label>
-        <select asp-for="DepartmentID" asp-items="ViewBag.Departments" class="form-select">
-            <option value="">-- Select Department --</option>
-        </select>
-        <div class="form-text">Pre-filled from the requester's own department.</div>
-        <span asp-validation-for="DepartmentID" class="text-danger"></span>
-    </div>
-
     @if (request?.RequestedLocationID is not null)
     {
         @* The requester named where they want to collect the units, so there
-           is nothing to choose here -- the controller uses their choice. *@
+           is nothing to choose here -- the controller uses their location
+           and their own department. *@
+        <div class="mb-3">
+            <div class="form-label">Department the units go to</div>
+            <div class="fw-semibold">@request.DepartmentName</div>
+            <div class="form-text">The requester's own department, since they chose the pickup location.</div>
+        </div>
         <div class="mb-3">
             <div class="form-label">Pickup location</div>
             <div class="fw-semibold">@request.RequestedLocationName</div>
@@ -75,6 +72,14 @@
     }
     else
     {
+        <div class="mb-3">
+            <label asp-for="DepartmentID" class="form-label">Department the units go to</label>
+            <select asp-for="DepartmentID" asp-items="ViewBag.Departments" class="form-select">
+                <option value="">-- Select Department --</option>
+            </select>
+            <div class="form-text">Pre-filled from the requester's own department.</div>
+            <span asp-validation-for="DepartmentID" class="text-danger"></span>
+        </div>
         <div class="mb-3">
             <label asp-for="PickupLocationID" class="form-label">Pickup location</label>
             <select asp-for="PickupLocationID" asp-items="ViewBag.PickupLocations" class="form-select">

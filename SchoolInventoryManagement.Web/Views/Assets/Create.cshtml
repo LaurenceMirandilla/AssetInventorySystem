@@ -46,7 +46,10 @@
 
     <div class="mb-3">
         <label asp-for="AcquisitionCost" class="form-label"></label>
-        <input asp-for="AcquisitionCost" class="form-control" />
+        <div class="input-group">
+            <span class="input-group-text">₱</span>
+            <input asp-for="AcquisitionCost" type="number" step="0.01" min="0" placeholder="0.00" class="form-control" />
+        </div>
     </div>
 
     <div class="mb-3">
