@@ -33,15 +33,69 @@ namespace SchoolInventoryManagement.BLL.Services
                 .Include(a => a.AssetAssignments); // needed for ActiveAssignmentID
         }
 
+        // The model's category prefix, and the next number free for it.
+        // Refuses a category with no prefix -- there would be nothing to
+        // build a code from.
+        private async Task<(string Prefix, int Next)> NextCodeForModelAsync(int modelId)
+        {
+            var model = await _context.Models
+                .Include(m => m.Category)
+                .FirstOrDefaultAsync(m => m.ModelID == modelId);
+
+            if (model is null)
+                throw new KeyNotFoundException("Model not found.");
+
+            var prefix = model.Category.CodePrefix;
+            if (string.IsNullOrWhiteSpace(prefix))
+                throw new InvalidOperationException(
+                    $"The category {model.Category.CategoryName} has no code prefix yet. " +
+                    "Set one under Catalog > Categories first.");
+
+            var start = prefix + "-";
+            var codes = await _context.Assets
+                .Where(a => a.AssetCode.StartsWith(start))
+                .Select(a => a.AssetCode)
+                .ToListAsync();
+
+            return (prefix, AssetCodes.NextNumber(prefix, codes));
+        }
+
+        // Next free number for every category prefix -- what the register
+        // forms show as the code a new asset will get.
+        public async Task<Dictionary<string, int>> GetNextCodeNumbersAsync()
+        {
+            var prefixes = await _context.Categories
+                .Where(c => c.CodePrefix != null && c.CodePrefix != "")
+                .Select(c => c.CodePrefix)
+                .ToListAsync();
+
+            var codes = await _context.Assets.Select(a => a.AssetCode).ToListAsync();
+
+            return prefixes.ToDictionary(p => p, p => AssetCodes.NextNumber(p, codes));
+        }
+
+        // The code is generated from the model's category prefix; nobody
+        // types it.
         public async Task<AssetResponseDTO> CreateAssetAsync(CreateAssetDTO dto, int actingUserId)
         {
             await PermissionHelper.EnsureIsAssetManagerAsync(_context, actingUserId);
 
+            if (string.IsNullOrWhiteSpace(dto.AssetName))
+                throw new ArgumentException("Enter a name for the asset.");
+
+            await EnsureLocationInBranchAsync(dto.BranchID, dto.CurrentLocationID);
+
+            var (prefix, next) = await NextCodeForModelAsync(dto.ModelID);
+            if (next > AssetCodes.MaxNumber)
+                throw new InvalidOperationException(
+                    $"Codes for {prefix} have reached {AssetCodes.Format(prefix, AssetCodes.MaxNumber)}. " +
+                    "Give the category a new prefix to keep registering.");
+
             var asset = new Asset
             {
-                AssetCode = dto.AssetCode,
+                AssetCode = AssetCodes.Format(prefix, next),
                 ModelID = dto.ModelID,
-                AssetName = dto.AssetName,
+                AssetName = dto.AssetName.Trim(),
                 Description = dto.Description,
                 SerialNumber = dto.SerialNumber,
                 AcquisitionDate = dto.AcquisitionDate,
@@ -56,7 +110,7 @@ namespace SchoolInventoryManagement.BLL.Services
             };
 
             _context.Assets.Add(asset);
-            await _context.SaveChangesAsync();
+            await SaveNewCodesAsync();
 
             var created = await AssetQueryWithIncludes().FirstAsync(a => a.AssetID == asset.AssetID);
             return created.ToResponseDTO();
@@ -73,33 +127,14 @@ namespace SchoolInventoryManagement.BLL.Services
             if (dto.Quantity < 1 || dto.Quantity > MaxBulkQuantity)
                 throw new ArgumentException($"Register between 1 and {MaxBulkQuantity} assets at a time.");
 
-            if (dto.StartingNumber < 0)
-                throw new ArgumentException("Numbering cannot start below 0.");
-
-            var prefix = (dto.CodePrefix ?? string.Empty).Trim();
             var baseName = (dto.BaseName ?? string.Empty).Trim();
-
-            if (prefix.Length == 0)
-                throw new ArgumentException("Enter a code prefix.");
             if (baseName.Length == 0)
                 throw new ArgumentException("Enter a name for the units.");
-
-            if (!await _context.Models.AnyAsync(m => m.ModelID == dto.ModelID))
-                throw new KeyNotFoundException("Model not found.");
 
             if (!await _context.Branches.AnyAsync(b => b.BranchID == dto.BranchID))
                 throw new KeyNotFoundException("Branch not found.");
 
-            // The form narrows Location to the chosen branch, but that is
-            // JavaScript. A wrong location here would be stamped onto every
-            // unit in the batch, so it is worth the one query.
-            if (dto.CurrentLocationID is not null)
-            {
-                var locationInBranch = await _context.Locations.AnyAsync(l =>
-                    l.LocationID == dto.CurrentLocationID.Value && l.BranchID == dto.BranchID);
-                if (!locationInBranch)
-                    throw new ArgumentException("That location does not belong to the selected branch.");
-            }
+            await EnsureLocationInBranchAsync(dto.BranchID, dto.CurrentLocationID);
 
             // One serial per line, in code order. Blank lines are dropped so
             // a trailing newline from a spreadsheet paste does not count.
@@ -127,45 +162,35 @@ namespace SchoolInventoryManagement.BLL.Services
             if (repeatedSerial is not null)
                 throw new ArgumentException($"Serial number '{repeatedSerial.Key}' appears more than once.");
 
+            // Codes carry on from the highest number already used with the
+            // category's prefix.
+            var (prefix, first) = await NextCodeForModelAsync(dto.ModelID);
+            var last = first + dto.Quantity - 1;
+            if (last > AssetCodes.MaxNumber)
+            {
+                var left = Math.Max(0, AssetCodes.MaxNumber - first + 1);
+                throw new InvalidOperationException(
+                    $"Only {left} code{(left == 1 ? "" : "s")} left for {prefix} " +
+                    $"(they stop at {AssetCodes.Format(prefix, AssetCodes.MaxNumber)}). " +
+                    "Register fewer, or give the category a new prefix.");
+            }
+
             var units = Enumerable.Range(0, dto.Quantity)
                 .Select(i =>
                 {
-                    var number = dto.StartingNumber + i;
+                    var number = first + i;
                     return new
                     {
-                        Code = $"{prefix}{number:D4}",
+                        Code = AssetCodes.Format(prefix, number),
                         Name = $"{baseName} - Unit {number}",
                         Serial = serials.Count > 0 ? serials[i] : null
                     };
                 })
                 .ToList();
 
-            // Column limits: AssetCode 50, AssetName 150. Checking the last
-            // unit is enough -- it has the widest number.
-            var last = units[^1];
-            if (last.Code.Length > 50)
-                throw new ArgumentException($"Asset code '{last.Code}' would be longer than 50 characters. Shorten the prefix.");
-            if (last.Name.Length > 150)
+            // Column limit: AssetName 150. The last unit has the widest number.
+            if (units[^1].Name.Length > 150)
                 throw new ArgumentException("The generated names would be longer than 150 characters. Shorten the name.");
-
-            // Checked up front so the user hears exactly which codes clash,
-            // rather than getting the unique index's raw SQL error for
-            // whichever row happened to hit it first.
-            var codes = units.Select(u => u.Code).ToList();
-            var taken = await _context.Assets
-                .Where(a => codes.Contains(a.AssetCode))
-                .Select(a => a.AssetCode)
-                .OrderBy(c => c)
-                .ToListAsync();
-
-            if (taken.Count > 0)
-            {
-                var shown = string.Join(", ", taken.Take(5));
-                var more = taken.Count > 5 ? $" and {taken.Count - 5} more" : "";
-                throw new InvalidOperationException(
-                    $"These asset codes already exist: {shown}{more}. " +
-                    "Change the prefix or the starting number.");
-            }
 
             var assets = units.Select(u => new Asset
             {
@@ -186,23 +211,41 @@ namespace SchoolInventoryManagement.BLL.Services
             _context.Assets.AddRange(assets);
 
             // One SaveChangesAsync is one transaction: all of them are
-            // registered, or -- if anything fails -- none are, so a half
-            // batch never needs cleaning up by hand. The audit interceptor
-            // writes one log row per asset inside the same transaction.
+            // registered, or none are. The audit interceptor writes one log
+            // row per asset inside the same transaction.
+            await SaveNewCodesAsync();
+
+            return units.Select(u => u.Code).ToList();
+        }
+
+        // The form narrows Location to the chosen branch, but that is
+        // JavaScript; this is the check a hand-built post cannot skip.
+        private async Task EnsureLocationInBranchAsync(int branchId, int? locationId)
+        {
+            if (locationId is null)
+                return;
+
+            var locationInBranch = await _context.Locations.AnyAsync(l =>
+                l.LocationID == locationId.Value && l.BranchID == branchId);
+            if (!locationInBranch)
+                throw new ArgumentException("That location does not belong to the selected branch.");
+        }
+
+        // Two people registering in the same category at the same moment can
+        // both be given the same next number; the unique index on AssetCode
+        // stops the second. Nothing is saved for them -- they just try again.
+        private async Task SaveNewCodesAsync()
+        {
             try
             {
                 await _context.SaveChangesAsync();
             }
             catch (DbUpdateException)
             {
-                // Someone registered one of these codes between the check
-                // above and this save. Rare, but the unique index catches it.
                 throw new InvalidOperationException(
-                    "One of these asset codes was taken while you were saving. " +
-                    "Nothing was registered. Try again with a different starting number.");
+                    "Someone registered assets in this category at the same moment, so the codes clashed. " +
+                    "Nothing was saved — please submit again.");
             }
-
-            return codes;
         }
 
         public async Task<AssetResponseDTO?> GetAssetByIdAsync(int assetId)

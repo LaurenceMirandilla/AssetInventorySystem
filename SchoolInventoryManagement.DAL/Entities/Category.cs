@@ -13,6 +13,14 @@ namespace SchoolInventoryManagement.DAL.Entities
         [MaxLength(100)]
         public string CategoryName { get; set; } = null!;
 
+        // Start of every asset code in this category: "CHAIR" gives
+        // CHAIR-0001, CHAIR-0002, ... up to CHAIR-10000. Letters and digits
+        // only, stored upper-case, unique across categories (UX index in
+        // Scripts/008).
+        [Required]
+        [MaxLength(10)]
+        public string CodePrefix { get; set; } = null!;
+
         [MaxLength(255)]
         public string? Description { get; set; }
 

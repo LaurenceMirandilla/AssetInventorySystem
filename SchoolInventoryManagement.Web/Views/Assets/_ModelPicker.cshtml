@@ -1,0 +1,59 @@
+﻿@model List<SchoolInventoryManagement.Web.ViewModels.ModelCodeOption>
+@* Type-to-search model box, shared by Register and Bulk register. The
+   visible box is a search over "Model — Category"; the hidden ModelID is
+   what posts. Picking a model raises a "model-picked" event carrying its
+   code prefix and next number, so each form can show the codes it will
+   create. Pass the current ModelID in ViewData["SelectedModelId"]. *@
+@{
+    var selectedId = ViewData["SelectedModelId"] as int?;
+    var selected = Model.FirstOrDefault(m => m.ModelID == selectedId);
+}
+
+<label for="modelSearch" class="form-label">Model</label>
+<input id="modelSearch" list="modelOptions" class="form-control" autocomplete="off"
+       placeholder="Start typing a model name…" value="@(selected?.Label)" />
+<datalist id="modelOptions">
+    @foreach (var m in Model)
+    {
+        <option value="@m.Label" data-id="@m.ModelID" data-name="@m.ModelName"
+                data-prefix="@m.CodePrefix" data-next="@m.NextNumber"></option>
+    }
+</datalist>
+<input type="hidden" name="ModelID" id="modelId" value="@selectedId" />
+<div class="form-text" id="modelHint">Type part of the name, then pick it from the list.</div>
+@Html.ValidationMessage("ModelID", "", new { @class = "text-danger" })
+
+<script>
+    (function () {
+        var search = document.getElementById('modelSearch');
+        var hidden = document.getElementById('modelId');
+        var hint = document.getElementById('modelHint');
+        var options = Array.from(document.querySelectorAll('#modelOptions option'));
+
+        // Only an exact pick from the list counts; anything else typed
+        // leaves no model chosen.
+        function sync() {
+            var match = options.find(function (o) { return o.value === search.value; });
+            hidden.value = match ? match.getAttribute('data-id') : '';
+            hint.textContent = match
+                ? 'Codes in this category start with ' + match.getAttribute('data-prefix') + '-.'
+                : (search.value ? 'No exact match yet — pick a model from the list.' : 'Type part of the name, then pick it from the list.');
+            hint.className = 'form-text' + (search.value && !match ? ' text-danger' : '');
+
+            document.dispatchEvent(new CustomEvent('model-picked', {
+                detail: match ? {
+                    id: match.getAttribute('data-id'),
+                    name: match.getAttribute('data-name'),
+                    prefix: match.getAttribute('data-prefix'),
+                    next: parseInt(match.getAttribute('data-next'), 10)
+                } : null
+            }));
+        }
+
+        search.addEventListener('input', sync);
+        search.addEventListener('change', sync);
+        // Runs once the page has finished loading, so the form's own script
+        // is listening before the first event goes out.
+        window.addEventListener('DOMContentLoaded', sync);
+    })();
+</script>

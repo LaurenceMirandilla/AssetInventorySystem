@@ -15,6 +15,17 @@
         <span asp-validation-for="CategoryName" class="text-danger"></span>
     </div>
 
+    <div class="mb-3" style="max-width:320px;">
+        <label asp-for="CodePrefix" class="form-label"></label>
+        <input asp-for="CodePrefix" id="codePrefix" class="form-control text-uppercase" maxlength="10"
+               placeholder="e.g. CHAIR" autocomplete="off" />
+        <span asp-validation-for="CodePrefix" class="text-danger"></span>
+        <div class="form-text">
+            2 to 10 letters or digits. Asset codes in this category will be
+            <span class="sab-code" id="codeExample">PREFIX-0001</span>, -0002 … up to -10000.
+        </div>
+    </div>
+
     <div class="mb-3">
         <label asp-for="Description" class="form-label">Description <span class="text-muted">(optional)</span></label>
         <textarea asp-for="Description" class="form-control"></textarea>
@@ -28,4 +39,5 @@
     @{
         await Html.RenderPartialAsync("_ValidationScriptsPartial");
     }
+    <partial name="_CodePrefixScript" />
 }

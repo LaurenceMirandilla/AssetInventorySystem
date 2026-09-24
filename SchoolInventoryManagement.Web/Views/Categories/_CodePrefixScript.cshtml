@@ -1,0 +1,19 @@
+﻿@* Shared by Create and Edit: keeps the prefix upper-case, letters and
+   digits only, and shows the first code it would give. The service checks
+   the same rules. *@
+<script>
+    (function () {
+        var input = document.getElementById('codePrefix');
+        var example = document.getElementById('codeExample');
+        if (!input || !example) return;
+
+        function sync() {
+            var clean = input.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10);
+            if (clean !== input.value) input.value = clean;
+            example.textContent = (clean || 'PREFIX') + '-0001';
+        }
+
+        input.addEventListener('input', sync);
+        sync();
+    })();
+</script>

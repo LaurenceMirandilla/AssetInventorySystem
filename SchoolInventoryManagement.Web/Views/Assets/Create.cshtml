@@ -1,6 +1,8 @@
 ﻿@model SchoolInventoryManagement.Web.ViewModels.AssetCreateViewModel
 @{
     ViewData["Title"] = "New Asset";
+    var modelChoices = (List<SchoolInventoryManagement.Web.ViewModels.ModelCodeOption>)ViewBag.ModelChoices;
+    ViewData["SelectedModelId"] = Model.ModelID;
 }
 
 <h2>New Asset</h2>
@@ -10,22 +12,20 @@
     <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
 
     <div class="mb-3">
-        <label asp-for="AssetCode" class="form-label"></label>
-        <input asp-for="AssetCode" class="form-control" />
-        <span asp-validation-for="AssetCode" class="text-danger"></span>
+        <partial name="_ModelPicker" model="modelChoices" view-data="ViewData" />
     </div>
 
+    @* The code is not typed: it comes from the model's category prefix and
+       the next free number, and is shown here before saving. *@
     <div class="mb-3">
-        <label asp-for="ModelID" class="form-label">Model</label>
-        <select asp-for="ModelID" asp-items="ViewBag.Models" class="form-select">
-            <option value="">-- Select Model --</option>
-        </select>
-        <span asp-validation-for="ModelID" class="text-danger"></span>
+        <div class="form-label">Asset code</div>
+        <div id="codePreview" class="fw-semibold sab-code">Pick a model to see its code.</div>
+        <div class="form-text">Given automatically when you save.</div>
     </div>
 
     <div class="mb-3">
         <label asp-for="AssetName" class="form-label"></label>
-        <input asp-for="AssetName" class="form-control" />
+        <input asp-for="AssetName" id="assetName" class="form-control" />
         <span asp-validation-for="AssetName" class="text-danger"></span>
     </div>
 
@@ -94,10 +94,36 @@
     }
     <script>
         (function () {
-            // Location is chosen within a branch: the list only ever holds
-            // that branch's locations, and stays locked until a branch is
-            // picked. The options are rebuilt rather than hidden, because
-            // some browsers ignore "hidden" on <option>.
+            // ---- Code preview and name --------------------------------
+            // When a model is picked: show the code it will get, and start
+            // the name off as the model's name if nothing is typed yet.
+            var codePreview = document.getElementById('codePreview');
+            var assetName = document.getElementById('assetName');
+            var autoName = '';
+
+            function pad(n) { var s = String(n); while (s.length < 4) s = '0' + s; return s; }
+
+            document.addEventListener('model-picked', function (e) {
+                var m = e.detail;
+                if (!m) {
+                    codePreview.textContent = 'Pick a model to see its code.';
+                    return;
+                }
+                codePreview.textContent = m.next > @SchoolInventoryManagement.BLL.Services.AssetCodes.MaxNumber
+                    ? m.prefix + ' has no codes left — give the category a new prefix.'
+                    : m.prefix + '-' + pad(m.next);
+
+                if (!assetName.value.trim() || assetName.value === autoName) {
+                    assetName.value = m.name;
+                    autoName = m.name;
+                }
+            });
+
+            // ---- Location follows branch --------------------------------
+            // The list only ever holds the chosen branch's locations, and
+            // stays locked until a branch is picked. Options are rebuilt
+            // rather than hidden, because some browsers ignore "hidden" on
+            // <option>.
             var branchSelect = document.getElementById('branchSelect');
             var locationSelect = document.getElementById('locationSelect');
             if (!branchSelect || !locationSelect) return;
@@ -139,7 +165,7 @@
                 selected = locationSelect.value;
             });
 
-            rebuild(); // on load too, so an edit or a failed post shows the right list
+            rebuild(); // on load too, so a failed post shows the right list
         })();
     </script>
 }

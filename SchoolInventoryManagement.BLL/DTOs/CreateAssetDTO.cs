@@ -4,12 +4,10 @@ using SchoolInventoryManagement.DAL.Entities.Enums;
 
 namespace SchoolInventoryManagement.BLL.DTOs
 {
+    // No AssetCode: it is generated from the model's category prefix
+    // (CHAIR-0001, CHAIR-0002, ...) when the asset is saved.
     public class CreateAssetDTO
     {
-        [Required]
-        [MaxLength(50)]
-        public string AssetCode { get; set; } = null!;
-
         [Required]
         public int ModelID { get; set; }
 

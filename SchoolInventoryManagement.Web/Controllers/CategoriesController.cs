@@ -58,12 +58,13 @@ namespace SchoolInventoryManagement.Web.Controllers
             if (category is null)
                 return NotFound();
 
-            // Description must be carried across here. UpdateCategoryAsync
-            // assigns it unconditionally, so leaving it unset would post
-            // back null and wipe whatever the category already had.
+            // Every field must be carried across here. UpdateCategoryAsync
+            // assigns them unconditionally, so leaving one unset would post
+            // back empty and wipe whatever the category already had.
             var dto = new UpdateCategoryDTO
             {
                 CategoryName = category.CategoryName,
+                CodePrefix = category.CodePrefix,
                 Description = category.Description
             };
 

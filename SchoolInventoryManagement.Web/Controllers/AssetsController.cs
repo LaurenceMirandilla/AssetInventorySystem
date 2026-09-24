@@ -60,6 +60,24 @@ namespace SchoolInventoryManagement.Web.Controllers
                 await _context.Models.OrderBy(m => m.ModelName).ToListAsync(),
                 "ModelID", "ModelName");
 
+            // For the register forms' type-to-search model box: each model
+            // with its category's code prefix and the next number free, so
+            // the form can show the code(s) about to be created.
+            var nextNumbers = await _assetService.GetNextCodeNumbersAsync();
+            var modelChoices = await _context.Models
+                .OrderBy(m => m.ModelName)
+                .Select(m => new ModelCodeOption
+                {
+                    ModelID = m.ModelID,
+                    ModelName = m.ModelName,
+                    CategoryName = m.Category.CategoryName,
+                    CodePrefix = m.Category.CodePrefix
+                })
+                .ToListAsync();
+            foreach (var choice in modelChoices)
+                choice.NextNumber = nextNumbers.GetValueOrDefault(choice.CodePrefix, 1);
+            ViewBag.ModelChoices = modelChoices;
+
             ViewBag.Locations = new SelectList(
                 await _context.Locations.OrderBy(l => l.LocationName).ToListAsync(),
                 "LocationID", "LocationName");
@@ -294,8 +312,7 @@ namespace SchoolInventoryManagement.Web.Controllers
                 var savedPath = await SaveAssetImageAsync(model.ImageFile);
                 var dto = new CreateAssetDTO
                 {
-                    AssetCode = model.AssetCode,
-                    ModelID = model.ModelID,
+                    ModelID = model.ModelID!.Value,
                     AssetName = model.AssetName,
                     Description = model.Description,
                     SerialNumber = model.SerialNumber,
@@ -310,6 +327,7 @@ namespace SchoolInventoryManagement.Web.Controllers
                 };
 
                 var created = await _assetService.CreateAssetAsync(dto, CurrentUserId);
+                TempData["StatusMessage"] = $"Registered {created.AssetCode}.";
                 return RedirectToAction(nameof(Details), new { id = created.AssetID });
             }
             catch (Exception ex)
@@ -346,8 +364,6 @@ namespace SchoolInventoryManagement.Web.Controllers
                 {
                     ModelID = model.ModelID!.Value,
                     Quantity = model.Quantity,
-                    CodePrefix = model.CodePrefix,
-                    StartingNumber = model.StartingNumber,
                     BaseName = model.BaseName,
                     SerialNumbers = model.SerialNumbers,
                     Description = model.Description,
@@ -365,9 +381,9 @@ namespace SchoolInventoryManagement.Web.Controllers
                     ? $"Registered 1 asset: {codes[0]}."
                     : $"Registered {codes.Count} assets: {codes[0]} to {codes[^1]}.";
 
-                // Land on the list already searched to the new batch, so the
-                // user sees exactly what was just created.
-                return RedirectToAction(nameof(Index), new { keyword = model.CodePrefix.Trim() });
+                // Land on the list filtered to that model, so the new batch
+                // is right there.
+                return RedirectToAction(nameof(Index), new { modelId = model.ModelID });
             }
             catch (Exception ex)
             {

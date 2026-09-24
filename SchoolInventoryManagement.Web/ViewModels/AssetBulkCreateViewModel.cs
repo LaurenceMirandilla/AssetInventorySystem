@@ -4,24 +4,18 @@ using SchoolInventoryManagement.DAL.Entities.Enums;
 
 namespace SchoolInventoryManagement.Web.ViewModels
 {
+    // Codes are generated from the model's category prefix, carrying on
+    // from the highest number already used -- nobody types a prefix or a
+    // starting number.
     public class AssetBulkCreateViewModel
     {
-        [Required(ErrorMessage = "Pick the model these units are.")]
+        [Required(ErrorMessage = "Pick a model from the list.")]
         [Display(Name = "Model")]
         public int? ModelID { get; set; }
 
         [Range(1, 200, ErrorMessage = "Register between 1 and 200 at a time.")]
         [Display(Name = "How many")]
         public int Quantity { get; set; } = 10;
-
-        [Required(ErrorMessage = "A code prefix keeps these codes from colliding with other models'.")]
-        [MaxLength(40)]
-        [Display(Name = "Code prefix")]
-        public string CodePrefix { get; set; } = null!;
-
-        [Range(0, 999999)]
-        [Display(Name = "Start numbering at")]
-        public int StartingNumber { get; set; } = 1;
 
         [Required(ErrorMessage = "Give the units a name.")]
         [MaxLength(130)]

@@ -1,6 +1,8 @@
 ﻿@model SchoolInventoryManagement.Web.ViewModels.AssetBulkCreateViewModel
 @{
     ViewData["Title"] = "Bulk Register Assets";
+    var modelChoices = (List<SchoolInventoryManagement.Web.ViewModels.ModelCodeOption>)ViewBag.ModelChoices;
+    ViewData["SelectedModelId"] = Model.ModelID;
 }
 
 <nav class="mb-2" style="font-size:0.85rem;">
@@ -13,9 +15,9 @@
     <div>
         <h2>Bulk Register Assets</h2>
         <p class="sab-page-sub">
-            Register many units of the same model at once. Codes and names are numbered
-            for you; everything else is shared by every unit. Nothing is saved unless
-            every unit can be — a problem with one cancels the whole batch.
+            Register many units of the same model at once. Codes come from the model's
+            category and are numbered for you; everything else is shared by every unit.
+            Nothing is saved unless every unit can be — a problem with one cancels the whole batch.
         </p>
     </div>
 </div>
@@ -33,11 +35,7 @@
 
                     <div class="row g-3">
                         <div class="col-md-8">
-                            <label asp-for="ModelID" class="form-label"></label>
-                            <select asp-for="ModelID" asp-items="ViewBag.Models" class="form-select">
-                                <option value="">-- Select Model --</option>
-                            </select>
-                            <span asp-validation-for="ModelID" class="text-danger"></span>
+                            <partial name="_ModelPicker" model="modelChoices" view-data="ViewData" />
                         </div>
                         <div class="col-md-4">
                             <label asp-for="Quantity" class="form-label"></label>
@@ -50,30 +48,16 @@
 
             <div class="card mb-3">
                 <div class="card-body">
-                    <h5 class="mb-3">Numbering</h5>
+                    <h5 class="mb-3">Name</h5>
 
-                    <div class="row g-3">
-                        <div class="col-md-6">
-                            <label asp-for="CodePrefix" class="form-label"></label>
-                            <input asp-for="CodePrefix" id="codePrefix" class="form-control" placeholder="e.g. LAP-" autocomplete="off" />
-                            <span asp-validation-for="CodePrefix" class="text-danger"></span>
-                        </div>
-                        <div class="col-md-6">
-                            <label asp-for="StartingNumber" class="form-label"></label>
-                            <input asp-for="StartingNumber" id="startingNumber" type="number" min="0" class="form-control" />
-                            <span asp-validation-for="StartingNumber" class="text-danger"></span>
-                            <div class="form-text">Continuing an existing run? Start after its last number.</div>
-                        </div>
-                        <div class="col-12">
-                            <label asp-for="BaseName" class="form-label"></label>
-                            <input asp-for="BaseName" id="baseName" class="form-control" placeholder="e.g. ThinkPad X1 Carbon Gen 13" />
-                            <span asp-validation-for="BaseName" class="text-danger"></span>
-                        </div>
-                    </div>
+                    <label asp-for="BaseName" class="form-label"></label>
+                    <input asp-for="BaseName" id="baseName" class="form-control" placeholder="e.g. Monobloc Chair" />
+                    <span asp-validation-for="BaseName" class="text-danger"></span>
+                    <div class="form-text">Each unit is named "Name - Unit N", N being the number in its code.</div>
 
                     <div id="preview" class="mt-3 p-3" style="background:var(--sab-bg); border-radius:var(--sab-radius-sm);">
                         <div class="text-muted small mb-1">Will create</div>
-                        <div id="previewBody" class="small">Fill in a prefix and a name to see the codes.</div>
+                        <div id="previewBody" class="small">Pick a model and enter a name to see the codes.</div>
                     </div>
                 </div>
             </div>
@@ -160,15 +144,19 @@
     <script>
         (function () {
             var quantity = document.getElementById('quantity');
-            var prefix = document.getElementById('codePrefix');
-            var start = document.getElementById('startingNumber');
             var baseName = document.getElementById('baseName');
             var serials = document.getElementById('serialNumbers');
             var previewBody = document.getElementById('previewBody');
             var serialCount = document.getElementById('serialCount');
             var submitBtn = document.getElementById('submitBtn');
+            var maxNumber = @SchoolInventoryManagement.BLL.Services.AssetCodes.MaxNumber;
 
-            // Mirrors AssetService: {prefix}{number:D4}, "{name} - Unit {number}".
+            // The picked model's code prefix and next free number, from the
+            // model search box.
+            var picked = null;
+            var autoName = '';
+
+            // Mirrors AssetService: {prefix}-{number:D4}, "{name} - Unit {number}".
             function pad(n) {
                 var s = String(n);
                 while (s.length < 4) s = '0' + s;
@@ -183,23 +171,27 @@
 
             function update() {
                 var qty = parseInt(quantity.value, 10) || 0;
-                var first = parseInt(start.value, 10);
-                if (isNaN(first)) first = 1;
-                var p = prefix.value.trim();
                 var n = baseName.value.trim();
 
-                if (qty < 1 || !p || !n) {
-                    previewBody.textContent = 'Fill in a prefix and a name to see the codes.';
+                if (!picked || qty < 1 || !n) {
+                    previewBody.textContent = 'Pick a model and enter a name to see the codes.';
                 } else {
+                    var first = picked.next;
                     var last = first + qty - 1;
-                    var firstLine = '<code>' + escapeHtml(p + pad(first)) + '</code> ' + escapeHtml(n + ' - Unit ' + first);
-                    if (qty === 1) {
-                        previewBody.innerHTML = firstLine;
+                    if (last > maxNumber) {
+                        var left = Math.max(0, maxNumber - first + 1);
+                        previewBody.innerHTML = '<span class="text-danger">Only ' + left + ' code' + (left === 1 ? '' : 's')
+                            + ' left for ' + escapeHtml(picked.prefix) + '. Register fewer, or give the category a new prefix.</span>';
                     } else {
-                        var lastLine = '<code>' + escapeHtml(p + pad(last)) + '</code> ' + escapeHtml(n + ' - Unit ' + last);
-                        previewBody.innerHTML = firstLine
-                            + '<div class="text-muted">&vellip; ' + (qty - 2 > 0 ? (qty - 2) + ' more' : '') + '</div>'
-                            + lastLine;
+                        var firstLine = '<code>' + escapeHtml(picked.prefix + '-' + pad(first)) + '</code> ' + escapeHtml(n + ' - Unit ' + first);
+                        if (qty === 1) {
+                            previewBody.innerHTML = firstLine;
+                        } else {
+                            var lastLine = '<code>' + escapeHtml(picked.prefix + '-' + pad(last)) + '</code> ' + escapeHtml(n + ' - Unit ' + last);
+                            previewBody.innerHTML = firstLine
+                                + '<div class="text-muted">&vellip; ' + (qty - 2 > 0 ? (qty - 2) + ' more' : '') + '</div>'
+                                + lastLine;
+                        }
                     }
                 }
 
@@ -220,7 +212,17 @@
                     : 'Register assets';
             }
 
-            [quantity, prefix, start, baseName, serials].forEach(function (el) {
+            document.addEventListener('model-picked', function (e) {
+                picked = e.detail;
+                // Start the name off as the model's name if nothing is typed.
+                if (picked && (!baseName.value.trim() || baseName.value === autoName)) {
+                    baseName.value = picked.name;
+                    autoName = picked.name;
+                }
+                update();
+            });
+
+            [quantity, baseName, serials].forEach(function (el) {
                 el.addEventListener('input', update);
             });
             update();

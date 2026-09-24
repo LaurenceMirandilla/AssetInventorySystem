@@ -10,7 +10,10 @@
 <div class="sab-page-head">
     <div>
         <h2>Categories</h2>
-        <p class="sab-page-sub">@Model.Count categor@(Model.Count == 1 ? "y" : "ies"). Categories group models; models group the physical units.</p>
+        <p class="sab-page-sub">
+            @Model.Count categor@(Model.Count == 1 ? "y" : "ies"), @Model.Sum(c => c.AssetCount) asset@(Model.Sum(c => c.AssetCount) == 1 ? "" : "s") in all.
+            Categories group models; models group the physical units. Each category's prefix starts its asset codes.
+        </p>
     </div>
     <div class="sab-page-actions">
         <a asp-action="Create" class="btn btn-primary">+ New Category</a>
@@ -24,6 +27,9 @@
             <thead>
                 <tr>
                     <th>Name</th>
+                    <th>Code prefix</th>
+                    <th class="text-end">Models</th>
+                    <th class="text-end">Assets</th>
                     <th>Description</th>
                     <th></th>
                 </tr>
@@ -32,9 +38,16 @@
                 @foreach (var category in Model)
                 {
                     <tr>
-                        <td>@category.CategoryName</td>
+                        <td class="fw-semibold">@category.CategoryName</td>
+                        <td><span class="sab-code">@category.CodePrefix-0001</span></td>
+                        <td class="text-end">@category.ModelCount</td>
+                        <td class="text-end">
+                            @* Clicking the count opens the asset list filtered to the category. *@
+                            <a asp-controller="Assets" asp-action="Index" asp-route-categoryId="@category.CategoryID" class="fw-semibold">@category.AssetCount</a>
+                            <div class="text-muted small">@category.AvailableCount available</div>
+                        </td>
                         <td>@(string.IsNullOrWhiteSpace(category.Description) ? "—" : category.Description)</td>
-                        <td>
+                        <td class="text-nowrap">
                             <a asp-action="Edit" asp-route-id="@category.CategoryID">Edit</a>
                             <form asp-action="Delete" asp-route-id="@category.CategoryID" method="post" class="d-inline" onsubmit="return confirm('Delete this category?');">
                                 @Html.AntiForgeryToken()
@@ -57,4 +70,3 @@ else
         </div>
     </div>
 }
-

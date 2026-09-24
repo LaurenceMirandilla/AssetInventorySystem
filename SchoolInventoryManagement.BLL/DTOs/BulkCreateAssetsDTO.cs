@@ -11,12 +11,10 @@ namespace SchoolInventoryManagement.BLL.DTOs
         public int ModelID { get; set; }
         public int Quantity { get; set; }
 
-        // Codes come out as {CodePrefix}{number:D4}: "LAP-" + 1 -> "LAP-0001".
-        public string CodePrefix { get; set; } = null!;
-        public int StartingNumber { get; set; } = 1;
-
+        // Codes are generated from the model's category prefix, carrying on
+        // from the highest number already used: CHAIR-0058, CHAIR-0059, ...
         // Names come out as "{BaseName} - Unit {number}", using the same
-        // number as the code, so LAP-0007 is always "... - Unit 7".
+        // number as the code, so CHAIR-0058 is "... - Unit 58".
         public string BaseName { get; set; } = null!;
 
         // Optional, one per line, in code order. Either empty or exactly
