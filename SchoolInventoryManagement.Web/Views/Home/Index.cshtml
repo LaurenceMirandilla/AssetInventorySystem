@@ -40,13 +40,10 @@
                             <div class="d-flex justify-content-between align-items-center py-2 border-bottom">
                                 <div>
                                     <div class="fw-semibold">
-                                        @if (request.RequestType == SchoolInventoryManagement.DAL.Entities.Enums.RequestType.Borrow)
+                                        @request.ItemsSummary
+                                        @if (request.RequestType == SchoolInventoryManagement.DAL.Entities.Enums.RequestType.Transfer)
                                         {
-                                            @(request.ModelName ?? "—")
-                                        }
-                                        else
-                                        {
-                                            @($"{request.AssetCode} → {request.RequestedLocationName}")
+                                            <text> &rarr; @request.RequestedLocationName</text>
                                         }
                                     </div>
                                     <div class="text-muted small">
@@ -55,7 +52,7 @@
                                     </div>
                                 </div>
                                 <div class="d-flex align-items-center" style="gap:12px;">
-                                    <span class="status-pill status-@request.RequestStatus.ToString().ToLowerInvariant()">@request.RequestStatus</span>
+                                    <span class="status-pill status-@request.RequestStatus.ToString().ToLowerInvariant()">@DisplayText.Humanize(request.RequestStatus.ToString())</span>
                                     <a asp-controller="AssetRequests" asp-action="Details" asp-route-id="@request.RequestID" class="small">View</a>
                                 </div>
                             </div>
@@ -74,9 +71,9 @@
                 <div class="card-body">
                     <h5 class="mb-1">Need something?</h5>
                     <p class="text-muted small">
-                        <strong>Borrow</strong> asks for a model and lets staff pick the
-                        unit. <strong>Transfer</strong> moves a specific unit to another
-                        location. Either way an approver decides.
+                        <strong>Borrow</strong> asks for models and how many of each;
+                        staff pick the units. <strong>Transfer</strong> asks for them to
+                        be moved to another location. Either way an approver decides.
                     </p>
                     <a asp-controller="AssetRequests" asp-action="Create" class="btn btn-primary w-100">+ New Request</a>
                     <a asp-controller="Assets" asp-action="MyAssets" class="btn btn-outline-secondary w-100 mt-2">See what I'm holding</a>

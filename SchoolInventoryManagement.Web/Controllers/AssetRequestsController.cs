@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
@@ -105,26 +106,25 @@ namespace SchoolInventoryManagement.Web.Controllers
         }
 
         // POST /AssetRequests/Create
+        // One ticket, however many rows the form had.
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Create(CreateAssetRequestViewModel model)
         {
-            // Blank rows (an added "+" row left empty) are simply dropped;
-            // at least one model has to be chosen.
-            var modelIds = model.ModelIDs
-                .Where(id => id is not null)
-                .Select(id => id!.Value)
-                .ToList();
+            // Rows left without a model (an added row nobody filled in) are
+            // simply dropped; at least one has to remain.
+            var rows = model.Items.Where(i => i.ModelID is not null).ToList();
 
-            if (modelIds.Count == 0)
-                ModelState.AddModelError(nameof(model.ModelIDs), "Choose at least one model.");
+            if (rows.Count == 0)
+                ModelState.AddModelError(nameof(model.Items), "Choose at least one model.");
+            else if (rows.Any(r => r.Quantity is null || r.Quantity < 1))
+                ModelState.AddModelError(nameof(model.Items), "Each amount must be at least 1.");
+            else if (rows.GroupBy(r => r.ModelID).Any(g => g.Count() > 1))
+                ModelState.AddModelError(nameof(model.Items), "The same model is listed twice. Put the full amount on one row.");
 
-            // The destination field is Transfer-only; for a Borrow it may
-            // still hold a stale value from the hidden half of the form, so
-            // clear it rather than trip the service.
-            if (model.RequestType == RequestType.Borrow)
-                model.RequestedLocationID = null;
-            else if (model.RequestedLocationID is null)
+            // Transfer needs a destination. For Borrow the location is the
+            // optional preferred pickup point.
+            if (model.RequestType == RequestType.Transfer && model.RequestedLocationID is null)
                 ModelState.AddModelError(nameof(model.RequestedLocationID), "Choose where it should go.");
 
             // Caught here so the message sits under the field; the service
@@ -144,26 +144,22 @@ namespace SchoolInventoryManagement.Web.Controllers
 
             try
             {
-                var dtos = modelIds.Select(modelId => new CreateAssetRequestDTO
+                var dto = new CreateAssetRequestDTO
                 {
                     RequestType = model.RequestType,
-                    ModelID = modelId,
-                    AssetID = null, // never the requester's choice
+                    Items = rows.Select(r => new CreateAssetRequestItemDTO
+                    {
+                        ModelID = r.ModelID!.Value,
+                        Quantity = r.Quantity!.Value
+                    }).ToList(),
                     RequestedLocationID = model.RequestedLocationID,
                     NeededFrom = model.NeededFrom,
                     ReturnBy = model.ReturnBy,
                     Reason = model.Reason
-                }).ToList();
+                };
 
-                var created = await _requestService.CreateRequestsAsync(dtos, CurrentUserId);
-
-                // One item: straight to it. Several: the list, where they
-                // all show up together.
-                if (created.Count == 1)
-                    return RedirectToAction(nameof(Details), new { id = created[0].RequestID });
-
-                TempData["StatusMessage"] = $"{created.Count} requests submitted.";
-                return RedirectToAction(nameof(MyRequests));
+                var created = await _requestService.CreateRequestAsync(dto, CurrentUserId);
+                return RedirectToAction(nameof(Details), new { id = created.RequestID });
             }
             catch (Exception ex)
             {
@@ -174,9 +170,9 @@ namespace SchoolInventoryManagement.Web.Controllers
         }
 
         // GET /AssetRequests/Approve/5
-        // Both request types approve through here, and both have staff pick
-        // the unit. Borrow also sets the receiving department; Transfer
-        // already knows its destination.
+        // Both request types approve through here, and both have staff tick
+        // the units for every line. Borrow also sets the receiving
+        // department and pickup point; Transfer already knows its destination.
         [Authorize(Roles = ApproverRoles)]
         public async Task<IActionResult> Approve(int id)
         {
@@ -194,21 +190,27 @@ namespace SchoolInventoryManagement.Web.Controllers
 
             if (request.RequestType == RequestType.Borrow)
             {
-                await PopulateBorrowApprovalDropdownsAsync(request.ModelID);
+                // First N units of each line ticked, so the common case is
+                // just "check and approve".
+                var lines = await BuildApprovalLinesAsync(request, null);
+                await PopulateBorrowApprovalDropdownsAsync();
 
                 return View("ApproveBorrow", new ApproveBorrowRequestViewModel
                 {
                     RequestID = id,
+                    AssetIDs = DefaultPicks(lines),
                     DepartmentID = request.DepartmentID,
+                    // The requester's preferred pickup point, if they gave one.
+                    PickupLocationID = request.RequestedLocationID,
                     RowVersionBase64 = RowVersionHelper.ToBase64(request.RowVersion)
                 });
             }
 
-            await PopulateTransferApprovalDropdownsAsync(request);
-
+            var transferLines = await BuildApprovalLinesAsync(request, null);
             return View("ApproveTransfer", new ApproveTransferRequestViewModel
             {
                 RequestID = id,
+                AssetIDs = DefaultPicks(transferLines),
                 RowVersionBase64 = RowVersionHelper.ToBase64(request.RowVersion)
             });
         }
@@ -219,17 +221,27 @@ namespace SchoolInventoryManagement.Web.Controllers
         [Authorize(Roles = ApproverRoles)]
         public async Task<IActionResult> ApproveBorrow(int id, ApproveBorrowRequestViewModel model)
         {
+            var request = await _requestService.GetRequestByIdAsync(id);
+            if (request is null)
+                return NotFound();
+
+            // The requester's preferred pickup point wins when they gave
+            // one; otherwise the approver has to choose.
+            var pickupLocationId = request.RequestedLocationID ?? model.PickupLocationID;
+            if (pickupLocationId is null)
+                ModelState.AddModelError(nameof(model.PickupLocationID), "Say where the requester can collect it.");
+
             if (!ModelState.IsValid)
                 return await RedisplayBorrowApprovalAsync(id, model);
 
             try
             {
-                await _fulfillmentService.ApproveAndAssignAsync(
+                await _fulfillmentService.ApproveBorrowAsync(
                     id,
-                    model.AssetID,
+                    model.AssetIDs,
                     model.ConditionOnAssignment,
                     model.DepartmentID,
-                    model.PickupLocationID!.Value,
+                    pickupLocationId!.Value,
                     RowVersionHelper.FromBase64(model.RowVersionBase64),
                     CurrentUserId,
                     model.Remarks);
@@ -254,9 +266,9 @@ namespace SchoolInventoryManagement.Web.Controllers
 
             try
             {
-                await _fulfillmentService.ApproveAndTransferAsync(
+                await _fulfillmentService.ApproveTransferAsync(
                     id,
-                    model.AssetID,
+                    model.AssetIDs,
                     model.ConditionOnTransfer,
                     RowVersionHelper.FromBase64(model.RowVersionBase64),
                     CurrentUserId,
@@ -272,8 +284,8 @@ namespace SchoolInventoryManagement.Web.Controllers
         }
 
         // POST /AssetRequests/MarkAssigned/5
-        // In Transit -> Assigned: a Borrow was collected, or a Transfer
-        // arrived. Officers and Administrators only.
+        // In Transit -> Assigned for every unit on the ticket: a Borrow was
+        // collected, or a Transfer arrived. Officers and Administrators only.
         [HttpPost]
         [ValidateAntiForgeryToken]
         [Authorize(Roles = AssetManagerRoles)]
@@ -294,6 +306,71 @@ namespace SchoolInventoryManagement.Web.Controllers
             return fromApprovals
                 ? RedirectToAction(nameof(Pending))
                 : RedirectToAction(nameof(Details), new { id });
+        }
+
+        // GET /AssetRequests/RecordReturn/5
+        // Units coming back on a request -- all of them are ticked to start.
+        [Authorize(Roles = AssetManagerRoles)]
+        public async Task<IActionResult> RecordReturn(int id)
+        {
+            var request = await _requestService.GetRequestByIdAsync(id);
+            if (request is null)
+                return NotFound();
+
+            if (request.UnitsOut == 0)
+            {
+                TempData["ErrorMessage"] = "Nothing on this request is still out.";
+                return RedirectToAction(nameof(Details), new { id });
+            }
+
+            ViewBag.Request = request;
+            await PopulateReturnLocationsAsync();
+
+            return View(new ReturnRequestViewModel
+            {
+                RequestID = id,
+                AssignmentIDs = request.Units
+                    .Where(u => u.ReturnDate == null)
+                    .Select(u => u.AssignmentID)
+                    .ToList(),
+                RowVersionBase64 = RowVersionHelper.ToBase64(request.RowVersion)
+            });
+        }
+
+        // POST /AssetRequests/RecordReturn/5
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        [Authorize(Roles = AssetManagerRoles)]
+        public async Task<IActionResult> RecordReturn(int id, ReturnRequestViewModel model)
+        {
+            if (model.AssignmentIDs.Count == 0)
+                ModelState.AddModelError(nameof(model.AssignmentIDs), "Tick at least one unit that is coming back.");
+
+            if (ModelState.IsValid)
+            {
+                try
+                {
+                    await _fulfillmentService.RecordReturnAsync(
+                        id,
+                        model.AssignmentIDs,
+                        model.ConditionOnReturn,
+                        model.ReturnLocationID!.Value,
+                        RowVersionHelper.FromBase64(model.RowVersionBase64),
+                        CurrentUserId);
+
+                    TempData["StatusMessage"] =
+                        $"{model.AssignmentIDs.Count} unit{(model.AssignmentIDs.Count == 1 ? "" : "s")} returned.";
+                    return RedirectToAction(nameof(Details), new { id });
+                }
+                catch (Exception ex)
+                {
+                    HandleServiceException(ex);
+                }
+            }
+
+            ViewBag.Request = await _requestService.GetRequestByIdAsync(id);
+            await PopulateReturnLocationsAsync();
+            return View(model);
         }
 
         // GET /AssetRequests/Reject/5
@@ -376,10 +453,10 @@ namespace SchoolInventoryManagement.Web.Controllers
 
         private async Task PopulateRequestDropdownsAsync()
         {
-            // Every model is listed, grouped under its category, with how
-            // many units are on the shelf. A model with none is shown but
-            // greyed out (disabled): the requester can see it exists, but
-            // cannot ask for it. CreateRequestsAsync refuses it as well.
+            // Every model, grouped under its category, with how many units
+            // are on the shelf. That count is also the most a row can ask
+            // for; a model with none is shown greyed out. The service
+            // enforces both anyway.
             var models = await _modelService.GetAllModelsAsync();
 
             var available = await _assetService.SearchAssetsAsync(
@@ -388,27 +465,14 @@ namespace SchoolInventoryManagement.Web.Controllers
                 .GroupBy(a => a.ModelID)
                 .ToDictionary(g => g.Key, g => g.Count());
 
-            // One SelectListGroup instance per category -- items only land in
-            // the same <optgroup> when they share the instance, not the name.
-            var groups = models
-                .Select(m => m.CategoryName)
-                .Distinct()
-                .ToDictionary(name => name, name => new SelectListGroup { Name = name });
-
-            ViewBag.Models = models
+            ViewBag.ModelOptions = models
                 .OrderBy(m => m.CategoryName).ThenBy(m => m.ModelName)
-                .Select(m =>
+                .Select(m => new RequestModelOption
                 {
-                    var count = availableByModel.GetValueOrDefault(m.ModelID);
-                    return new SelectListItem
-                    {
-                        Value = m.ModelID.ToString(),
-                        Text = count > 0
-                            ? $"{m.ModelName} — {count} available"
-                            : $"{m.ModelName} — none available",
-                        Disabled = count == 0,
-                        Group = groups[m.CategoryName]
-                    };
+                    ModelID = m.ModelID,
+                    ModelName = m.ModelName,
+                    CategoryName = m.CategoryName,
+                    Available = availableByModel.GetValueOrDefault(m.ModelID)
                 })
                 .ToList();
 
@@ -418,21 +482,62 @@ namespace SchoolInventoryManagement.Web.Controllers
                 "LocationID", "Label");
         }
 
-        private async Task PopulateBorrowApprovalDropdownsAsync(int? modelId)
+        // One entry per line of the ticket: its model, how many to pick,
+        // and the Available units of that model. For a Transfer, units
+        // already at the destination are left out -- sending one to where
+        // it already is would only fail. Also put in ViewBag.Lines.
+        private async Task<List<ApprovalLineChoice>> BuildApprovalLinesAsync(
+            AssetRequestResponseDTO request, List<int>? ticked)
         {
-            // Only Available units of the requested model are on offer —
-            // ApproveAndAssignAsync rejects a unit of any other model.
-            var candidates = await _assetService.SearchAssetsAsync(
-                null, null, modelId, null, null, AssetStatus.Available, null);
+            var lines = new List<ApprovalLineChoice>();
 
-            ViewBag.CandidateAssets = new SelectList(
-                candidates.Select(a => new
+            foreach (var item in request.Items)
+            {
+                var candidates = await _assetService.SearchAssetsAsync(
+                    null, null, item.ModelID, null, null, AssetStatus.Available, null);
+
+                if (request.RequestType == RequestType.Transfer)
+                    candidates = candidates
+                        .Where(a => a.CurrentLocationID != request.RequestedLocationID)
+                        .ToList();
+
+                lines.Add(new ApprovalLineChoice
                 {
-                    a.AssetID,
-                    Label = $"{a.AssetCode} — {a.AssetName} ({a.Condition})"
-                }).OrderBy(a => a.Label),
-                "AssetID", "Label");
+                    ModelID = item.ModelID,
+                    ModelName = item.ModelName,
+                    Quantity = item.Quantity,
+                    Units = candidates
+                        .OrderBy(a => a.AssetCode)
+                        .Select(a => new SelectListItem
+                        {
+                            Value = a.AssetID.ToString(),
+                            Text = $"{a.AssetCode} — {a.Condition}, at {a.CurrentLocationName ?? "no location"}",
+                            Selected = ticked?.Contains(a.AssetID) ?? false
+                        })
+                        .ToList()
+                });
+            }
 
+            ViewBag.Lines = lines;
+            return lines;
+        }
+
+        // The first N units of every line, N being the amount asked for.
+        private static List<int> DefaultPicks(List<ApprovalLineChoice> lines)
+        {
+            var picks = lines
+                .SelectMany(l => l.Units.Take(l.Quantity).Select(u => int.Parse(u.Value)))
+                .ToList();
+
+            foreach (var line in lines)
+                foreach (var unit in line.Units)
+                    unit.Selected = picks.Contains(int.Parse(unit.Value));
+
+            return picks;
+        }
+
+        private async Task PopulateBorrowApprovalDropdownsAsync()
+        {
             var departments = await _departmentService.GetAllDepartmentsAsync();
             ViewBag.Departments = new SelectList(
                 departments.Select(d => new { d.DepartmentID, Label = $"{d.BranchName} — {d.DepartmentName}" }),
@@ -446,47 +551,36 @@ namespace SchoolInventoryManagement.Web.Controllers
                 "LocationID", "Label");
         }
 
+        private async Task PopulateReturnLocationsAsync()
+        {
+            var locations = await _locationService.GetAllLocationsAsync();
+            ViewBag.Locations = new SelectList(
+                locations
+                    .Select(l => new { l.LocationID, Label = $"{l.BranchName} — {l.LocationName}" })
+                    .OrderBy(l => l.Label),
+                "LocationID", "Label");
+        }
+
         private async Task<IActionResult> RedisplayBorrowApprovalAsync(int id, ApproveBorrowRequestViewModel model)
         {
             var request = await _requestService.GetRequestByIdAsync(id);
+            if (request is null)
+                return NotFound();
+
             ViewBag.Request = request;
-            await PopulateBorrowApprovalDropdownsAsync(request?.ModelID);
+            await BuildApprovalLinesAsync(request, model.AssetIDs);
+            await PopulateBorrowApprovalDropdownsAsync();
             return View("ApproveBorrow", model);
-        }
-
-        private async Task PopulateTransferApprovalDropdownsAsync(AssetRequestResponseDTO? request)
-        {
-            // Nothing to pick for an older request that already named its
-            // unit -- the view shows that unit instead of a list.
-            if (request is null || request.AssetID is not null)
-            {
-                ViewBag.CandidateAssets = null;
-                return;
-            }
-
-            // Available units of the requested model, minus any already at
-            // the destination: moving a unit to where it already is would
-            // only fail.
-            var candidates = await _assetService.SearchAssetsAsync(
-                null, null, request.ModelID, null, null, AssetStatus.Available, null);
-
-            ViewBag.CandidateAssets = new SelectList(
-                candidates
-                    .Where(a => a.CurrentLocationID != request.RequestedLocationID)
-                    .Select(a => new
-                    {
-                        a.AssetID,
-                        Label = $"{a.AssetCode} — {a.AssetName} (now at {a.CurrentLocationName ?? "no location"})"
-                    })
-                    .OrderBy(a => a.Label),
-                "AssetID", "Label");
         }
 
         private async Task<IActionResult> RedisplayTransferApprovalAsync(int id, ApproveTransferRequestViewModel model)
         {
             var request = await _requestService.GetRequestByIdAsync(id);
+            if (request is null)
+                return NotFound();
+
             ViewBag.Request = request;
-            await PopulateTransferApprovalDropdownsAsync(request);
+            await BuildApprovalLinesAsync(request, model.AssetIDs);
             return View("ApproveTransfer", model);
         }
     }

@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Linq;
 using SchoolInventoryManagement.DAL.Entities.Enums;
 
 namespace SchoolInventoryManagement.BLL.DTOs
@@ -10,27 +12,38 @@ namespace SchoolInventoryManagement.BLL.DTOs
         public UserSummaryDTO RequestedByUser { get; set; } = null!;
 
         // The requester's own department, captured when the request was
-        // made. Staff fulfilling a Borrow pre-fill the assignment's
-        // department from this rather than retyping it.
+        // made. Staff approving a Borrow pre-fill the department from this.
         public int DepartmentID { get; set; }
         public string DepartmentName { get; set; } = null!;
 
-        // ModelID is set for both types. AssetID is the unit staff chose,
-        // set from approval onwards. RequestedLocation is the Transfer
-        // destination; PickupLocation is where a Borrow is collected.
+        // What was asked for: one line per model, with a quantity.
+        public List<AssetRequestItemDTO> Items { get; set; } = new();
+
+        // The units handed out for it, from approval onwards.
+        public List<AssetRequestUnitDTO> Units { get; set; } = new();
+
+        // "Chair ×10, Stand Fan ×2" -- for lists and notifications.
+        public string ItemsSummary { get; set; } = "—";
+
+        public int TotalQuantity => Items.Sum(i => i.Quantity);
+
+        // Units still out (not yet returned).
+        public int UnitsOut => Units.Count(u => u.ReturnDate == null);
+
+        // From before requests could hold several items. Older rows still
+        // have them; new rows leave them null. ItemsSummary already covers
+        // them, so views should not need these.
         public int? ModelID { get; set; }
         public string? ModelName { get; set; }
         public int? AssetID { get; set; }
         public string? AssetCode { get; set; }
-        public string? AssetName { get; set; }
+
+        // RequestedLocation is the Transfer destination; PickupLocation is
+        // where a Borrow is collected.
         public int? RequestedLocationID { get; set; }
         public string? RequestedLocationName { get; set; }
         public int? PickupLocationID { get; set; }
         public string? PickupLocationName { get; set; }
-
-        // The unit's open assignment while the request is InTransit or
-        // Assigned -- what "Record return" acts on. Null otherwise.
-        public int? ActiveAssignmentID { get; set; }
 
         public RequestType RequestType { get; set; }
         public DateTime RequestDate { get; set; }
@@ -49,5 +62,26 @@ namespace SchoolInventoryManagement.BLL.DTOs
         public string? Remarks { get; set; }
 
         public byte[] RowVersion { get; set; } = null!;
+    }
+
+    public class AssetRequestItemDTO
+    {
+        public int RequestItemID { get; set; }
+        public int ModelID { get; set; }
+        public string ModelName { get; set; } = null!;
+        public int Quantity { get; set; }
+    }
+
+    // One unit handed out on a request (one AssetAssignment).
+    public class AssetRequestUnitDTO
+    {
+        public int AssignmentID { get; set; }
+        public int AssetID { get; set; }
+        public string AssetCode { get; set; } = null!;
+        public string AssetName { get; set; } = null!;
+        public int ModelID { get; set; }
+        public AssetStatus AssetStatus { get; set; }
+        public DateTime? ReturnDate { get; set; }
+        public ConditionStatus? ConditionOnReturn { get; set; }
     }
 }

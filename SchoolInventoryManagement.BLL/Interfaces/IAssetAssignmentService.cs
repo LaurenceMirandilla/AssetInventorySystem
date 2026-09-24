@@ -8,15 +8,17 @@ namespace SchoolInventoryManagement.BLL.Interfaces
     public interface IAssetAssignmentService
     {
         // notifyRecipient lets RequestFulfillmentService suppress the
-        // per-step notification in favour of one combined message. Optional,
-        // so existing call sites are unaffected.
+        // per-step notification in favour of one combined message.
+        // requestId links the assignment to the request the unit went out
+        // on. Both optional, so existing call sites are unaffected.
         Task<AssetAssignmentResponseDTO> AssignAssetAsync(
-    int assetId, int assignToUserId, ConditionStatus conditionOnAssignment,
-    int departmentId, int actingUserId, string? remarks, bool notifyRecipient = true);
+            int assetId, int assignToUserId, ConditionStatus conditionOnAssignment,
+            int departmentId, int actingUserId, string? remarks, bool notifyRecipient = true,
+            int? requestId = null);
 
         // Closes the assignment and puts the unit at returnLocationId (staff
-        // choose it). If the unit was out on a request, that request is
-        // marked Returned in the same save.
+        // choose it). If the unit was out on a request and was its last one
+        // still out, that request is marked Returned in the same save.
         Task ReturnAssetAsync(
             int assignmentId, ConditionStatus conditionOnReturn, int returnLocationId,
             byte[] rowVersion, int actingUserId);

@@ -20,138 +20,225 @@
     var isInTransit = Model.RequestStatus == RequestStatus.InTransit;
     var isOut = isInTransit || Model.RequestStatus == RequestStatus.Assigned;
     var isBorrow = Model.RequestType == RequestType.Borrow;
-}
 
-<h2>Request #@Model.RequestID</h2>
-<p class="text-muted">
-    @Model.RequestType —
-    <span class="status-pill status-@Model.RequestStatus.ToString().ToLowerInvariant()">@DisplayText.Humanize(Model.RequestStatus.ToString())</span>
-</p>
+    // Borrow: where the units are (or will be) collected. The approver's
+    // pickup point once approved; before that, the requester's preference.
+    string? borrowLocation = Model.PickupLocationName ?? Model.RequestedLocationName;
+    string borrowLocationNote = Model.PickupLocationName is not null
+        ? ""
+        : Model.RequestedLocationName is not null ? "requested" : "chosen when approved";
+}
 
 @if (TempData["ErrorMessage"] != null)
 {
     <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
 }
 
-@if (isInTransit)
-{
-    <div class="alert alert-info">
-        @if (isBorrow)
+@* The whole request as one ticket: header, details, items, units, and the
+   actions along the bottom. *@
+<div class="card" style="max-width:1100px;">
+
+    @* ---- Header ---- *@
+    <div class="d-flex justify-content-between align-items-start flex-wrap p-3 border-bottom" style="gap:12px;">
+        <div>
+            <div class="text-muted small" style="text-transform:uppercase; letter-spacing:.06em;">@Model.RequestType request</div>
+            <h3 class="mb-0">#@Model.RequestID</h3>
+            <div class="text-muted small mt-1">
+                Submitted @Model.RequestDate.ToString("dddd, MMM d, yyyy 'at' h:mm tt")
+            </div>
+        </div>
+        <div class="text-end">
+            <span class="status-pill status-@Model.RequestType.ToString().ToLowerInvariant()">@Model.RequestType</span>
+            <span class="status-pill status-@Model.RequestStatus.ToString().ToLowerInvariant()">@DisplayText.Humanize(Model.RequestStatus.ToString())</span>
+            <div class="small mt-2">
+                <strong>@Model.RequestedByUser.FullName</strong>
+                <span class="text-muted">&middot; @Model.RequestedByUser.RoleName &middot; @Model.DepartmentName</span>
+            </div>
+        </div>
+    </div>
+
+    @if (isInTransit)
+    {
+        <div class="alert alert-info rounded-0 border-0 border-bottom mb-0">
+            @if (isBorrow)
+            {
+                <text>Approved. @Model.UnitsOut unit@(Model.UnitsOut == 1 ? " is" : "s are") waiting to be collected at <strong>@(Model.PickupLocationName ?? "the pickup point")</strong>.</text>
+            }
+            else
+            {
+                <text>Approved. @Model.UnitsOut unit@(Model.UnitsOut == 1 ? " is" : "s are") on the way to <strong>@Model.RequestedLocationName</strong>.</text>
+            }
+        </div>
+    }
+
+    <div class="card-body">
+        <div class="row g-4">
+
+            @* ---- Left: when, where, why ---- *@
+            <div class="col-lg-6">
+                <dl class="row mb-0">
+                    @if (isBorrow)
+                    {
+                        <dt class="col-sm-5">Pickup Location</dt>
+                        <dd class="col-sm-7">
+                            @(borrowLocation ?? "—")
+                            @if (!string.IsNullOrEmpty(borrowLocationNote))
+                            {
+                                <span class="text-muted small">(@borrowLocationNote)</span>
+                            }
+                        </dd>
+                    }
+                    else
+                    {
+                        <dt class="col-sm-5">Destination</dt>
+                        <dd class="col-sm-7">@(Model.RequestedLocationName ?? "—")</dd>
+                    }
+
+                    <dt class="col-sm-5">Needed From</dt>
+                    <dd class="col-sm-7">@(Model.NeededFrom?.ToString("MMM d, yyyy h:mm tt") ?? "—")</dd>
+
+                    <dt class="col-sm-5">@(isBorrow ? "Return By" : "Comes Back By")</dt>
+                    <dd class="col-sm-7">@(Model.ReturnBy?.ToString("MMM d, yyyy h:mm tt") ?? "—")</dd>
+
+                    <dt class="col-sm-5">Reason</dt>
+                    <dd class="col-sm-7">@(Model.Reason ?? "—")</dd>
+                </dl>
+            </div>
+
+            @* ---- Right: what was asked for ---- *@
+            <div class="col-lg-6">
+                <div class="text-muted small mb-1" style="text-transform:uppercase; letter-spacing:.04em;">Items requested</div>
+                @if (Model.Items.Any())
+                {
+                    <table class="table table-sm mb-0">
+                        <thead><tr><th>Model</th><th class="text-end">Amount</th></tr></thead>
+                        <tbody>
+                            @foreach (var item in Model.Items)
+                            {
+                                <tr>
+                                    <td>@item.ModelName</td>
+                                    <td class="text-end">@item.Quantity</td>
+                                </tr>
+                            }
+                        </tbody>
+                        @if (Model.Items.Count > 1)
+                        {
+                            <tfoot>
+                                <tr><th>Total</th><th class="text-end">@Model.TotalQuantity</th></tr>
+                            </tfoot>
+                        }
+                    </table>
+                }
+                else
+                {
+                    <div>@Model.ItemsSummary</div>
+                }
+            </div>
+        </div>
+
+        @* ---- Units handed out (from approval onwards) ---- *@
+        @if (Model.Units.Any())
         {
-            <text>Approved. <strong>@Model.AssetCode</strong> is waiting to be collected at <strong>@(Model.PickupLocationName ?? "the pickup point")</strong>.</text>
+            <hr />
+            <div class="text-muted small mb-2" style="text-transform:uppercase; letter-spacing:.04em;">
+                Units handed out
+                @if (isOut)
+                {
+                    <span class="ms-1 text-lowercase">(@Model.UnitsOut still out)</span>
+                }
+            </div>
+            <div class="row row-cols-1 row-cols-md-2 g-2">
+                @foreach (var unit in Model.Units)
+                {
+                    <div class="col">
+                        <div class="d-flex justify-content-between align-items-center border rounded px-2 py-1">
+                            <div>
+                                <a asp-controller="Assets" asp-action="Details" asp-route-id="@unit.AssetID" class="sab-code">@unit.AssetCode</a>
+                                <span class="text-muted small ms-1">@unit.AssetName</span>
+                            </div>
+                            @if (unit.ReturnDate is not null)
+                            {
+                                <span class="status-pill status-returned" title="@unit.ReturnDate.Value.ToString("MMM d, yyyy h:mm tt")">Returned</span>
+                            }
+                            else
+                            {
+                                <span class="status-pill status-@unit.AssetStatus.ToString().ToLowerInvariant()">@DisplayText.Humanize(unit.AssetStatus.ToString())</span>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
         }
-        else
+
+        @* ---- Decision and progress ---- *@
+        <hr />
+        <div class="row row-cols-2 row-cols-md-4 g-3 small">
+            <div class="col">
+                <div class="text-muted">Decided by</div>
+                <div class="fw-semibold">@(Model.ApprovedByUser?.FullName ?? "—")</div>
+            </div>
+            <div class="col">
+                <div class="text-muted">Decided on</div>
+                <div class="fw-semibold">@(Model.ApprovalDate?.ToString("MMM d, yyyy h:mm tt") ?? "—")</div>
+            </div>
+            <div class="col">
+                <div class="text-muted">@(isBorrow ? "Collected on" : "Delivered on")</div>
+                <div class="fw-semibold">@(Model.AssignedDate?.ToString("MMM d, yyyy h:mm tt") ?? "—")</div>
+            </div>
+            <div class="col">
+                <div class="text-muted">Returned on</div>
+                <div class="fw-semibold">@(Model.ReturnedDate?.ToString("MMM d, yyyy h:mm tt") ?? "—")</div>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(Model.Remarks))
         {
-            <text>Approved. <strong>@Model.AssetCode</strong> is on its way to <strong>@Model.RequestedLocationName</strong>.</text>
+            <div class="mt-3 small">
+                <div class="text-muted">Remarks</div>
+                <div>@Model.Remarks</div>
+            </div>
         }
     </div>
-}
 
-<dl class="row">
-    <dt class="col-sm-3">Requested By</dt>
-    <dd class="col-sm-9">@Model.RequestedByUser.FullName (@Model.RequestedByUser.RoleName)</dd>
-
-    <dt class="col-sm-3">Department</dt>
-    <dd class="col-sm-9">@Model.DepartmentName</dd>
-
-    <dt class="col-sm-3">Model Requested</dt>
-    <dd class="col-sm-9">@(Model.ModelName ?? "—")</dd>
-
-    @if (!isBorrow)
-    {
-        <dt class="col-sm-3">Destination</dt>
-        <dd class="col-sm-9">@(Model.RequestedLocationName ?? "—")</dd>
-    }
-
-    @* The unit staff chose -- set from approval onwards. *@
-    <dt class="col-sm-3">Unit</dt>
-    <dd class="col-sm-9">
-        @if (Model.AssetID is not null)
+    @* ---- Actions ---- *@
+    <div class="d-flex flex-wrap p-3 border-top" style="gap:8px;">
+        @if (isPending && isApprover)
         {
-            <a asp-controller="Assets" asp-action="Details" asp-route-id="@Model.AssetID" class="sab-code">@Model.AssetCode</a>
-            <span class="text-muted">@Model.AssetName</span>
+            <a asp-action="Approve" asp-route-id="@Model.RequestID" class="btn btn-success">Approve</a>
+            <a asp-action="Reject" asp-route-id="@Model.RequestID" class="btn btn-danger">Reject</a>
         }
-        else
+
+        @if (isInTransit && canManageAssets)
         {
-            <span class="text-muted">Chosen when approved</span>
+            <form asp-action="MarkAssigned" asp-route-id="@Model.RequestID" method="post" class="d-inline"
+                  onsubmit="return confirm('@(isBorrow ? "Confirm the requester has collected all the units?" : "Confirm all the units have arrived at the destination?")');">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="rowVersionBase64" value="@Convert.ToBase64String(Model.RowVersion)" />
+                <button type="submit" class="btn btn-primary">@(isBorrow ? "Mark as Picked Up" : "Mark as Delivered")</button>
+            </form>
         }
-    </dd>
 
-    @if (isBorrow && Model.PickupLocationName is not null)
-    {
-        <dt class="col-sm-3">Pickup Location</dt>
-        <dd class="col-sm-9">@Model.PickupLocationName</dd>
-    }
+        @if (isOut && canManageAssets && Model.UnitsOut > 0)
+        {
+            <a asp-action="RecordReturn" asp-route-id="@Model.RequestID" class="btn btn-outline-primary">Record Return</a>
+        }
 
-    <dt class="col-sm-3">Needed From</dt>
-    <dd class="col-sm-9">@(Model.NeededFrom?.ToString("MMM d, yyyy h:mm tt") ?? "—")</dd>
+        @if (isPending && isMine)
+        {
+            <form asp-action="Cancel" asp-route-id="@Model.RequestID" method="post" class="d-inline"
+                  onsubmit="return confirm('Cancel this request?');">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="rowVersionBase64" value="@Convert.ToBase64String(Model.RowVersion)" />
+                <button type="submit" class="btn btn-outline-danger">Cancel Request</button>
+            </form>
+        }
 
-    <dt class="col-sm-3">@(isBorrow ? "Return By" : "Comes Back By")</dt>
-    <dd class="col-sm-9">@(Model.ReturnBy?.ToString("MMM d, yyyy h:mm tt") ?? "—")</dd>
+        <span class="flex-grow-1"></span>
 
-    <dt class="col-sm-3">Submitted</dt>
-    <dd class="col-sm-9">@Model.RequestDate.ToString("MMM d, yyyy h:mm tt")</dd>
-
-    <dt class="col-sm-3">Reason</dt>
-    <dd class="col-sm-9">@(Model.Reason ?? "—")</dd>
-
-    <dt class="col-sm-3">Decided By</dt>
-    <dd class="col-sm-9">@(Model.ApprovedByUser?.FullName ?? "—")</dd>
-
-    <dt class="col-sm-3">Decided On</dt>
-    <dd class="col-sm-9">@(Model.ApprovalDate?.ToString("MMM d, yyyy h:mm tt") ?? "—")</dd>
-
-    @if (Model.AssignedDate is not null)
-    {
-        <dt class="col-sm-3">@(isBorrow ? "Collected On" : "Delivered On")</dt>
-        <dd class="col-sm-9">@Model.AssignedDate.Value.ToString("MMM d, yyyy h:mm tt")</dd>
-    }
-
-    @if (Model.ReturnedDate is not null)
-    {
-        <dt class="col-sm-3">Returned On</dt>
-        <dd class="col-sm-9">@Model.ReturnedDate.Value.ToString("MMM d, yyyy h:mm tt")</dd>
-    }
-
-    <dt class="col-sm-3">Remarks</dt>
-    <dd class="col-sm-9">@(Model.Remarks ?? "—")</dd>
-</dl>
-
-@if (isPending && isApprover)
-{
-    <a asp-action="Approve" asp-route-id="@Model.RequestID" class="btn btn-success">Approve</a>
-    <a asp-action="Reject" asp-route-id="@Model.RequestID" class="btn btn-danger">Reject</a>
-}
-
-@if (isInTransit && canManageAssets)
-{
-    <form asp-action="MarkAssigned" asp-route-id="@Model.RequestID" method="post" class="d-inline"
-          onsubmit="return confirm('@(isBorrow ? "Confirm the requester has collected this unit?" : "Confirm this unit has arrived at the destination?")');">
-        @Html.AntiForgeryToken()
-        <input type="hidden" name="rowVersionBase64" value="@Convert.ToBase64String(Model.RowVersion)" />
-        <button type="submit" class="btn btn-primary">@(isBorrow ? "Mark as Picked Up" : "Mark as Delivered")</button>
-    </form>
-}
-
-@if (isOut && canManageAssets && Model.ActiveAssignmentID is not null)
-{
-    <a asp-controller="AssetAssignments" asp-action="Return"
-       asp-route-id="@Model.ActiveAssignmentID" asp-route-requestId="@Model.RequestID"
-       class="btn btn-outline-primary">Record Return</a>
-}
-
-@if (isPending && isMine)
-{
-    <form asp-action="Cancel" asp-route-id="@Model.RequestID" method="post" class="d-inline"
-          onsubmit="return confirm('Cancel this request?');">
-        @Html.AntiForgeryToken()
-        <input type="hidden" name="rowVersionBase64" value="@Convert.ToBase64String(Model.RowVersion)" />
-        <button type="submit" class="btn btn-outline-danger">Cancel Request</button>
-    </form>
-}
-
-<a asp-action="MyRequests" class="btn btn-secondary">My Requests</a>
-@if (isApprover)
-{
-    <a asp-action="Pending" class="btn btn-outline-secondary">Approvals</a>
-}
+        <a asp-action="MyRequests" class="btn btn-secondary">My Requests</a>
+        @if (isApprover)
+        {
+            <a asp-action="Pending" class="btn btn-outline-secondary">Approvals</a>
+        }
+    </div>
+</div>

@@ -1,21 +1,18 @@
 ﻿@model SchoolInventoryManagement.Web.ViewModels.CreateAssetRequestViewModel
-@using Microsoft.AspNetCore.Mvc.Rendering
+@using SchoolInventoryManagement.Web.ViewModels
 @{
     ViewData["Title"] = "New Request";
 
-    // Grouped by category, with models that have nothing on the shelf
-    // disabled (greyed out). Rendered by hand rather than with asp-items
-    // because every row needs its own selected value.
-    var modelItems = (List<SelectListItem>)ViewBag.Models;
-    var modelGroups = modelItems.GroupBy(m => m.Group?.Name ?? "").ToList();
+    var modelOptions = (List<RequestModelOption>)ViewBag.ModelOptions;
+    var modelGroups = modelOptions.GroupBy(m => m.CategoryName).ToList();
 
     // Always at least one row, even after a post that removed them all.
-    var rows = Model.ModelIDs.Count > 0 ? Model.ModelIDs : new List<int?> { null };
+    var rows = Model.Items.Count > 0 ? Model.Items : new List<RequestItemInput> { new RequestItemInput() };
 }
 
 <h2>New Request</h2>
 
-<form asp-action="Create" method="post">
+<form asp-action="Create" method="post" id="requestForm">
     @Html.AntiForgeryToken()
     <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
 
@@ -25,59 +22,91 @@
                 asp-items="Html.GetEnumSelectList<SchoolInventoryManagement.DAL.Entities.Enums.RequestType>()"
                 class="form-select"></select>
         <div class="form-text">
-            <strong>Borrow</strong> — ask for a model to use; staff pick the actual unit when they approve.<br />
-            <strong>Transfer</strong> — ask for a model to be moved to another location; staff pick the unit that goes.
+            <strong>Borrow</strong> — ask for models to use; staff pick the actual units when they approve.<br />
+            <strong>Transfer</strong> — ask for models to be moved to another location; staff pick the units that go.
         </div>
     </div>
 
+    @* Header and rows share one grid -- model | amount | remove -- so the
+       Amount label always sits over the amount boxes. *@
     <div class="mb-3">
-        <label class="form-label">Items</label>
+        <div class="item-grid mb-1">
+            <label class="form-label mb-0">Model</label>
+            <label class="form-label mb-0">Amount</label>
+            <span></span>
+        </div>
 
-        <div id="modelRows">
-            @foreach (var selectedId in rows)
+        <div id="itemRows">
+            @for (var i = 0; i < rows.Count; i++)
             {
-                <div class="input-group mb-2 model-row">
-                    <select name="ModelIDs" class="form-select">
+                var row = rows[i];
+                <div class="item-grid mb-2 item-row">
+                    <select name="Items[@i].ModelID" class="form-select model-select">
                         <option value="">-- Select Model --</option>
                         @foreach (var group in modelGroups)
                         {
                             <optgroup label="@group.Key">
-                                @foreach (var item in group)
+                                @foreach (var m in group)
                                 {
-                                    <option value="@item.Value"
-                                            disabled="@item.Disabled"
-                                            selected="@(item.Value == selectedId?.ToString())">@item.Text</option>
+                                    <option value="@m.ModelID" data-available="@m.Available"
+                                            disabled="@(m.Available == 0)"
+                                            selected="@(row.ModelID == m.ModelID)">@m.ModelName — @(m.Available > 0 ? $"{m.Available} available" : "none available")</option>
                                 }
                             </optgroup>
                         }
                     </select>
+                    <input type="number" name="Items[@i].Quantity" value="@(row.Quantity ?? 1)" min="1"
+                           class="form-control qty-input text-center" />
                     <button type="button" class="btn btn-outline-danger remove-row" title="Remove this item">&times;</button>
                 </div>
             }
         </div>
 
-        <button type="button" id="addModelRow" class="btn btn-outline-primary btn-sm">+ Add another item</button>
-        <span asp-validation-for="ModelIDs" class="text-danger d-block"></span>
+        @* A clean row to copy when "+ Add another item" is clicked. *@
+        <template id="rowTemplate">
+            <div class="item-grid mb-2 item-row">
+                <select class="form-select model-select">
+                    <option value="">-- Select Model --</option>
+                    @foreach (var group in modelGroups)
+                    {
+                        <optgroup label="@group.Key">
+                            @foreach (var m in group)
+                            {
+                                <option value="@m.ModelID" data-available="@m.Available"
+                                        disabled="@(m.Available == 0)">@m.ModelName — @(m.Available > 0 ? $"{m.Available} available" : "none available")</option>
+                            }
+                        </optgroup>
+                    }
+                </select>
+                <input type="number" value="1" min="1" class="form-control qty-input text-center" />
+                <button type="button" class="btn btn-outline-danger remove-row" title="Remove this item">&times;</button>
+            </div>
+        </template>
+
+        <button type="button" id="addRow" class="btn btn-outline-primary btn-sm">+ Add another item</button>
+        <span asp-validation-for="Items" class="text-danger d-block"></span>
 
         @* Greyed-out entries have no units on the shelf right now, so they
            cannot be requested. The link covers the other dead end: the
            thing needed is not in the catalogue at all. *@
         <div class="form-text">
-            Each item becomes its own request. Need two of the same? Add it twice.
-            Greyed-out models have no units available right now.
+            All items go in one request. The amount can't be more than is available.
+            Greyed-out models have none available right now.
             Not on the list?
             <a asp-controller="NewItemRequests" asp-action="Create">Request a new item</a>
         </div>
     </div>
 
-    <div id="transferFields">
-        <div class="mb-3">
-            <label asp-for="RequestedLocationID" class="form-label">Destination Location</label>
-            <select asp-for="RequestedLocationID" asp-items="ViewBag.Locations" class="form-select">
-                <option value="">-- Select Location --</option>
-            </select>
-            <span asp-validation-for="RequestedLocationID" class="text-danger"></span>
-        </div>
+    @* One location field for both types; the script rewords it.
+       Borrow: preferred pickup spot, optional -- if given, the approver
+       does not have to choose one. Transfer: the destination, required. *@
+    <div class="mb-3">
+        <label asp-for="RequestedLocationID" class="form-label" id="locationLabel">Location</label>
+        <select asp-for="RequestedLocationID" asp-items="ViewBag.Locations" class="form-select">
+            <option value="" id="locationEmpty">-- Select Location --</option>
+        </select>
+        <div class="form-text" id="locationHint"></div>
+        <span asp-validation-for="RequestedLocationID" class="text-danger"></span>
     </div>
 
     <div class="row g-3 mb-3">
@@ -104,17 +133,28 @@
     <a asp-action="MyRequests" class="btn btn-secondary">Cancel</a>
 </form>
 
+<style>
+    .item-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 110px 42px;
+        gap: 8px;
+        align-items: center;
+    }
+</style>
+
 @section Scripts {
     @{
         await Html.RenderPartialAsync("_ValidationScriptsPartial");
     }
     <script>
         (function () {
-            // Destination only applies to Transfer. The controller clears it
-            // for a Borrow server-side too, so a stale value never reaches
-            // the service even if this script never runs.
+            // The location field means different things per type: a
+            // preferred pickup spot (optional) for Borrow, the destination
+            // (required) for Transfer. Only the wording changes here.
             var typeSelect = document.getElementById('requestType');
-            var transfer = document.getElementById('transferFields');
+            var locationLabel = document.getElementById('locationLabel');
+            var locationHint = document.getElementById('locationHint');
+            var locationEmpty = document.getElementById('locationEmpty');
             var returnByLabel = document.getElementById('returnByLabel');
 
             // Html.GetEnumSelectList renders the enum's numeric value, so
@@ -124,7 +164,15 @@
 
             function syncType() {
                 var isBorrow = borrowValues.indexOf(typeSelect.value) !== -1;
-                transfer.hidden = isBorrow;
+                if (isBorrow) {
+                    locationLabel.innerHTML = 'Pickup location <span class="text-muted">(optional)</span>';
+                    locationHint.textContent = 'Where you would like to collect the items. Leave blank and staff will choose.';
+                    locationEmpty.textContent = '-- Let staff choose --';
+                } else {
+                    locationLabel.textContent = 'Destination location';
+                    locationHint.textContent = 'Where the items should be moved to.';
+                    locationEmpty.textContent = '-- Select Location --';
+                }
                 returnByLabel.textContent = isBorrow
                     ? 'When will you return it?'
                     : 'When should it come back?';
@@ -152,43 +200,108 @@
             neededFrom.addEventListener('change', syncReturnMin);
             syncReturnMin();
 
-            // "+ Add another item": copy the first row with nothing chosen.
-            // Every row posts as ModelIDs, which binds to the list. The x
-            // removes a row; the last one is only cleared, so there is
-            // always somewhere to pick a model.
-            var rowsBox = document.getElementById('modelRows');
+            // ---- Item rows ------------------------------------------------
+            // Each row: a model and an amount. A model chosen in one row
+            // disappears from every other row, so it can't be listed twice.
+            // The amount is capped at how many of that model are available.
+            // Rows post as Items[0], Items[1], ... -- renumbered after every
+            // add or remove so the list binds without gaps.
+            var rowsBox = document.getElementById('itemRows');
+            var template = document.getElementById('rowTemplate');
+            var addButton = document.getElementById('addRow');
             var maxRows = 20; // the service refuses more than this anyway
 
-            function syncRemoveButtons() {
-                var rowsNow = rowsBox.querySelectorAll('.model-row');
-                rowsNow.forEach(function (row) {
-                    row.querySelector('.remove-row').hidden = rowsNow.length === 1;
+            function allRows() { return Array.from(rowsBox.querySelectorAll('.item-row')); }
+
+            function renumber() {
+                allRows().forEach(function (row, i) {
+                    row.querySelector('.model-select').name = 'Items[' + i + '].ModelID';
+                    row.querySelector('.qty-input').name = 'Items[' + i + '].Quantity';
                 });
-                document.getElementById('addModelRow').disabled = rowsNow.length >= maxRows;
             }
 
-            document.getElementById('addModelRow').addEventListener('click', function () {
-                var copy = rowsBox.querySelector('.model-row').cloneNode(true);
-                copy.querySelector('select').value = '';
-                rowsBox.appendChild(copy);
-                syncRemoveButtons();
-                copy.querySelector('select').focus();
+            // Hide in each row the models picked in the other rows, and cap
+            // each amount at what is available for its model.
+            function sync() {
+                var rows = allRows();
+                var picked = rows.map(function (r) { return r.querySelector('.model-select').value; });
+
+                rows.forEach(function (row, i) {
+                    var select = row.querySelector('.model-select');
+                    Array.from(select.options).forEach(function (opt) {
+                        if (!opt.value) return;
+                        var takenElsewhere = picked.some(function (v, j) { return j !== i && v === opt.value; });
+                        opt.hidden = takenElsewhere;
+                        // Hidden is not enough in some browsers -- disable too,
+                        // but never re-enable a model that has none available.
+                        opt.disabled = takenElsewhere || opt.getAttribute('data-available') === '0';
+                    });
+
+                    var qty = row.querySelector('.qty-input');
+                    var chosen = select.options[select.selectedIndex];
+                    var max = chosen && chosen.value ? parseInt(chosen.getAttribute('data-available'), 10) : 0;
+                    if (max > 0) {
+                        qty.max = max;
+                        var n = parseInt(qty.value, 10);
+                        if (isNaN(n) || n < 1) qty.value = 1;
+                        if (n > max) qty.value = max;
+                    } else {
+                        qty.removeAttribute('max');
+                    }
+
+                    // visibility, not hidden: the button keeps its grid
+                    // column so the amounts stay lined up.
+                    row.querySelector('.remove-row').style.visibility = rows.length === 1 ? 'hidden' : 'visible';
+                });
+
+                // No more rows than there are models left to pick.
+                var selectable = rowsBox.querySelector('.model-select')
+                    ? Array.from(rowsBox.querySelector('.model-select').options)
+                        .filter(function (o) { return o.value && o.getAttribute('data-available') !== '0'; }).length
+                    : 0;
+                addButton.disabled = rows.length >= maxRows || rows.length >= selectable;
+            }
+
+            addButton.addEventListener('click', function () {
+                var row = template.content.firstElementChild.cloneNode(true);
+                rowsBox.appendChild(row);
+                renumber();
+                sync();
+                row.querySelector('.model-select').focus();
+            });
+
+            rowsBox.addEventListener('change', function (e) {
+                if (e.target.classList.contains('model-select')) {
+                    // A newly chosen model starts at an amount of 1.
+                    e.target.closest('.item-row').querySelector('.qty-input').value = 1;
+                }
+                sync();
+            });
+
+            rowsBox.addEventListener('input', function (e) {
+                if (!e.target.classList.contains('qty-input')) return;
+                var max = parseInt(e.target.max, 10);
+                var n = parseInt(e.target.value, 10);
+                if (!isNaN(max) && n > max) e.target.value = max;
             });
 
             rowsBox.addEventListener('click', function (e) {
                 var button = e.target.closest('.remove-row');
                 if (!button) return;
-                var rowsNow = rowsBox.querySelectorAll('.model-row');
-                var row = button.closest('.model-row');
-                if (rowsNow.length > 1) {
+                var rows = allRows();
+                var row = button.closest('.item-row');
+                if (rows.length > 1) {
                     row.remove();
                 } else {
-                    row.querySelector('select').value = '';
+                    row.querySelector('.model-select').value = '';
+                    row.querySelector('.qty-input').value = 1;
                 }
-                syncRemoveButtons();
+                renumber();
+                sync();
             });
 
-            syncRemoveButtons();
+            renumber();
+            sync();
         })();
     </script>
 }

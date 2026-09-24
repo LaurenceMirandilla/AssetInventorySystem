@@ -22,7 +22,7 @@
     <div>
         <h2>Approvals</h2>
         <p class="sab-page-sub">
-            @Model.Count request@(Model.Count == 1 ? "" : "s") awaiting a decision from you.
+            @Model.Count request@(Model.Count == 1 ? "" : "s") awaiting a decision from you, oldest first.
         </p>
     </div>
 </div>
@@ -45,8 +45,8 @@
                         <div style="min-width:0;">
                             <div class="sab-row-title">
                                 @requesterName &mdash;
-                                @(request.ModelName ?? "—")
-                                @if (request.RequestType == SchoolInventoryManagement.DAL.Entities.Enums.RequestType.Transfer)
+                                @request.ItemsSummary
+                                @if (request.RequestType == RequestType.Transfer)
                                 {
                                     <text> &rarr; @request.RequestedLocationName</text>
                                 }
@@ -55,7 +55,11 @@
                                 <span class="status-pill status-@request.RequestType.ToString().ToLowerInvariant()">@request.RequestType</span>
                                 <span class="ms-1">
                                     @request.RequestedByUser.RoleName &middot; @request.DepartmentName
-                                    &middot; submitted @request.RequestDate.ToString("MMM d, yyyy")
+                                    &middot; submitted <strong>@request.RequestDate.ToString("MMM d, yyyy h:mm tt")</strong>
+                                    @if (request.RequestType == RequestType.Borrow && request.RequestedLocationName is not null)
+                                    {
+                                        <text>&middot; pickup at @request.RequestedLocationName</text>
+                                    }
                                     @if (request.NeededFrom is not null)
                                     {
                                         <text>&middot; needed @request.NeededFrom.Value.ToString("MMM d")</text>
@@ -93,8 +97,8 @@ else
     <div>
         <h2>In Progress</h2>
         <p class="sab-page-sub">
-            Approved and still out. <strong>In Transit</strong> means waiting to be
-            collected (Borrow) or on its way (Transfer); <strong>Assigned</strong>
+            Approved and still out, oldest request first. <strong>In Transit</strong> means
+            waiting to be collected (Borrow) or on its way (Transfer); <strong>Assigned</strong>
             means the requester has it. Each stays here until its return is recorded.
         </p>
     </div>
@@ -107,8 +111,9 @@ else
             <thead>
                 <tr>
                     <th>#</th>
+                    <th>Submitted</th>
                     <th>Requester</th>
-                    <th>Unit</th>
+                    <th>Items</th>
                     <th>Where</th>
                     <th>Due back</th>
                     <th>Status</th>
@@ -124,13 +129,17 @@ else
 
                     <tr>
                         <td><a asp-action="Details" asp-route-id="@r.RequestID">@r.RequestID</a></td>
+                        <td class="small text-nowrap">
+                            <div>@r.RequestDate.ToString("MMM d, yyyy")</div>
+                            <div class="text-muted">@r.RequestDate.ToString("h:mm tt")</div>
+                        </td>
                         <td>
                             <div>@r.RequestedByUser.FullName</div>
                             <div class="text-muted small">@r.DepartmentName</div>
                         </td>
                         <td>
-                            <span class="sab-code">@(r.AssetCode ?? "—")</span>
-                            <div class="text-muted small">@r.ModelName</div>
+                            <div>@r.ItemsSummary</div>
+                            <div class="text-muted small">@r.UnitsOut of @r.Units.Count unit@(r.Units.Count == 1 ? "" : "s") out</div>
                         </td>
                         <td class="small">
                             @if (isBorrow)
@@ -165,11 +174,9 @@ else
                                     <button type="submit" class="btn btn-link p-0">@(isBorrow ? "Picked up" : "Delivered")</button>
                                 </form>
                             }
-                            @if (canManageAssets && r.ActiveAssignmentID is not null)
+                            @if (canManageAssets && r.UnitsOut > 0)
                             {
-                                <a asp-controller="AssetAssignments" asp-action="Return"
-                                   asp-route-id="@r.ActiveAssignmentID" asp-route-requestId="@r.RequestID"
-                                   class="ms-3">Record return</a>
+                                <a asp-action="RecordReturn" asp-route-id="@r.RequestID" class="ms-3">Record return</a>
                             }
                             @if (!canManageAssets)
                             {

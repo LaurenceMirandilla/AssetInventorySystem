@@ -18,6 +18,7 @@ namespace SchoolInventoryManagement.DAL.Context
         public DbSet<Location> Locations { get; set; } = null!;
         public DbSet<Category> Categories { get; set; } = null!;
         public DbSet<AssetRequest> AssetRequests { get; set; } = null!;
+        public DbSet<AssetRequestItem> AssetRequestItems { get; set; } = null!;
         public DbSet<AssetAssignment> AssetAssignments { get; set; } = null!;
         public DbSet<AssetMovement> AssetMovements { get; set; } = null!;
         public DbSet<DisposalRecord> DisposalRecords { get; set; } = null!;
@@ -28,30 +29,6 @@ namespace SchoolInventoryManagement.DAL.Context
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
-            modelBuilder.Entity<NewItemRequest>()
-    .Property(n => n.RequestStatus)
-    .HasConversion<string>()
-    .HasMaxLength(20);
-
-            modelBuilder.Entity<NewItemRequest>()
-                .Property(n => n.RequestDate)
-                .HasDefaultValueSql("GETDATE()");
-
-            modelBuilder.Entity<NewItemRequest>()
-                .HasOne(n => n.RequestedByUser).WithMany()
-                .HasForeignKey(n => n.RequestedByUserID).OnDelete(DeleteBehavior.Restrict);
-
-            modelBuilder.Entity<NewItemRequest>()
-                .HasOne(n => n.ReviewedByUser).WithMany()
-                .HasForeignKey(n => n.ReviewedByUserID).OnDelete(DeleteBehavior.Restrict);
-
-            modelBuilder.Entity<NewItemRequest>()
-                .HasOne(n => n.Department).WithMany()
-                .HasForeignKey(n => n.DepartmentID).OnDelete(DeleteBehavior.Restrict);
-
-            modelBuilder.Entity<NewItemRequest>()
-                .HasOne(n => n.Category).WithMany()
-                .HasForeignKey(n => n.CategoryID).OnDelete(DeleteBehavior.Restrict);
             base.OnModelCreating(modelBuilder);
 
             // =====================================================
@@ -216,6 +193,33 @@ namespace SchoolInventoryManagement.DAL.Context
                 .OnDelete(DeleteBehavior.Restrict);
 
             // =====================================================
+            // ASSET REQUEST → Items (the ticket's lines) / Assignments
+            // (the units handed out for it)
+            // =====================================================
+            modelBuilder.Entity<AssetRequestItem>()
+                .HasOne(i => i.Request)
+                .WithMany(r => r.Items)
+                .HasForeignKey(i => i.RequestID)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<AssetRequestItem>()
+                .HasOne(i => i.Model)
+                .WithMany()
+                .HasForeignKey(i => i.ModelID)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // One line per model on a ticket.
+            modelBuilder.Entity<AssetRequestItem>()
+                .HasIndex(i => new { i.RequestID, i.ModelID })
+                .IsUnique();
+
+            modelBuilder.Entity<AssetAssignment>()
+                .HasOne(aa => aa.Request)
+                .WithMany(r => r.Assignments)
+                .HasForeignKey(aa => aa.RequestID)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // =====================================================
             // ASSET ASSIGNMENT → Asset / AssignedToUser / AssignedByUser
             // Two FKs to User — must specify each explicitly
             // =====================================================
@@ -328,6 +332,39 @@ namespace SchoolInventoryManagement.DAL.Context
                 .HasConversion<string>()
                 .HasMaxLength(30);
 
+            modelBuilder.Entity<NewItemRequest>()
+                .Property(n => n.RequestStatus)
+                .HasConversion<string>()
+                .HasMaxLength(20);
+
+            // Two foreign keys into Users (requester and reviewer) mean EF
+            // would otherwise configure cascading deletes down both, which
+            // SQL Server rejects as multiple cascade paths. Restrict on all
+            // four, matching the NO ACTION the table script declares.
+            modelBuilder.Entity<NewItemRequest>()
+                .HasOne(n => n.RequestedByUser)
+                .WithMany()
+                .HasForeignKey(n => n.RequestedByUserID)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<NewItemRequest>()
+                .HasOne(n => n.ReviewedByUser)
+                .WithMany()
+                .HasForeignKey(n => n.ReviewedByUserID)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<NewItemRequest>()
+                .HasOne(n => n.Department)
+                .WithMany()
+                .HasForeignKey(n => n.DepartmentID)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<NewItemRequest>()
+                .HasOne(n => n.Category)
+                .WithMany()
+                .HasForeignKey(n => n.CategoryID)
+                .OnDelete(DeleteBehavior.Restrict);
+
             // =====================================================
             // UNIQUE CONSTRAINTS
             // =====================================================
@@ -348,20 +385,20 @@ namespace SchoolInventoryManagement.DAL.Context
                 .IsUnique();
 
             // =====================================================
-            // CHECK CONSTRAINTS on AssetRequests. Mirrors
-            // Scripts/002_RequestDatesAndModelTransfers.sql -- there are no
-            // migrations, so that script is what actually changes the DB.
-            //   Borrow:   a Model, no unit, no destination.
-            //   Transfer: a Model and a destination; the unit (AssetID) is
-            //             empty until approval records the one moved.
+            // CHECK CONSTRAINTS on AssetRequests. Mirrors Scripts/006
+            // (RequestItems) -- there are no migrations, so that script is
+            // what actually changes the DB.
+            //   Borrow:   no destination.
+            //   Transfer: a destination.
+            //   What is asked for is in AssetRequestItems, not here.
             // =====================================================
             modelBuilder.Entity<AssetRequest>()
                 .ToTable(t =>
                 {
                     t.HasCheckConstraint(
                         "CK_AssetRequests_TypeFieldRules",
-                                                "([RequestType] = 'Borrow' AND [ModelID] IS NOT NULL AND [RequestedLocationID] IS NULL) " +
-                        "OR ([RequestType] = 'Transfer' AND [ModelID] IS NOT NULL AND [RequestedLocationID] IS NOT NULL)");
+                        "([RequestType] = 'Borrow' AND [RequestedLocationID] IS NULL) " +
+                        "OR ([RequestType] = 'Transfer' AND [RequestedLocationID] IS NOT NULL)");
                     t.HasCheckConstraint(
                         "CK_AssetRequests_DateOrder",
                         "[NeededFrom] IS NULL OR [ReturnBy] IS NULL OR [ReturnBy] > [NeededFrom]");
@@ -383,6 +420,10 @@ namespace SchoolInventoryManagement.DAL.Context
 
             modelBuilder.Entity<AuditLog>()
                 .Property(al => al.LogDateTime)
+                .HasDefaultValueSql("GETDATE()");
+
+            modelBuilder.Entity<NewItemRequest>()
+                .Property(n => n.RequestDate)
                 .HasDefaultValueSql("GETDATE()");
 
             modelBuilder.Entity<Notification>()

@@ -242,11 +242,14 @@ namespace SchoolInventoryManagement.BLL.Services
                 .Include(r => r.RequestedByUser)
                     .ThenInclude(u => u.Role)
                 .Include(r => r.Department)
+                .Include(r => r.Items)
+                    .ThenInclude(i => i.Model)
                 .Include(r => r.Model)
                 .Include(r => r.Asset)
                 .Include(r => r.RequestedLocation)
                 .Include(r => r.ApprovedByUser)
                     .ThenInclude(u => u!.Role)
+                .AsSplitQuery()
                 .AsQueryable();
 
             if (fromDate.HasValue)
@@ -318,16 +321,25 @@ namespace SchoolInventoryManagement.BLL.Services
             };
         }
 
-        // Borrow names a Model; Transfer names an Asset and a destination.
-        // Collapsing both into one string keeps the report to one column.
+        // The ticket's lines ("Chair x10, Stand Fan x2"), plus the
+        // destination for a Transfer. One string keeps the report to one
+        // column. A row from before tickets had lines falls back to the
+        // model or unit it named.
         private static string DescribeRequestedItem(AssetRequest request)
         {
-            if (request.RequestType == RequestType.Borrow)
-                return request.Model?.ModelName ?? "(model missing)";
+            var what = request.Items.Count > 0
+                ? string.Join(", ", request.Items
+                    .OrderBy(i => i.Model?.ModelName)
+                    .Select(i => i.Quantity > 1
+                        ? $"{i.Model?.ModelName ?? "(model missing)"} x{i.Quantity}"
+                        : i.Model?.ModelName ?? "(model missing)"))
+                : request.Model?.ModelName ?? request.Asset?.AssetCode ?? "(item missing)";
 
-            var code = request.Asset?.AssetCode ?? "(asset missing)";
+            if (request.RequestType == RequestType.Borrow)
+                return what;
+
             var destination = request.RequestedLocation?.LocationName ?? "(location missing)";
-            return $"{code} -> {destination}";
+            return $"{what} -> {destination}";
         }
 
         // ==================================================================

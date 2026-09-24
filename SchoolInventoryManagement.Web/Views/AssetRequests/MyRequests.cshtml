@@ -42,7 +42,7 @@
                         <td>@request.RequestID</td>
                         <td><span class="status-pill status-@request.RequestType.ToString().ToLowerInvariant()">@request.RequestType</span></td>
                         <td>
-                            @(request.ModelName ?? "—")
+                            @request.ItemsSummary
                             @if (request.RequestType == SchoolInventoryManagement.DAL.Entities.Enums.RequestType.Transfer)
                             {
                                 <text> &rarr; @request.RequestedLocationName</text>
@@ -63,7 +63,7 @@
                             }
                         </td>
                         <td>@request.RequestDate.ToString("MMM d, yyyy")</td>
-                        <td><span class="status-pill status-@request.RequestStatus.ToString().ToLowerInvariant()">@request.RequestStatus</span></td>
+                        <td><span class="status-pill status-@request.RequestStatus.ToString().ToLowerInvariant()">@DisplayText.Humanize(request.RequestStatus.ToString())</span></td>
                         <td><a asp-action="Details" asp-route-id="@request.RequestID">View</a></td>
                     </tr>
                 }
@@ -76,7 +76,7 @@ else
     <div class="card">
         <div class="sab-empty">
             <div class="sab-empty-title">No requests yet</div>
-            <p>Borrow asks for a model to use. Transfer asks for a model to be moved to another location. Either way, staff pick the unit.</p>
+            <p>Borrow asks for models to use. Transfer asks for models to be moved to another location. Either way, staff pick the units.</p>
             <a asp-action="Create" class="btn btn-primary">+ New Request</a>
         </div>
     </div>

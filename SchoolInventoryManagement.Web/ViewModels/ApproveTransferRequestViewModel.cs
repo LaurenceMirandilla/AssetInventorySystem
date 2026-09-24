@@ -1,18 +1,18 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using SchoolInventoryManagement.DAL.Entities.Enums;
 
 namespace SchoolInventoryManagement.Web.ViewModels
 {
-    // A Transfer names a Model and a destination, so -- as with Borrow --
-    // staff pick the unit here. AssetID stays empty only for an older
-    // request that already named its unit. Condition is optional: leaving it
-    // blank keeps whatever condition the asset is already recorded as.
+    // A Transfer ticket names models, amounts and a destination; staff tick
+    // the units here, exactly as for Borrow. Condition is optional: leaving
+    // it blank keeps whatever condition each unit is already recorded as.
     public class ApproveTransferRequestViewModel
     {
         public int RequestID { get; set; }
 
-        [Display(Name = "Unit to transfer")]
-        public int? AssetID { get; set; }
+        // Every unit ticked, across all lines.
+        public List<int> AssetIDs { get; set; } = new();
 
         public ConditionStatus? ConditionOnTransfer { get; set; }
 

@@ -1,35 +1,41 @@
-﻿using System.Threading.Tasks;
+﻿using System.Collections.Generic;
+using System.Threading.Tasks;
 using SchoolInventoryManagement.DAL.Entities.Enums;
 
 namespace SchoolInventoryManagement.BLL.Interfaces
 {
-    // Drives a request after the requester is done with it:
+    // Drives a request (ticket) after the requester is done with it:
     //   Pending -> InTransit (approve) -> Assigned (mark assigned)
-    //   -> Returned (IAssetAssignmentService.ReturnAssetAsync).
+    //   -> Returned (record return; once the last unit is back).
     // Approval runs inside one database transaction, so a failure partway
     // through rolls everything back instead of leaving it half-done.
     public interface IRequestFulfillmentService
     {
-        // Borrow-type requests only. The requester picked a Model; assetId
-        // is the unit staff chose. It is reserved to the requester and set
-        // aside at pickupLocationId, and the request becomes InTransit.
-        // departmentId re-homes the unit to the department it is issued to.
-        Task ApproveAndAssignAsync(
-            int requestId, int assetId, ConditionStatus conditionOnAssignment,
+        // Borrow requests. assetIds are the units staff ticked -- exactly
+        // the amount on each line, of that line's model. They are reserved
+        // to the requester and set aside at pickupLocationId; the request
+        // becomes InTransit. departmentId is where the units are issued to.
+        Task ApproveBorrowAsync(
+            int requestId, List<int> assetIds, ConditionStatus conditionOnAssignment,
             int departmentId, int pickupLocationId, byte[] requestRowVersion,
             int actingUserId, string? remarks);
 
-        // Transfer-type requests only. assetId is the unit staff chose to
-        // send (null only for an older request that already named its
-        // unit). It is reserved to the requester and the request becomes
-        // InTransit; it moves when staff mark it delivered.
-        Task ApproveAndTransferAsync(
-            int requestId, int? assetId, ConditionStatus? conditionOnTransfer,
+        // Transfer requests. Same unit rules as Borrow, none already at the
+        // destination. They move when staff mark them delivered.
+        Task ApproveTransferAsync(
+            int requestId, List<int> assetIds, ConditionStatus? conditionOnTransfer,
             byte[] requestRowVersion, int actingUserId, string? remarks);
 
-        // InTransit -> Assigned. Borrow: the requester collected the unit.
-        // Transfer: it arrived at the destination. Asset Officers and
-        // Administrators only.
+        // InTransit -> Assigned for every unit on the ticket. Borrow: the
+        // requester collected them. Transfer: they arrived at the
+        // destination. Asset Officers and Administrators only.
         Task MarkAssignedAsync(int requestId, byte[] requestRowVersion, int actingUserId);
+
+        // Some or all of the ticket's units come back to returnLocationId.
+        // The request is Returned once none are left out. Asset Officers and
+        // Administrators only.
+        Task RecordReturnAsync(
+            int requestId, List<int> assignmentIds, ConditionStatus conditionOnReturn,
+            int returnLocationId, byte[] requestRowVersion, int actingUserId);
     }
 }

@@ -6,12 +6,9 @@ namespace SchoolInventoryManagement.BLL.Interfaces
 {
     public interface IAssetRequestService
     {
+        // One request (ticket) holding every item asked for, each line a
+        // model and an amount.
         Task<AssetRequestResponseDTO> CreateRequestAsync(CreateAssetRequestDTO dto, int actingUserId);
-
-        // Several items in one submission: one request each, all saved
-        // together or not at all.
-        Task<List<AssetRequestResponseDTO>> CreateRequestsAsync(
-            List<CreateAssetRequestDTO> dtos, int actingUserId);
 
         Task<AssetRequestResponseDTO?> GetRequestByIdAsync(int requestId);
         Task<List<AssetRequestResponseDTO>> GetMyRequestsAsync(int actingUserId);

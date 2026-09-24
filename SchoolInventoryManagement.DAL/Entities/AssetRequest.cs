@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using SchoolInventoryManagement.DAL.Entities.Enums;
@@ -14,10 +15,11 @@ namespace SchoolInventoryManagement.DAL.Entities
         public int RequestedByUserID { get; set; }
         public int DepartmentID { get; set; }
 
-        // Both types name a Model; Transfer also names a destination.
-        // AssetID is never chosen by the requester: staff fill it in at
-        // approval with the unit that goes out, for either type.
-        // Enforced by CK_AssetRequests_TypeFieldRules at the DB level.
+        // What is asked for lives in Items (one line per model, with a
+        // quantity), and the units staff hand out are the AssetAssignments
+        // that carry this RequestID. ModelID and AssetID are from before
+        // requests could hold several items: older rows still have them,
+        // new rows leave them empty.
         public int? ModelID { get; set; }
         public int? AssetID { get; set; }
 
@@ -80,5 +82,12 @@ namespace SchoolInventoryManagement.DAL.Entities
 
         [ForeignKey("ApprovedByUserID")]
         public User? ApprovedByUser { get; set; }
+
+        // The lines of the ticket: which models, how many of each.
+        public ICollection<AssetRequestItem> Items { get; set; } = new List<AssetRequestItem>();
+
+        // The units handed out for this request, one assignment each.
+        // Open ones (no ReturnDate) are still out.
+        public ICollection<AssetAssignment> Assignments { get; set; } = new List<AssetAssignment>();
     }
 }

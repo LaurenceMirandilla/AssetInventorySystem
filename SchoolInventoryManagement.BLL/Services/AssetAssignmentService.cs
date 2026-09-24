@@ -34,9 +34,13 @@ namespace SchoolInventoryManagement.BLL.Services
         // notifyRecipient is false when RequestFulfillmentService drives this
         // as part of approval; that flow sends one combined message instead.
         // It stays true for a direct assignment.
+        //
+        // requestId links the assignment to the request the unit went out
+        // on, so the request knows which units are its own.
         public async Task<AssetAssignmentResponseDTO> AssignAssetAsync(
             int assetId, int assignToUserId, ConditionStatus conditionOnAssignment,
-            int departmentId, int actingUserId, string? remarks, bool notifyRecipient = true)
+            int departmentId, int actingUserId, string? remarks, bool notifyRecipient = true,
+            int? requestId = null)
         {
             var actingUser = await PermissionHelper.EnsureIsAssetManagerAsync(_context, actingUserId);
 
@@ -64,7 +68,8 @@ namespace SchoolInventoryManagement.BLL.Services
                 AssignedToUserID = assignToUserId,
                 AssignedByUserID = actingUser.UserID,
                 ConditionOnAssignment = conditionOnAssignment,
-                Remarks = remarks
+                Remarks = remarks,
+                RequestID = requestId
             };
 
             _context.AssetAssignments.Add(assignment);
@@ -125,17 +130,24 @@ namespace SchoolInventoryManagement.BLL.Services
                 _context, assignment.Asset, returnLocationId, actingUser.UserID,
                 $"Returned from assignment #{assignmentId}", conditionOnReturn);
 
-            // If this unit went out on a request, that request ends here.
-            // At most one can be open for a unit: approval reserves it via
-            // this very assignment, and a reserved unit cannot be approved
-            // for anyone else.
-            var request = await _context.AssetRequests.FirstOrDefaultAsync(r =>
-                r.AssetID == assignment.AssetID &&
-                (r.RequestStatus == RequestStatus.InTransit || r.RequestStatus == RequestStatus.Assigned));
-            if (request is not null)
+            // If this unit went out on a request, the request ends when its
+            // last unit is back.
+            if (assignment.RequestID is not null)
             {
-                request.RequestStatus = RequestStatus.Returned;
-                request.ReturnedDate = DateTime.Now;
+                var othersStillOut = await _context.AssetAssignments.AnyAsync(a =>
+                    a.RequestID == assignment.RequestID &&
+                    a.AssignmentID != assignment.AssignmentID &&
+                    a.ReturnDate == null);
+
+                if (!othersStillOut)
+                {
+                    var request = await _context.AssetRequests.FindAsync(assignment.RequestID.Value);
+                    if (request is not null)
+                    {
+                        request.RequestStatus = RequestStatus.Returned;
+                        request.ReturnedDate = DateTime.Now;
+                    }
+                }
             }
 
             // Sent to whoever held the asset, not to the officer recording

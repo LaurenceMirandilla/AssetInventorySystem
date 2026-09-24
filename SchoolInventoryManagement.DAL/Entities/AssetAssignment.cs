@@ -26,6 +26,10 @@ namespace SchoolInventoryManagement.DAL.Entities
         [MaxLength(500)]
         public string? Remarks { get; set; }
 
+        // Set when the unit went out on a request. Null for a direct
+        // assignment made from the asset page.
+        public int? RequestID { get; set; }
+
         [Timestamp]
         public byte[] RowVersion { get; set; } = null!;
 
@@ -38,5 +42,8 @@ namespace SchoolInventoryManagement.DAL.Entities
 
         [ForeignKey("AssignedByUserID")]
         public User AssignedByUser { get; set; } = null!;
+
+        [ForeignKey(nameof(RequestID))]
+        public AssetRequest? Request { get; set; }
     }
 }

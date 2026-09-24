@@ -1,0 +1,64 @@
+﻿@model List<SchoolInventoryManagement.Web.ViewModels.ApprovalLineChoice>
+@* The unit picker shared by ApproveBorrow and ApproveTransfer: one card per
+   line of the ticket, a checkbox per Available unit of that model. Each
+   line allows exactly its amount to be ticked -- once it is reached, the
+   rest of that line locks. The service checks the same thing. *@
+
+@foreach (var line in Model)
+{
+    <div class="card mb-3 unit-line" data-quantity="@line.Quantity">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <div class="fw-semibold">@line.ModelName</div>
+                <div class="small">
+                    <span class="line-count">0</span> of @line.Quantity picked
+                </div>
+            </div>
+
+            @if (line.Units.Count < line.Quantity)
+            {
+                <div class="alert alert-warning py-2 mb-2">
+                    Only @line.Units.Count unit@(line.Units.Count == 1 ? " is" : "s are") available now,
+                    but @line.Quantity @(line.Quantity == 1 ? "was" : "were") asked for.
+                    This request cannot be approved as it stands — reject it with a note, or wait for units to come back.
+                </div>
+            }
+
+            <div class="row row-cols-1 row-cols-md-2 g-1">
+                @foreach (var unit in line.Units)
+                {
+                    <div class="col">
+                        <label class="form-check">
+                            <input type="checkbox" class="form-check-input unit-box" name="AssetIDs"
+                                   value="@unit.Value" checked="@unit.Selected" />
+                            <span class="form-check-label small">@unit.Text</span>
+                        </label>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+<script>
+    (function () {
+        // Per line: count the ticks, and lock the unticked boxes once the
+        // amount is reached so no line can be over-picked.
+        document.querySelectorAll('.unit-line').forEach(function (line) {
+            var quantity = parseInt(line.getAttribute('data-quantity'), 10);
+            var boxes = Array.from(line.querySelectorAll('.unit-box'));
+            var counter = line.querySelector('.line-count');
+
+            function sync() {
+                var ticked = boxes.filter(function (b) { return b.checked; }).length;
+                counter.textContent = ticked;
+                counter.parentElement.classList.toggle('text-success', ticked === quantity);
+                counter.parentElement.classList.toggle('text-danger', ticked !== quantity);
+                boxes.forEach(function (b) { if (!b.checked) b.disabled = ticked >= quantity; });
+            }
+
+            boxes.forEach(function (b) { b.addEventListener('change', sync); });
+            sync();
+        });
+    })();
+</script>

@@ -2,6 +2,8 @@
 @{
     ViewData["Title"] = "Approve Borrow Request";
     var request = ViewBag.Request as SchoolInventoryManagement.BLL.DTOs.AssetRequestResponseDTO;
+    var lines = ViewBag.Lines as List<SchoolInventoryManagement.Web.ViewModels.ApprovalLineChoice>
+        ?? new List<SchoolInventoryManagement.Web.ViewModels.ApprovalLineChoice>();
 }
 
 <h2>Approve Borrow Request #@Model.RequestID</h2>
@@ -10,7 +12,7 @@
 {
     <p class="text-muted">
         @request.RequestedByUser.FullName (@request.RequestedByUser.RoleName)
-        asked for <strong>@request.ModelName</strong>.
+        asked for <strong>@request.ItemsSummary</strong>.
     </p>
     @if (request.NeededFrom is not null)
     {
@@ -29,11 +31,11 @@
 }
 
 <div class="alert alert-info">
-    Approving reserves the unit to the requester and sets it aside at the pickup
+    Tick the units to hand over — exactly the amount asked for on each line.
+    Approving reserves them to the requester and sets them aside at the pickup
     location. The request is then <strong>In Transit</strong> and stays under
-    Approvals. When they collect it, an Asset Officer or Administrator marks it
-    <strong>Assigned</strong>, and later records its return. If any part of the
-    approval fails, none of it is saved.
+    Approvals until an Asset Officer or Administrator marks it collected, and
+    later records the return. If any part of the approval fails, none of it is saved.
 </div>
 
 <form asp-action="ApproveBorrow" asp-route-id="@Model.RequestID" method="post">
@@ -42,14 +44,8 @@
     <input type="hidden" asp-for="RowVersionBase64" />
     <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
 
-    <div class="mb-3">
-        <label asp-for="AssetID" class="form-label">Unit to hand over</label>
-        <select asp-for="AssetID" asp-items="ViewBag.CandidateAssets" class="form-select">
-            <option value="">-- Select Unit --</option>
-        </select>
-        <div class="form-text">Only Available units of the requested model are listed.</div>
-        <span asp-validation-for="AssetID" class="text-danger"></span>
-    </div>
+    <h5 class="mb-2">Units to hand over</h5>
+    <partial name="_ApprovalUnitPicker" model="lines" />
 
     <div class="mb-3">
         <label asp-for="ConditionOnAssignment" class="form-label">Condition at hand-over</label>
@@ -59,7 +55,7 @@
     </div>
 
     <div class="mb-3">
-        <label asp-for="DepartmentID" class="form-label">Department the unit goes to</label>
+        <label asp-for="DepartmentID" class="form-label">Department the units go to</label>
         <select asp-for="DepartmentID" asp-items="ViewBag.Departments" class="form-select">
             <option value="">-- Select Department --</option>
         </select>
@@ -67,14 +63,27 @@
         <span asp-validation-for="DepartmentID" class="text-danger"></span>
     </div>
 
-    <div class="mb-3">
-        <label asp-for="PickupLocationID" class="form-label">Pickup location</label>
-        <select asp-for="PickupLocationID" asp-items="ViewBag.PickupLocations" class="form-select">
-            <option value="">-- Select Location --</option>
-        </select>
-        <div class="form-text">Where the requester can collect the unit. They are told this when you approve.</div>
-        <span asp-validation-for="PickupLocationID" class="text-danger"></span>
-    </div>
+    @if (request?.RequestedLocationID is not null)
+    {
+        @* The requester named where they want to collect the units, so there
+           is nothing to choose here -- the controller uses their choice. *@
+        <div class="mb-3">
+            <div class="form-label">Pickup location</div>
+            <div class="fw-semibold">@request.RequestedLocationName</div>
+            <div class="form-text">Chosen by the requester. They are told this when you approve.</div>
+        </div>
+    }
+    else
+    {
+        <div class="mb-3">
+            <label asp-for="PickupLocationID" class="form-label">Pickup location</label>
+            <select asp-for="PickupLocationID" asp-items="ViewBag.PickupLocations" class="form-select">
+                <option value="">-- Select Location --</option>
+            </select>
+            <div class="form-text">The requester left this to you. They are told where to collect the units when you approve.</div>
+            <span asp-validation-for="PickupLocationID" class="text-danger"></span>
+        </div>
+    }
 
     <div class="mb-3">
         <label asp-for="Remarks" class="form-label">Remarks <span class="text-muted">(optional)</span></label>
