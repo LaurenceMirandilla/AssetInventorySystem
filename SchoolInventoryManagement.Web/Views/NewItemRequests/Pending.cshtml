@@ -5,10 +5,12 @@
 
     // What waits on whom, for the sub-heading.
     var queueFor = User.IsInRole("Administrator")
-        ? "department head approvals (as backup), budget checks and items being procured"
-        : User.IsInRole("Asset Officer")
-            ? "budget checks and items being procured"
-            : "requests from your department waiting for your approval";
+        ? "department head and Principal approvals (as backup), items to procure and deliveries to confirm"
+        : User.IsInRole("Principal")
+            ? "requests waiting for your budget and reason check"
+            : User.IsInRole("Asset Officer")
+                ? "approved items to procure, and deliveries waiting for you to confirm"
+                : "requests from your department waiting for your approval";
 }
 @if (TempData["ErrorMessage"] != null)
 {

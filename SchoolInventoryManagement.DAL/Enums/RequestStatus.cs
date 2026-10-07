@@ -25,12 +25,14 @@
     // Stages of a new-item request (NewItemRequest), separate from
     // RequestStatus because the two flows have nothing in common past
     // "Rejected":
-    //   AwaitingDeptHead -> AwaitingBudget -> Procuring -> Arrived
+    //   AwaitingDeptHead -> AwaitingBudget -> Procuring -> AwaitingArrival -> Arrived
     // AwaitingDeptHead: submitted, waiting for the requester's department
     //                   head (or an Administrator) to approve.
-    // AwaitingBudget:   department head approved; an Asset Officer or
-    //                   Administrator checks there is budget for it.
-    // Procuring:        budget approved; being bought.
+    // AwaitingBudget:   department head approved; the Principal (or an
+    //                   Administrator) checks the budget and the reason.
+    // Procuring:        Principal approved; an Asset Officer is buying it.
+    // AwaitingArrival:  bought or obtained; waiting for it to be delivered,
+    //                   which an Asset Officer confirms.
     // Arrived:          delivered; the requester has been told.
     // Rejected at either of the first two stages. Cancelled is kept for
     // older rows. Names fit the 20-character status column.
@@ -39,6 +41,7 @@
         AwaitingDeptHead,
         AwaitingBudget,
         Procuring,
+        AwaitingArrival,
         Arrived,
         Rejected,
         Cancelled

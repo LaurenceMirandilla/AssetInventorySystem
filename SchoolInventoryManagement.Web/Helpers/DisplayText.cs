@@ -26,8 +26,9 @@ namespace SchoolInventoryManagement.Web.Helpers
         public static string Stage(NewItemStatus status) => status switch
         {
             NewItemStatus.AwaitingDeptHead => "Awaiting department head",
-            NewItemStatus.AwaitingBudget => "Awaiting budget check",
-            NewItemStatus.Procuring => "Procuring item",
+            NewItemStatus.AwaitingBudget => "Awaiting Principal",
+            NewItemStatus.Procuring => "Item procurement",
+            NewItemStatus.AwaitingArrival => "Waiting for item arrival",
             NewItemStatus.Arrived => "Item arrived",
             _ => status.ToString()
         };
@@ -38,8 +39,9 @@ namespace SchoolInventoryManagement.Web.Helpers
         {
             NewItemStatus.AwaitingDeptHead => "Submitted",
             NewItemStatus.AwaitingBudget => "Approved by department head",
-            NewItemStatus.Procuring => "Budget approved, procuring item",
-            NewItemStatus.Arrived => "Marked as arrived",
+            NewItemStatus.Procuring => "Approved by Principal, sent for procurement",
+            NewItemStatus.AwaitingArrival => "Item procured",
+            NewItemStatus.Arrived => "Arrival confirmed",
             NewItemStatus.Rejected => "Rejected",
             _ => status.ToString()
         };
@@ -48,8 +50,9 @@ namespace SchoolInventoryManagement.Web.Helpers
         public static string AdvanceButton(NewItemStatus status) => status switch
         {
             NewItemStatus.AwaitingDeptHead => "Approve",
-            NewItemStatus.AwaitingBudget => "Approve (budget available)",
-            NewItemStatus.Procuring => "Next step: Item arrived",
+            NewItemStatus.AwaitingBudget => "Approve (budget and reason OK)",
+            NewItemStatus.Procuring => "Item procured",
+            NewItemStatus.AwaitingArrival => "Confirm arrival",
             _ => ""
         };
 

@@ -108,10 +108,84 @@ else
             means the requester has it. Each stays here until its return is recorded.
         </p>
     </div>
+    @if (inProgress.Any())
+    {
+        <div class="sab-page-actions">
+            <button type="button" id="ipToggle" class="btn btn-outline-secondary" aria-expanded="false" aria-controls="ipFilters">Filter</button>
+        </div>
+    }
 </div>
 
 @if (inProgress.Any())
 {
+    var departments = inProgress.Select(r => r.DepartmentName).Where(d => !string.IsNullOrEmpty(d)).Distinct().OrderBy(d => d).ToList();
+
+    @* Off until "Filter" is clicked. Everything here runs in the browser on
+       the rows already on the page -- the list is only what is out right
+       now, so there is nothing to fetch. Turning the filter off clears it
+       and puts the list back in its usual order. *@
+    <div id="ipFilters" class="card mb-3 d-none">
+        <div class="card-body py-2">
+            <div class="row g-2 align-items-end">
+                <div class="col-6 col-md-2">
+                    <label for="ipTicket" class="form-label small mb-1">Ticket #</label>
+                    <input type="search" id="ipTicket" class="form-control form-control-sm" inputmode="numeric" placeholder="e.g. 42" autocomplete="off" />
+                </div>
+                <div class="col-6 col-md-3">
+                    <label for="ipRequester" class="form-label small mb-1">Requester</label>
+                    <input type="search" id="ipRequester" class="form-control form-control-sm" placeholder="Name" autocomplete="off" />
+                </div>
+                <div class="col-6 col-md-3">
+                    <label for="ipItem" class="form-label small mb-1">Item</label>
+                    <input type="search" id="ipItem" class="form-control form-control-sm" placeholder="Model or unit code" autocomplete="off" />
+                </div>
+                <div class="col-6 col-md-2">
+                    <label for="ipStatus" class="form-label small mb-1">Status</label>
+                    <select id="ipStatus" class="form-select form-select-sm">
+                        <option value="">Any</option>
+                        <option value="intransit">In Transit</option>
+                        <option value="assigned">Assigned</option>
+                        <option value="overdue">Overdue</option>
+                    </select>
+                </div>
+                <div class="col-6 col-md-2">
+                    <label for="ipType" class="form-label small mb-1">Type</label>
+                    <select id="ipType" class="form-select form-select-sm">
+                        <option value="">Any</option>
+                        <option value="borrow">Borrow</option>
+                        <option value="transfer">Transfer</option>
+                    </select>
+                </div>
+                <div class="col-6 col-md-3">
+                    <label for="ipDepartment" class="form-label small mb-1">Department</label>
+                    <select id="ipDepartment" class="form-select form-select-sm">
+                        <option value="">Any</option>
+                        @foreach (var d in departments)
+                        {
+                            <option value="@d!.ToLowerInvariant()">@d</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-6 col-md-3">
+                    <label for="ipSort" class="form-label small mb-1">Sort by</label>
+                    <select id="ipSort" class="form-select form-select-sm">
+                        <option value="submitted-asc">Submitted — oldest first</option>
+                        <option value="submitted-desc">Submitted — newest first</option>
+                        <option value="due-asc">Due back — soonest first</option>
+                        <option value="due-desc">Due back — latest first</option>
+                        <option value="ticket-asc">Ticket # — low to high</option>
+                        <option value="ticket-desc">Ticket # — high to low</option>
+                        <option value="requester-asc">Requester — A to Z</option>
+                    </select>
+                </div>
+                <div class="col-12 col-md-6 d-flex align-items-center" style="gap:12px;">
+                    <button type="button" id="ipClear" class="btn btn-link btn-sm p-0">Clear filters</button>
+                    <span id="ipCount" class="text-muted small"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="sab-table-card">
         <table class="table table-striped">
             <thead>
@@ -126,14 +200,28 @@ else
                     <th></th>
                 </tr>
             </thead>
-            <tbody>
-                @foreach (var r in inProgress)
+            <tbody id="ipRows">
+                @for (var i = 0; i < inProgress.Count; i++)
                 {
+                    var r = inProgress[i];
                     var isBorrow = r.RequestType == RequestType.Borrow;
                     var overdue = r.RequestStatus == RequestStatus.Assigned
                         && r.ReturnBy is not null && r.ReturnBy.Value < DateTime.Now;
 
-                    <tr>
+                    // What the filter matches and sorts on. Item covers the
+                    // models asked for and the codes of the units handed out.
+                    var itemText = (r.ItemsSummary + " " + string.Join(" ", r.Units.Select(u => u.AssetCode))).ToLowerInvariant();
+
+                    <tr class="ip-row"
+                        data-order="@i"
+                        data-ticket="@r.RequestID"
+                        data-submitted="@r.RequestDate.Ticks"
+                        data-due="@(r.ReturnBy?.Ticks.ToString() ?? "")"
+                        data-requester="@r.RequestedByUser.FullName.ToLowerInvariant()"
+                        data-items="@itemText"
+                        data-status="@(overdue ? "overdue" : r.RequestStatus.ToString().ToLowerInvariant())"
+                        data-type="@r.RequestType.ToString().ToLowerInvariant()"
+                        data-department="@(r.DepartmentName?.ToLowerInvariant() ?? "")">
                         <td><a asp-action="Details" asp-route-id="@r.RequestID">@r.RequestID</a></td>
                         <td class="small text-nowrap">
                             <div>@r.RequestDate.ToString("MMM d, yyyy")</div>
@@ -198,6 +286,10 @@ else
                 }
             </tbody>
         </table>
+        <div id="ipNoMatch" class="sab-empty d-none">
+            <div class="sab-empty-title">No requests match these filters</div>
+            <p>Change or clear the filters to see the rest.</p>
+        </div>
     </div>
 }
 else
@@ -216,3 +308,99 @@ else
     One from an approver of your own role stays listed here, but has to go to
     an approver of a different role.
 </div>
+
+@section Scripts {
+    <script>
+        (function () {
+            var toggle = document.getElementById('ipToggle');
+            var panel = document.getElementById('ipFilters');
+            var tbody = document.getElementById('ipRows');
+            if (!toggle || !panel || !tbody) return;
+
+            var rows = Array.from(tbody.querySelectorAll('.ip-row'));
+            var ticket = document.getElementById('ipTicket');
+            var requester = document.getElementById('ipRequester');
+            var item = document.getElementById('ipItem');
+            var status = document.getElementById('ipStatus');
+            var type = document.getElementById('ipType');
+            var department = document.getElementById('ipDepartment');
+            var sort = document.getElementById('ipSort');
+            var count = document.getElementById('ipCount');
+            var noMatch = document.getElementById('ipNoMatch');
+            var table = tbody.closest('table');
+            var inputs = [ticket, requester, item, status, type, department, sort];
+
+            function text(el) { return (el.value || '').trim().toLowerCase(); }
+            function num(row, attr) { var v = row.getAttribute(attr); return v === '' ? null : Number(v); }
+
+            function matches(row) {
+                // Ticket: the number as typed, with or without a leading "#".
+                var t = text(ticket).replace(/^#/, '');
+                if (t && row.getAttribute('data-ticket').indexOf(t) !== 0) return false;
+                if (text(requester) && row.getAttribute('data-requester').indexOf(text(requester)) === -1) return false;
+                if (text(item) && row.getAttribute('data-items').indexOf(text(item)) === -1) return false;
+                if (status.value && row.getAttribute('data-status') !== status.value) return false;
+                if (type.value && row.getAttribute('data-type') !== type.value) return false;
+                if (department.value && row.getAttribute('data-department') !== department.value) return false;
+                return true;
+            }
+
+            // Rows without a due date go last whichever way due-date sorts.
+            function compare(a, b) {
+                switch (sort.value) {
+                    case 'submitted-desc': return num(b, 'data-submitted') - num(a, 'data-submitted');
+                    case 'due-asc':
+                    case 'due-desc':
+                        var da = num(a, 'data-due'), db = num(b, 'data-due');
+                        if (da === null && db === null) return 0;
+                        if (da === null) return 1;
+                        if (db === null) return -1;
+                        return sort.value === 'due-asc' ? da - db : db - da;
+                    case 'ticket-asc': return num(a, 'data-ticket') - num(b, 'data-ticket');
+                    case 'ticket-desc': return num(b, 'data-ticket') - num(a, 'data-ticket');
+                    case 'requester-asc': return a.getAttribute('data-requester').localeCompare(b.getAttribute('data-requester'));
+                    default: return num(a, 'data-order') - num(b, 'data-order'); // as the server sent it: oldest first
+                }
+            }
+
+            function apply() {
+                var shown = 0;
+                rows.slice().sort(compare).forEach(function (row) {
+                    tbody.appendChild(row);
+                    var show = matches(row);
+                    row.classList.toggle('d-none', !show);
+                    if (show) shown++;
+                });
+                count.textContent = 'Showing ' + shown + ' of ' + rows.length;
+                noMatch.classList.toggle('d-none', shown > 0);
+                table.classList.toggle('d-none', shown === 0);
+            }
+
+            function reset() {
+                inputs.forEach(function (el) { el.value = el === sort ? 'submitted-asc' : ''; });
+                apply();
+            }
+
+            inputs.forEach(function (el) {
+                el.addEventListener('input', apply);
+                el.addEventListener('change', apply);
+            });
+            document.getElementById('ipClear').addEventListener('click', reset);
+
+            // "Filter" turns the panel on; turning it off clears everything,
+            // so a hidden filter can never be quietly hiding rows.
+            toggle.addEventListener('click', function () {
+                var on = panel.classList.toggle('d-none') === false;
+                toggle.setAttribute('aria-expanded', on ? 'true' : 'false');
+                toggle.classList.toggle('active', on);
+                toggle.textContent = on ? 'Hide filter' : 'Filter';
+                if (on) {
+                    apply();
+                    ticket.focus();
+                } else {
+                    reset();
+                }
+            });
+        })();
+    </script>
+}

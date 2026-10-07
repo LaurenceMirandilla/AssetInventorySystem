@@ -17,8 +17,9 @@ namespace SchoolInventoryManagement.BLL.Interfaces
         Task<List<NewItemRequestResponseDTO>> GetMyRequestsAsync(int actingUserId);
 
         // The requests waiting on the acting user: a department head's
-        // first-stage requests from their own department; budget checks and
-        // procurement for Asset Officers; all of these for Administrators.
+        // first-stage requests from their own department; budget and reason
+        // checks for the Principal; procurement for Asset Officers; all of
+        // these for Administrators.
         Task<List<NewItemRequestResponseDTO>> GetPendingRequestsAsync(int actingUserId);
 
         // Every request from everyone, optionally one stage only, and/or
@@ -33,8 +34,9 @@ namespace SchoolInventoryManagement.BLL.Interfaces
         Task<NewItemRequestResponseDTO> GetRequestAsync(int requestId, int actingUserId);
 
         // Moves the request to its next stage: department head approval ->
-        // budget approval -> procuring -> arrived. Who may do it depends on
-        // the stage.
+        // Principal's budget approval -> procuring -> waiting for arrival
+        // -> arrived (the last two moves by an Asset Officer). Who may do
+        // it depends on the stage.
         Task AdvanceRequestAsync(int requestId, byte[] rowVersion, int actingUserId, string? remarks);
 
         // Only at the department head or budget stage.

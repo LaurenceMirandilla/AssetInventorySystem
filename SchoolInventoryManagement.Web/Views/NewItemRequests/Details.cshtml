@@ -3,12 +3,13 @@
 @{
     ViewData["Title"] = $"New Item Request #{Model.NewItemRequestID}";
 
-    // The four stages in order, and where this request is among them.
+    // The five stages in order, and where this request is among them.
     var stages = new[]
     {
         (Status: NewItemStatus.AwaitingDeptHead, Label: "Department head approval"),
-        (Status: NewItemStatus.AwaitingBudget, Label: "Budget check"),
-        (Status: NewItemStatus.Procuring, Label: "Procuring item"),
+        (Status: NewItemStatus.AwaitingBudget, Label: "Principal: budget and reason"),
+        (Status: NewItemStatus.Procuring, Label: "Item procurement"),
+        (Status: NewItemStatus.AwaitingArrival, Label: "Waiting for item arrival"),
         (Status: NewItemStatus.Arrived, Label: "Item arrived")
     };
     var isRejected = Model.RequestStatus is NewItemStatus.Rejected or NewItemStatus.Cancelled;
@@ -98,9 +99,10 @@
                     <p class="small text-muted">
                         @(Model.RequestStatus switch
                         {
-                            NewItemStatus.AwaitingDeptHead => "Approve to send it to the budget check, or reject it.",
-                            NewItemStatus.AwaitingBudget => "Approve if there is budget for it; it then moves to procurement. Reject if there is not.",
-                            NewItemStatus.Procuring => "When the item has been delivered, move it on. The requester is told it has arrived.",
+                            NewItemStatus.AwaitingDeptHead => "Approve to send it to the Principal for the budget check, or reject it.",
+                            NewItemStatus.AwaitingBudget => "Check the reason and that there is budget for it. Approve to send it to the Asset Officer for procurement, or reject it.",
+                            NewItemStatus.Procuring => "Once the item has been bought or obtained, mark it procured. The requester is told it is on its way.",
+                            NewItemStatus.AwaitingArrival => "When the item is delivered, confirm its arrival. The requester is told it has arrived.",
                             _ => ""
                         })
                     </p>

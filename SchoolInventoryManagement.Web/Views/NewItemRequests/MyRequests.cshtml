@@ -11,7 +11,8 @@
     var filtered = status is not null || !string.IsNullOrEmpty(search);
 
     var stages = new[] { NewItemStatus.AwaitingDeptHead, NewItemStatus.AwaitingBudget, NewItemStatus.Procuring,
-                         NewItemStatus.Arrived, NewItemStatus.Rejected, NewItemStatus.Cancelled };
+                         NewItemStatus.AwaitingArrival, NewItemStatus.Arrived, NewItemStatus.Rejected,
+                         NewItemStatus.Cancelled };
 
     ViewData["Title"] = showAll ? "All New-Item Requests" : "My New-Item Requests";
 }

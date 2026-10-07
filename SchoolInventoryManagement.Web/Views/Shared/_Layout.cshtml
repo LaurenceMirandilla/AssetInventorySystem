@@ -19,7 +19,7 @@
     // Teachers and Staff browse models, not units (AssetsController.IsRequesterOnly).
     var isRequesterOnly = User.IsInRole("Teacher") || User.IsInRole("Staff");
     // Who has new-item requests to act on (NewItemRequestsController.Pending).
-    var actsOnNewItems = isAssetManager || User.IsInRole("Department Head");
+    var actsOnNewItems = isAssetManager || User.IsInRole("Department Head") || User.IsInRole("Principal");
     var roleName = User.FindFirst(ClaimTypes.Role)?.Value;
     var displayName = User.Identity?.Name ?? "";
     var initials = string.Concat(displayName.Split(' ', StringSplitOptions.RemoveEmptyEntries)

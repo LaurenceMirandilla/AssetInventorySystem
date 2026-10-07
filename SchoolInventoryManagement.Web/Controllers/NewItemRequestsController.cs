@@ -28,7 +28,8 @@ namespace SchoolInventoryManagement.Web.Controllers
 
         // Who has a queue of requests to act on.
         private const string ActingRoles =
-            RoleNames.DepartmentHead + "," + RoleNames.AssetOfficer + "," + RoleNames.Administrator;
+            RoleNames.DepartmentHead + "," + RoleNames.Principal + "," +
+            RoleNames.AssetOfficer + "," + RoleNames.Administrator;
 
         private readonly INewItemRequestService _requestService;
 
@@ -169,7 +170,7 @@ namespace SchoolInventoryManagement.Web.Controllers
 
         // POST /NewItemRequests/Advance/5
         // Approve at the department head or budget stage, or "next step"
-        // from Procuring to Arrived. returnTo is "details" to come back to
+        // from Procuring to Waiting for arrival, and from there to Arrived. returnTo is "details" to come back to
         // the request page instead of the queue.
         [HttpPost]
         [ValidateAntiForgeryToken]

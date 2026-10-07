@@ -861,6 +861,7 @@ h2 { font-weight: 700; font-size: 1.35rem; color: var(--sab-text); }
 .status-awaitingdepthead { background: var(--sab-amber-bg);    color: var(--sab-amber-text); }
 .status-awaitingbudget   { background: var(--sab-amber-bg);    color: var(--sab-amber-text); }
 .status-procuring        { background: var(--sab-purple-bg);   color: var(--sab-purple-text); }
+.status-awaitingarrival  { background: var(--sab-blue-bg);     color: var(--sab-blue-text); }
 .status-arrived          { background: var(--sab-green-light); color: var(--sab-green-dark); }
 
 /* The four-stage progress bar on a new-item request's page. */
