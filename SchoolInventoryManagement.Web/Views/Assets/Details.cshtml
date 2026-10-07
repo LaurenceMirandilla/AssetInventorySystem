@@ -62,7 +62,7 @@
             }
             else if (Model.Status == SchoolInventoryManagement.DAL.Entities.Enums.AssetStatus.UnderMaintenance)
             {
-                <form asp-action="ReturnToService" asp-route-id="@Model.AssetID" method="post" onsubmit="return confirm('Mark this asset Available again?');">
+                <form asp-action="ReturnToService" asp-route-id="@Model.AssetID" method="post" onsubmit="return confirm('Mark this asset Available and set its condition to Repaired?');">
                     @Html.AntiForgeryToken()
                     <input type="hidden" name="rowVersionBase64" value="@Convert.ToBase64String(Model.RowVersion)" />
                     <button type="submit" class="btn btn-success">Return to Service</button>
@@ -81,7 +81,7 @@
 
                 <a asp-controller="AssetAssignments" asp-action="Assign" asp-route-id="@Model.AssetID" class="btn btn-primary">Assign</a>
             }
-            else if (isOut && Model.ActiveAssignmentID.HasValue)
+            else if (isOut && !isInTransit && Model.ActiveAssignmentID.HasValue)
             {
                 <a asp-controller="AssetAssignments" asp-action="Return" asp-route-id="@Model.ActiveAssignmentID" class="btn btn-primary">Record return</a>
             }
@@ -118,7 +118,11 @@
                     </div>
                     <div class="col">
                         <div class="text-muted small">Warranty</div>
-                        <div class="fw-semibold">@(Model.WarrantyInformation ?? "—")</div>
+                        <div class="fw-semibold">@(Model.WarrantyInformation ?? (Model.WarrantyFileURL is null ? "—" : ""))</div>
+                        @if (!string.IsNullOrWhiteSpace(Model.WarrantyFileURL))
+                        {
+                            <a href="@Model.WarrantyFileURL" target="_blank" rel="noopener" class="small">View warranty file</a>
+                        }
                     </div>
 
                     <div class="col">
@@ -193,9 +197,23 @@
                     </div>
                 }
 
-                <img src="@Url.Action("QrCode", new { id = Model.AssetID })" alt="QR code" width="120" height="120" class="d-block mb-2" />
-                <a href="@Url.Action("QrCode", new { id = Model.AssetID })" download="@($"{Model.AssetCode}-qr.png")"
-                   class="btn btn-outline-primary btn-sm w-100">Download QR</a>
+                @if (!string.IsNullOrEmpty(Model.QRCodeData))
+                {
+                    <img src="@Url.Action("QrCode", new { id = Model.AssetID })" alt="QR code" width="120" height="120" class="d-block mb-2" />
+                    <a href="@Url.Action("QrCode", new { id = Model.AssetID })" download="@($"{Model.AssetCode}-qr.png")"
+                       class="btn btn-outline-primary btn-sm w-100">Download QR</a>
+                }
+                else if (User.IsInRole(RoleNames.AssetOfficer) || User.IsInRole(RoleNames.Administrator))
+                {
+                    <form asp-action="CreateQr" asp-route-id="@Model.AssetID" method="post">
+                        @Html.AntiForgeryToken()
+                        <button type="submit" class="btn btn-outline-primary btn-sm w-100">Create QR</button>
+                    </form>
+                }
+                else
+                {
+                    <div class="text-muted small">No QR code yet.</div>
+                }
             </div>
         </div>
     </div>

@@ -51,8 +51,7 @@ namespace SchoolInventoryManagement.BLL.Services
                     a.Status == AssetStatus.Assigned || a.Status == AssetStatus.Overdue),
                 UnderMaintenanceCount = await assets.CountAsync(a => a.Status == AssetStatus.UnderMaintenance),
                 DisposedCount = await assets.CountAsync(a => a.Status == AssetStatus.Disposed),
-                LostOrDamagedCount = await assets.CountAsync(a =>
-                    a.Status == AssetStatus.Lost || a.Status == AssetStatus.Damaged),
+                DamagedCount = await inService.CountAsync(a => a.Condition == ConditionStatus.Damaged),
 
                 PendingRequestCount = await _context.AssetRequests
                     .CountAsync(r => r.RequestStatus == RequestStatus.Pending),
@@ -63,8 +62,11 @@ namespace SchoolInventoryManagement.BLL.Services
                 ActiveUserCount = await _context.Users.CountAsync(u => u.Status == "Active")
             };
 
-            // Every breakdown below covers ALL assets including disposed, so
-            // the Disposed slice is visible rather than silently missing.
+            // By status covers ALL assets including disposed, so the
+            // Disposed slice is visible rather than silently missing. The
+            // other breakdowns are in service only, like TotalValue -- a
+            // disposed unit is not stock on hand, so it should not swell
+            // them, and each then adds up to the Total value tile.
             summary.ByStatus = await assets
                 .GroupBy(a => a.Status)
                 .Select(g => new CountByLabelDTO
@@ -75,7 +77,7 @@ namespace SchoolInventoryManagement.BLL.Services
                 })
                 .ToListAsync();
 
-            summary.ByCondition = await assets
+            summary.ByCondition = await inService
                 .GroupBy(a => a.Condition)
                 .Select(g => new CountByLabelDTO
                 {
@@ -85,7 +87,7 @@ namespace SchoolInventoryManagement.BLL.Services
                 })
                 .ToListAsync();
 
-            summary.ByCategory = await assets
+            summary.ByCategory = await inService
                 .GroupBy(a => a.Model.Category.CategoryName)
                 .Select(g => new CountByLabelDTO
                 {
@@ -95,7 +97,7 @@ namespace SchoolInventoryManagement.BLL.Services
                 })
                 .ToListAsync();
 
-            summary.ByBranch = await assets
+            summary.ByBranch = await inService
                 .GroupBy(a => a.Branch.BranchName)
                 .Select(g => new CountByLabelDTO
                 {
@@ -108,7 +110,7 @@ namespace SchoolInventoryManagement.BLL.Services
             // Asset.DepartmentID is nullable, and an assigned asset can sit
             // with a person outside any department — group those under a
             // label rather than dropping them from the report.
-            summary.ByDepartment = await assets
+            summary.ByDepartment = await inService
                 .GroupBy(a => a.Department != null ? a.Department.DepartmentName : "(unassigned)")
                 .Select(g => new CountByLabelDTO
                 {

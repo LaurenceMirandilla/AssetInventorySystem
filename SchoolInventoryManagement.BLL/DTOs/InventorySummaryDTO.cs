@@ -15,7 +15,8 @@ namespace SchoolInventoryManagement.BLL.DTOs
         public int AssignedCount { get; set; }
         public int UnderMaintenanceCount { get; set; }
         public int DisposedCount { get; set; }
-        public int LostOrDamagedCount { get; set; }
+        // Condition, not status: units still on record but marked Damaged.
+        public int DamagedCount { get; set; }
 
         public int PendingRequestCount { get; set; }
         public int OutstandingAssignmentCount { get; set; }

@@ -21,6 +21,7 @@ namespace SchoolInventoryManagement.BLL.Mappings
                 AcquisitionDate = asset.AcquisitionDate,
                 AcquisitionCost = asset.AcquisitionCost,
                 WarrantyInformation = asset.WarrantyInformation,
+                WarrantyFileURL = asset.WarrantyFileURL,
                 ImageURL = asset.ImageURL,
                 QRCodeData = asset.QRCodeData,
                 Condition = asset.Condition,

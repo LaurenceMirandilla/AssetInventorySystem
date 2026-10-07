@@ -54,12 +54,21 @@
 
     <div class="mb-3">
         <label asp-for="WarrantyInformation" class="form-label"></label>
-        <input asp-for="WarrantyInformation" class="form-control" />
+        <input asp-for="WarrantyInformation" class="form-control" placeholder="e.g. 1 year, until Mar 2027" />
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="WarrantyFile" class="form-label">Warranty photo or file <span class="text-muted">(optional)</span></label>
+        <input asp-for="WarrantyFile" type="file" accept="@SchoolInventoryManagement.Web.Helpers.FileUploads.DocumentAccept"
+               data-max-bytes="@SchoolInventoryManagement.Web.Helpers.FileUploads.MaxBytes" class="form-control" />
+        <div class="form-text">A photo of the warranty card or receipt, or a PDF. Max @SchoolInventoryManagement.Web.Helpers.FileUploads.MaxMegabytes MB.</div>
     </div>
 
     <div class="mb-3">
         <label asp-for="ImageFile" class="form-label">Photo <span class="text-muted">(optional)</span></label>
-        <input asp-for="ImageFile" type="file" accept="image/jpeg,image/png,image/webp" class="form-control" />
+        <input asp-for="ImageFile" type="file" accept="@SchoolInventoryManagement.Web.Helpers.FileUploads.ImageAccept"
+               data-max-bytes="@SchoolInventoryManagement.Web.Helpers.FileUploads.MaxBytes" class="form-control" />
+        <div class="form-text">JPG, PNG or WEBP. Max @SchoolInventoryManagement.Web.Helpers.FileUploads.MaxMegabytes MB.</div>
     </div>
     <div class="mb-3">
         <label asp-for="Condition" class="form-label"></label>
@@ -87,9 +96,32 @@
         <div class="form-text">Only locations in the chosen branch are listed.</div>
     </div>
 
+    <div class="mb-3">
+        <label asp-for="DepartmentID" class="form-label">Department</label>
+        <select asp-for="DepartmentID" id="departmentSelect" class="form-select">
+            <option value="">-- Pick a branch first --</option>
+            @foreach (var dept in (List<SchoolInventoryManagement.BLL.DTOs.DepartmentDTO>)ViewBag.DepartmentsByBranch)
+            {
+                <option value="@dept.DepartmentID" data-branch="@dept.BranchID"
+                        selected="@(dept.DepartmentID == Model.DepartmentID)">@dept.DepartmentName</option>
+            }
+        </select>
+        <span asp-validation-for="DepartmentID" class="text-danger"></span>
+        <div class="form-text">Only departments in the chosen branch are listed.</div>
+    </div>
+
+    <div class="mb-3">
+        <div class="form-label">QR label</div>
+        <input asp-for="CreateQr" type="checkbox" id="createQr" class="btn-check" autocomplete="off" />
+        <label for="createQr" id="createQrLabel" class="btn btn-outline-primary">Add QR</label>
+        <div class="form-text">Click to make a QR code when the asset is saved. Leave it off to save without one; you can still add it later from the asset's page.</div>
+    </div>
+
     <button type="submit" class="btn btn-primary">Create</button>
     <a asp-action="Index" class="btn btn-secondary">Cancel</a>
 </form>
+
+<partial name="_QuickAddModel" />
 
 @section Scripts {
     @{
@@ -122,53 +154,69 @@
                 }
             });
 
-            // ---- Location follows branch --------------------------------
-            // The list only ever holds the chosen branch's locations, and
+            // ---- Add QR toggle ------------------------------------------
+            // The label says what will happen, so "on" isn't just a color.
+            var createQr = document.getElementById('createQr');
+            var createQrLabel = document.getElementById('createQrLabel');
+            function syncQr() {
+                createQrLabel.textContent = createQr.checked ? '✓ QR will be added' : 'Add QR';
+            }
+            createQr.addEventListener('change', syncQr);
+            syncQr(); // a failed post keeps the choice
+
+            // ---- Location and department follow branch -----------------
+            // Each list only ever holds the chosen branch's entries, and
             // stays locked until a branch is picked. Options are rebuilt
             // rather than hidden, because some browsers ignore "hidden" on
             // <option>.
             var branchSelect = document.getElementById('branchSelect');
-            var locationSelect = document.getElementById('locationSelect');
-            if (!branchSelect || !locationSelect) return;
+            if (!branchSelect) return;
 
-            var allLocations = Array.from(locationSelect.options)
-                .filter(function (o) { return o.value; })
-                .map(function (o) {
-                    return { value: o.value, text: o.text, branch: o.getAttribute('data-branch') };
-                });
-            var selected = locationSelect.value;
+            function followBranch(select, emptyText) {
+                if (!select) return;
 
-            function rebuild() {
-                var branchId = branchSelect.value;
-                locationSelect.innerHTML = '';
-
-                var placeholder = document.createElement('option');
-                placeholder.value = '';
-                placeholder.text = branchId ? '-- None --' : '-- Pick a branch first --';
-                locationSelect.appendChild(placeholder);
-
-                allLocations
-                    .filter(function (l) { return l.branch === branchId; })
-                    .forEach(function (l) {
-                        var opt = document.createElement('option');
-                        opt.value = l.value;
-                        opt.text = l.text;
-                        if (l.value === selected) opt.selected = true;
-                        locationSelect.appendChild(opt);
+                var all = Array.from(select.options)
+                    .filter(function (o) { return o.value; })
+                    .map(function (o) {
+                        return { value: o.value, text: o.text, branch: o.getAttribute('data-branch') };
                     });
+                var selected = select.value;
 
-                locationSelect.disabled = !branchId;
+                function rebuild() {
+                    var branchId = branchSelect.value;
+                    select.innerHTML = '';
+
+                    var placeholder = document.createElement('option');
+                    placeholder.value = '';
+                    placeholder.text = branchId ? emptyText : '-- Pick a branch first --';
+                    select.appendChild(placeholder);
+
+                    all
+                        .filter(function (x) { return x.branch === branchId; })
+                        .forEach(function (x) {
+                            var opt = document.createElement('option');
+                            opt.value = x.value;
+                            opt.text = x.text;
+                            if (x.value === selected) opt.selected = true;
+                            select.appendChild(opt);
+                        });
+
+                    select.disabled = !branchId;
+                }
+
+                branchSelect.addEventListener('change', function () {
+                    selected = ''; // a new branch means its own entries
+                    rebuild();
+                });
+                select.addEventListener('change', function () {
+                    selected = select.value;
+                });
+
+                rebuild(); // on load too, so an edit or a failed post shows the right list
             }
 
-            branchSelect.addEventListener('change', function () {
-                selected = ''; // a new branch means its own location
-                rebuild();
-            });
-            locationSelect.addEventListener('change', function () {
-                selected = locationSelect.value;
-            });
-
-            rebuild(); // on load too, so a failed post shows the right list
+            followBranch(document.getElementById('locationSelect'), '-- None --');
+            followBranch(document.getElementById('departmentSelect'), '-- Select Department --');
         })();
     </script>
 }

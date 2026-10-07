@@ -39,6 +39,10 @@ namespace SchoolInventoryManagement.DAL.Entities
         [MaxLength(255)]
         public string? WarrantyInformation { get; set; }
 
+        // Photo or PDF of the warranty card / receipt (Scripts/011).
+        [MaxLength(500)]
+        public string? WarrantyFileURL { get; set; }
+
         [MaxLength(500)]
         public string? ImageURL { get; set; }
 

@@ -39,13 +39,26 @@ namespace SchoolInventoryManagement.Web.ViewModels
         [Display(Name = "Warranty")]
         public string? WarrantyInformation { get; set; }
 
+        // One file for the whole batch -- the delivery's warranty card or
+        // receipt -- linked from every unit.
+        [Display(Name = "Warranty photo or file")]
+        public IFormFile? WarrantyFile { get; set; }
+
         public ConditionStatus Condition { get; set; } = ConditionStatus.New;
 
         [Display(Name = "Location")]
         public int? CurrentLocationID { get; set; }
 
+        // Only the chosen branch's departments are offered.
+        [Required(ErrorMessage = "Pick a department.")]
+        [Display(Name = "Department")]
+        public int? DepartmentID { get; set; }
+
         [Required(ErrorMessage = "Pick a branch.")]
         [Display(Name = "Branch")]
         public int? BranchID { get; set; }
+
+        [Display(Name = "Add QR")]
+        public bool CreateQr { get; set; }
     }
 }

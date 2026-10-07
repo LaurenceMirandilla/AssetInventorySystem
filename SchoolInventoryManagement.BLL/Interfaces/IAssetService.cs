@@ -32,5 +32,12 @@ namespace SchoolInventoryManagement.BLL.Interfaces
         Task UpdateAssetAsync(int assetId, UpdateAssetDTO dto, int actingUserId);
         Task ChangeConditionAsync(int assetId, ConditionStatus newCondition, byte[] rowVersion, int actingUserId);
         Task ChangeStatusAsync(int assetId, AssetStatus newStatus, byte[] rowVersion, int actingUserId);
+
+        // Under Maintenance -> Available, with the condition set to Repaired.
+        Task ReturnFromMaintenanceAsync(int assetId, byte[] rowVersion, int actingUserId);
+
+        // Makes the QR for an asset registered without one. Does nothing if
+        // it already has one.
+        Task CreateQrCodeAsync(int assetId, int actingUserId);
     }
 }

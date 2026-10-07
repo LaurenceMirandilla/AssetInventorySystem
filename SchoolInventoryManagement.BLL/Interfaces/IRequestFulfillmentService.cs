@@ -43,5 +43,20 @@ namespace SchoolInventoryManagement.BLL.Interfaces
         Task RecordReturnAsync(
             int requestId, List<int> assignmentIds, ConditionStatus conditionOnReturn,
             int returnLocationId, byte[] requestRowVersion, int actingUserId);
+
+        // In Transit -> Cancelled: approved, but called off before anything
+        // was picked up or delivered. The reserved units become Available
+        // again and the reason is kept on the request (Remarks). Borrow:
+        // putBackLocations (asset ID -> location ID) says where each unit
+        // was put back, one entry per unit. Transfer units never moved, so
+        // it is ignored. Asset Officers and Administrators only.
+        Task CancelInTransitAsync(
+            int requestId, string reason, IDictionary<int, int>? putBackLocations,
+            byte[] requestRowVersion, int actingUserId);
+
+        // Borrow: where each unit still reserved on the request was before
+        // it was set aside at the pickup point (asset ID -> location ID).
+        // The Cancel page starts each unit's "put back at" there.
+        Task<Dictionary<int, int?>> GetOriginalLocationsAsync(int requestId);
     }
 }

@@ -31,7 +31,17 @@
     </ul>
 </div>
 <input type="hidden" name="ModelID" id="modelId" value="@selectedId" />
-<div class="form-text" id="modelHint">Pick from the list, or type part of the name to narrow it.</div>
+<div class="d-flex justify-content-between align-items-start" style="gap:12px;">
+    <div class="form-text" id="modelHint">Pick from the list, or type part of the name to narrow it.</div>
+    @* Only the register forms fill QuickAddCategories, and only they
+       render the popup this opens (_QuickAddModel). *@
+    @if (ViewBag.QuickAddCategories != null)
+    {
+        <button type="button" class="btn btn-link btn-sm p-0 mt-1 text-nowrap"
+                data-bs-toggle="modal" data-bs-target="#quickAddModel">+ New model</button>
+    }
+</div>
+
 @Html.ValidationMessage("ModelID", "", new { @class = "text-danger" })
 
 <script>
@@ -151,6 +161,43 @@
         items.forEach(function (b) {
             b.addEventListener('mousedown', function (e) { e.preventDefault(); pick(b); });
         });
+
+        // A model saved from the "+ New model" popup: added to the list
+        // and picked, as if it had been chosen from it.
+        document.addEventListener('model-added', function (e) {
+            var m = e.detail;
+
+            // Another model with the same prefix already knows the next free
+            // number; a brand-new category has no assets yet, so it starts at 1.
+            var sibling = items.find(function (b) { return b.dataset.prefix === m.prefix; });
+
+            var button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'dropdown-item';
+            button.setAttribute('role', 'option');
+            button.tabIndex = -1;
+            button.dataset.label = m.modelName + ' \u2014 ' + m.categoryName; // same as ModelCodeOption.Label
+            button.dataset.id = m.modelId;
+            button.dataset.name = m.modelName;
+            button.dataset.prefix = m.prefix;
+            button.dataset.next = sibling ? sibling.dataset.next : '1';
+            button.textContent = m.modelName + ' ';
+
+            var category = document.createElement('span');
+            category.className = 'text-muted small';
+            category.textContent = '\u2014 ' + m.categoryName;
+            button.appendChild(category);
+
+            button.addEventListener('mousedown', function (ev) { ev.preventDefault(); pick(button); });
+
+            var li = document.createElement('li');
+            li.appendChild(button);
+            list.insertBefore(li, noMatch);
+            items.push(button);
+
+            pick(button);
+        });
+
 
         search.addEventListener('blur', close);
 

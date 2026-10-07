@@ -100,7 +100,7 @@ namespace SchoolInventoryManagement.BLL.Services
                     unit.Status = AssetStatus.InTransit;
                     MovementHelper.Record(
                         _context, unit, pickupLocationId, actingUserId,
-                        $"Borrow request #{requestId}: set aside for pickup");
+                        SetAsideReason(requestId));
                 }
 
                 var requestRow = await _context.AssetRequests.FindAsync(requestId);
@@ -333,7 +333,14 @@ namespace SchoolInventoryManagement.BLL.Services
             if (request is null)
                 throw new KeyNotFoundException("Request not found.");
 
-            if (request.RequestStatus != RequestStatus.InTransit && request.RequestStatus != RequestStatus.Assigned)
+            // Only what was actually picked up or delivered can come back.
+            // An In Transit request never reached the requester -- it is
+            // cancelled instead (CancelInTransitAsync).
+            if (request.RequestStatus == RequestStatus.InTransit)
+                throw new InvalidOperationException(
+                    "Nothing on this request has been picked up or delivered yet, so there is nothing to return. Cancel the request instead.");
+
+            if (request.RequestStatus != RequestStatus.Assigned)
                 throw new InvalidOperationException("This request has nothing out to return.");
 
             var open = request.Assignments.Where(a => a.ReturnDate == null).ToList();
@@ -383,6 +390,118 @@ namespace SchoolInventoryManagement.BLL.Services
                     ? $"All items on request #{requestId} were returned, recorded as '{conditionOnReturn}'."
                     : $"{returning.Count} item{(returning.Count == 1 ? "" : "s")} on request #{requestId} " +
                       $"returned; {stillOut} still out.",
+                $"/AssetRequests/Details/{requestId}");
+
+            await SaveWithConcurrencyGuardAsync();
+        }
+
+        // The movement written when a Borrow unit is set aside at the
+        // pickup point. GetOriginalLocationsAsync finds it again by this
+        // text, so both use the one wording.
+        private static string SetAsideReason(int requestId) =>
+            $"Borrow request #{requestId}: set aside for pickup";
+
+        public async Task<Dictionary<int, int?>> GetOriginalLocationsAsync(int requestId)
+        {
+            var request = await _context.AssetRequests
+                .Include(r => r.Assignments)
+                    .ThenInclude(a => a.Asset)
+                .FirstOrDefaultAsync(r => r.RequestID == requestId);
+
+            if (request is null)
+                throw new KeyNotFoundException("Request not found.");
+
+            var units = request.Assignments
+                .Where(a => a.ReturnDate == null)
+                .Select(a => a.Asset)
+                .ToList();
+            var assetIds = units.Select(u => u.AssetID).ToList();
+
+            var reason = SetAsideReason(requestId);
+            var setAside = await _context.AssetMovements
+                .Where(m => assetIds.Contains(m.AssetID) && m.ReasonForTransfer == reason)
+                .OrderByDescending(m => m.MovementID)
+                .Select(m => new { m.AssetID, m.SourceLocationID })
+                .ToListAsync();
+
+            // The set-aside movement says where each unit came from. No
+            // movement means it was already at the pickup point when
+            // approved, so where it is now is also where it was.
+            return units.ToDictionary(
+                u => u.AssetID,
+                u => setAside.FirstOrDefault(m => m.AssetID == u.AssetID)?.SourceLocationID ?? u.CurrentLocationID);
+        }
+
+        public async Task CancelInTransitAsync(
+            int requestId, string reason, IDictionary<int, int>? putBackLocations,
+            byte[] requestRowVersion, int actingUserId)
+        {
+            await PermissionHelper.EnsureIsAssetManagerAsync(_context, actingUserId);
+
+            reason = (reason ?? string.Empty).Trim();
+            if (reason.Length == 0)
+                throw new ArgumentException("Give a reason for cancelling.");
+            if (reason.Length > 500)
+                throw new ArgumentException("The reason is longer than 500 characters.");
+
+            var request = await _context.AssetRequests
+                .Include(r => r.Assignments)
+                    .ThenInclude(a => a.Asset)
+                .FirstOrDefaultAsync(r => r.RequestID == requestId);
+
+            if (request is null)
+                throw new KeyNotFoundException("Request not found.");
+
+            if (request.RequestStatus != RequestStatus.InTransit)
+                throw new InvalidOperationException(
+                    "Only a request that is In Transit can be cancelled this way. Once picked up or delivered, record a return instead.");
+
+            var open = request.Assignments.Where(a => a.ReturnDate == null).ToList();
+            var isBorrow = request.RequestType == RequestType.Borrow;
+
+            // Borrow units were carried to the pickup point, so staff say
+            // where each one was put back. Transfer units never moved.
+            if (isBorrow)
+            {
+                putBackLocations ??= new Dictionary<int, int>();
+
+                var missing = open.FirstOrDefault(a => !putBackLocations.ContainsKey(a.AssetID));
+                if (missing is not null)
+                    throw new ArgumentException($"Choose where {missing.Asset.AssetCode} was put back.");
+
+                var chosen = open.Select(a => putBackLocations[a.AssetID]).Distinct().ToList();
+                var found = await _context.Locations.CountAsync(l => chosen.Contains(l.LocationID));
+                if (found != chosen.Count)
+                    throw new KeyNotFoundException("One of the chosen locations no longer exists.");
+            }
+
+            _context.Entry(request).Property(r => r.RowVersion).OriginalValue = requestRowVersion;
+
+            var now = DateTime.Now;
+            foreach (var assignment in open)
+            {
+                // Closed without ever being handed over, so the unit's
+                // condition stays as it is.
+                assignment.ReturnDate = now;
+                assignment.ConditionOnReturn = assignment.Asset.Condition;
+
+                assignment.Asset.Status = AssetStatus.Available;
+                assignment.Asset.AssignedUserID = null;
+
+                if (isBorrow)
+                    MovementHelper.Record(
+                        _context, assignment.Asset, putBackLocations![assignment.AssetID], actingUserId,
+                        $"Borrow request #{requestId} cancelled: put back");
+            }
+
+            request.RequestStatus = RequestStatus.Cancelled;
+            request.Remarks = reason;
+
+            var before = request.RequestType == RequestType.Borrow ? "before pickup" : "before delivery";
+            NotificationHelper.Queue(
+                _context,
+                request.RequestedByUserID,
+                $"Your {request.RequestType} request #{requestId} was cancelled {before}. Reason: {reason}",
                 $"/AssetRequests/Details/{requestId}");
 
             await SaveWithConcurrencyGuardAsync();

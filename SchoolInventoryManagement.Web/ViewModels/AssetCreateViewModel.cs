@@ -35,16 +35,24 @@ namespace SchoolInventoryManagement.Web.ViewModels
         [Display(Name = "Warranty")]
         public string? WarrantyInformation { get; set; }
 
-        [MaxLength(255)]
-        public string? QRCodeData { get; set; }
+        [Display(Name = "Add QR")]
+        public bool CreateQr { get; set; }
 
         public ConditionStatus Condition { get; set; } = ConditionStatus.Good;
 
         [Display(Name = "Location")]
         public int? CurrentLocationID { get; set; }
 
+        // Only the chosen branch's departments are offered.
+        [Required(ErrorMessage = "Pick a department.")]
+        [Display(Name = "Department")]
+        public int? DepartmentID { get; set; }
+
         [Display(Name = "Photo")]
         public IFormFile? ImageFile { get; set; }
+
+        [Display(Name = "Warranty photo or file")]
+        public IFormFile? WarrantyFile { get; set; }
 
         [Required(ErrorMessage = "Pick a branch.")]
         [Display(Name = "Branch")]

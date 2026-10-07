@@ -7,6 +7,7 @@
         Good,
         Fair,
         Poor,
-        Damaged
+        Damaged,
+        Repaired
     }
 }

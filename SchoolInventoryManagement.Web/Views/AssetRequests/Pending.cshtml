@@ -25,6 +25,12 @@
             @Model.Count request@(Model.Count == 1 ? "" : "s") awaiting a decision from you, oldest first.
         </p>
     </div>
+    @if (User.IsInRole("Asset Officer") || User.IsInRole("Administrator"))
+    {
+        <div class="sab-page-actions">
+            <a asp-action="History" class="btn btn-outline-secondary">Request History</a>
+        </div>
+    }
 </div>
 
 @if (Model.Any())
@@ -174,7 +180,12 @@ else
                                     <button type="submit" class="btn btn-link p-0">@(isBorrow ? "Picked up" : "Delivered")</button>
                                 </form>
                             }
-                            @if (canManageAssets && r.UnitsOut > 0)
+                            @* Not picked up or delivered yet: cancel, don't return. *@
+                            @if (canManageAssets && r.RequestStatus == RequestStatus.InTransit)
+                            {
+                                <a asp-action="Cancel" asp-route-id="@r.RequestID" class="ms-3 text-danger">Cancel</a>
+                            }
+                            else if (canManageAssets && r.UnitsOut > 0)
                             {
                                 <a asp-action="RecordReturn" asp-route-id="@r.RequestID" class="ms-3">Record return</a>
                             }

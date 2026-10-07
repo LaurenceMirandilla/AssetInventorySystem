@@ -25,8 +25,17 @@ namespace SchoolInventoryManagement.BLL.DTOs
         public DateTime? AcquisitionDate { get; set; }
         public decimal? AcquisitionCost { get; set; }
         public string? WarrantyInformation { get; set; }
+
+        // One warranty file shared by every unit in the batch.
+        public string? WarrantyFileURL { get; set; }
         public ConditionStatus Condition { get; set; } = ConditionStatus.New;
         public int? CurrentLocationID { get; set; }
         public int BranchID { get; set; }
+
+        // Must belong to BranchID.
+        public int DepartmentID { get; set; }
+
+        // "Add QR" on the form. On: every unit is saved with its QR.
+        public bool CreateQr { get; set; }
     }
 }

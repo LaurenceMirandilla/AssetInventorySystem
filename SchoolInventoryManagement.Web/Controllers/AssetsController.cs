@@ -54,6 +54,16 @@ namespace SchoolInventoryManagement.Web.Controllers
         private int CurrentUserId =>
             int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
+        // Teachers and Staff see the catalogue of models, not the units:
+        // no counts, codes, statuses or locations. The one exception is a
+        // unit assigned (or reserved) to them, which they can open from
+        // My Assets, their requests and their notifications.
+        private bool IsRequesterOnly =>
+            User.IsInRole(RoleNames.Teacher) || User.IsInRole(RoleNames.Staff);
+
+        private bool CanOpenUnit(AssetResponseDTO asset) =>
+            !IsRequesterOnly || asset.AssignedUserID == CurrentUserId;
+
         private async Task PopulateDropdownsAsync()
         {
             ViewBag.Models = new SelectList(
@@ -111,6 +121,20 @@ namespace SchoolInventoryManagement.Web.Controllers
                     Description = d.Description,
                     BranchID = d.BranchID,
                     BranchName = d.Branch.BranchName
+                })
+                .ToListAsync();
+
+            // For the "+ New model" popup's category list. Categories with
+            // no code prefix are left out -- no asset could be registered
+            // under them anyway.
+            ViewBag.QuickAddCategories = await _context.Categories
+                .Where(c => c.CodePrefix != null && c.CodePrefix != "")
+                .OrderBy(c => c.CategoryName)
+                .Select(c => new CategoryDTO
+                {
+                    CategoryID = c.CategoryID,
+                    CategoryName = c.CategoryName,
+                    CodePrefix = c.CodePrefix
                 })
                 .ToListAsync();
         }
@@ -182,14 +206,26 @@ namespace SchoolInventoryManagement.Web.Controllers
         public async Task<IActionResult> Index(
             string? keyword, int? categoryId, int? departmentId,
             AssetStatus? status, ConditionStatus? condition, int? locationId, int? modelId,
-            int? branchId, int page = 1)
+            int? branchId, bool includeDisposed = false, int page = 1)
         {
+            if (IsRequesterOnly)
+                return await CatalogAsync(keyword, categoryId);
+
             // One query drives both the table and the KPI tiles, which is
             // what makes the tiles mirror the rows: every filter, status
             // included, narrows this set, and the tiles are just its
             // breakdown. With a status selected the others read zero.
-            var filtered = await _assetService.SearchAssetsAsync(
+            var matches = await _assetService.SearchAssetsAsync(
                 keyword, categoryId, modelId, branchId, departmentId, status, condition, locationId);
+
+            // Disposed units are hidden unless asked for. Done here, not in
+            // SearchAssetsAsync, because the request screens and QR scan use
+            // that too and must keep finding every unit. The Disposed tile
+            // still counts them, so it says how many are hidden.
+            var showDisposed = includeDisposed || status == AssetStatus.Disposed;
+            var filtered = showDisposed
+                ? matches
+                : matches.Where(a => a.Status != AssetStatus.Disposed).ToList();
 
             var currentPage = Math.Max(page, 1);
             var totalFiltered = filtered.Count;
@@ -201,8 +237,11 @@ namespace SchoolInventoryManagement.Web.Controllers
 
             // Unfiltered headcount, for the "N of M" caption above the tiles.
             // A COUNT(*) rather than another GetAllAssetsAsync -- the page
-            // needs the number, not the rows.
-            var grandTotal = await _context.Assets.CountAsync();
+            // needs the number, not the rows. Leaves out disposed units when
+            // the list does, so the two numbers describe the same set.
+            var grandTotal = showDisposed
+                ? await _context.Assets.CountAsync()
+                : await _context.Assets.CountAsync(a => a.Status != AssetStatus.Disposed);
 
             var model = new AssetIndexViewModel
             {
@@ -212,8 +251,9 @@ namespace SchoolInventoryManagement.Web.Controllers
                 InTransitCount = filtered.Count(a => a.Status == AssetStatus.InTransit),
                 OverdueCount = filtered.Count(a => a.Status == AssetStatus.Overdue),
                 UnderMaintenanceCount = filtered.Count(a => a.Status == AssetStatus.UnderMaintenance),
-                DisposedCount = filtered.Count(a => a.Status == AssetStatus.Disposed),
+                DisposedCount = matches.Count(a => a.Status == AssetStatus.Disposed),
                 GrandTotalCount = grandTotal,
+                IncludeDisposed = includeDisposed,
                 Keyword = keyword,
                 CategoryId = categoryId,
                 DepartmentId = departmentId,
@@ -236,10 +276,17 @@ namespace SchoolInventoryManagement.Web.Controllers
         public async Task<IActionResult> ExportAssets(
             string? keyword, int? categoryId, int? departmentId,
             AssetStatus? status, ConditionStatus? condition, int? locationId, int? modelId,
-            int? branchId)
+            int? branchId, bool includeDisposed = false)
         {
+            if (IsRequesterOnly)
+                return Forbid();
+
             var assets = await _assetService.SearchAssetsAsync(
                 keyword, categoryId, modelId, branchId, departmentId, status, condition, locationId);
+
+            // Same rule as the list, so the file matches what was on screen.
+            if (!includeDisposed && status != AssetStatus.Disposed)
+                assets = assets.Where(a => a.Status != AssetStatus.Disposed).ToList();
 
             var csv = CsvExportHelper.Build(
                 new[]
@@ -290,7 +337,56 @@ namespace SchoolInventoryManagement.Web.Controllers
             if (asset is null)
                 return NotFound();
 
+            if (!CanOpenUnit(asset))
+            {
+                TempData["ErrorMessage"] = "You can only open items that are assigned to you. See My Assets.";
+                return RedirectToAction(nameof(Index));
+            }
+
             return View(asset);
+        }
+
+        // The Assets page for Teachers and Staff: every model, with its
+        // category and description, and nothing about the units. They
+        // request a model; the approver picks the unit.
+        private async Task<IActionResult> CatalogAsync(string? keyword, int? categoryId)
+        {
+            var query = _context.Models.AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(keyword))
+            {
+                var term = keyword.Trim();
+                query = query.Where(m =>
+                    m.ModelName.Contains(term) ||
+                    m.Category.CategoryName.Contains(term) ||
+                    (m.Description != null && m.Description.Contains(term)));
+            }
+
+            if (categoryId.HasValue)
+                query = query.Where(m => m.CategoryID == categoryId.Value);
+
+            var model = new AssetCatalogViewModel
+            {
+                Keyword = keyword,
+                CategoryId = categoryId,
+                Models = await query
+                    .OrderBy(m => m.Category.CategoryName).ThenBy(m => m.ModelName)
+                    .Select(m => new ModelDTO
+                    {
+                        ModelID = m.ModelID,
+                        ModelName = m.ModelName,
+                        CategoryID = m.CategoryID,
+                        CategoryName = m.Category.CategoryName,
+                        Description = m.Description
+                    })
+                    .ToListAsync(),
+                CategoryOptions = await _context.Categories
+                    .OrderBy(c => c.CategoryName)
+                    .Select(c => new CategoryDTO { CategoryID = c.CategoryID, CategoryName = c.CategoryName })
+                    .ToListAsync()
+            };
+
+            return View("Catalog", model);
         }
 
         // GET /Assets/Create
@@ -305,6 +401,8 @@ namespace SchoolInventoryManagement.Web.Controllers
         [HttpPost]
         [ValidateAntiForgeryToken]
         [Authorize(Roles = RoleNames.AssetOfficer + "," + RoleNames.Administrator)]
+        [RequestSizeLimit(FileUploads.MaxRequestBytes)]
+        [RequestFormLimits(MultipartBodyLengthLimit = FileUploads.MaxRequestBytes)]
         public async Task<IActionResult> Create(AssetCreateViewModel model)
         {
             if (!ModelState.IsValid)
@@ -315,7 +413,13 @@ namespace SchoolInventoryManagement.Web.Controllers
 
             try
             {
-                var savedPath = await SaveAssetImageAsync(model.ImageFile);
+                // Both files are checked before either is saved, so a bad
+                // second file does not leave the first one behind.
+                FileUploads.Validate(model.ImageFile, FileUploads.ImageExtensions, "photo");
+                FileUploads.Validate(model.WarrantyFile, FileUploads.DocumentExtensions, "warranty file");
+
+                var savedPath = await FileUploads.SaveAsync(model.ImageFile, _webHostEnvironment.WebRootPath, PhotoFolder);
+                var warrantyPath = await FileUploads.SaveAsync(model.WarrantyFile, _webHostEnvironment.WebRootPath, WarrantyFolder);
                 var dto = new CreateAssetDTO
                 {
                     ModelID = model.ModelID!.Value,
@@ -325,11 +429,13 @@ namespace SchoolInventoryManagement.Web.Controllers
                     AcquisitionDate = model.AcquisitionDate,
                     AcquisitionCost = model.AcquisitionCost,
                     WarrantyInformation = model.WarrantyInformation,
+                    WarrantyFileURL = warrantyPath,
                     ImageURL = savedPath,
-                    QRCodeData = model.QRCodeData,
+                    CreateQr = model.CreateQr,
                     Condition = model.Condition,
                     CurrentLocationID = model.CurrentLocationID,
-                    BranchID = model.BranchID
+                    BranchID = model.BranchID,
+                    DepartmentID = model.DepartmentID!.Value
                 };
 
                 var created = await _assetService.CreateAssetAsync(dto, CurrentUserId);
@@ -356,6 +462,8 @@ namespace SchoolInventoryManagement.Web.Controllers
         [HttpPost]
         [ValidateAntiForgeryToken]
         [Authorize(Roles = RoleNames.AssetOfficer + "," + RoleNames.Administrator)]
+        [RequestSizeLimit(FileUploads.MaxRequestBytes)]
+        [RequestFormLimits(MultipartBodyLengthLimit = FileUploads.MaxRequestBytes)]
         public async Task<IActionResult> BulkCreate(AssetBulkCreateViewModel model)
         {
             if (!ModelState.IsValid)
@@ -366,6 +474,9 @@ namespace SchoolInventoryManagement.Web.Controllers
 
             try
             {
+                FileUploads.Validate(model.WarrantyFile, FileUploads.DocumentExtensions, "warranty file");
+                var warrantyPath = await FileUploads.SaveAsync(model.WarrantyFile, _webHostEnvironment.WebRootPath, WarrantyFolder);
+
                 var dto = new BulkCreateAssetsDTO
                 {
                     ModelID = model.ModelID!.Value,
@@ -376,9 +487,12 @@ namespace SchoolInventoryManagement.Web.Controllers
                     AcquisitionDate = model.AcquisitionDate,
                     AcquisitionCost = model.AcquisitionCost,
                     WarrantyInformation = model.WarrantyInformation,
+                    WarrantyFileURL = warrantyPath,
                     Condition = model.Condition,
                     CurrentLocationID = model.CurrentLocationID,
-                    BranchID = model.BranchID!.Value
+                    BranchID = model.BranchID!.Value,
+                    DepartmentID = model.DepartmentID!.Value,
+                    CreateQr = model.CreateQr
                 };
 
                 var codes = await _assetService.BulkCreateAssetsAsync(dto, CurrentUserId);
@@ -425,10 +539,14 @@ namespace SchoolInventoryManagement.Web.Controllers
                 AssetName = asset.AssetName,
                 Description = asset.Description,
                 SerialNumber = asset.SerialNumber,
+                Condition = asset.Condition,
+                AcquisitionCost = asset.AcquisitionCost,
                 WarrantyInformation = asset.WarrantyInformation,
+                WarrantyFileURL = asset.WarrantyFileURL,
                 ImageURL = asset.ImageURL,
                 CurrentLocationID = asset.CurrentLocationID,
                 BranchID = asset.BranchID,
+                DepartmentID = asset.DepartmentID,
                 RowVersionBase64 = RowVersionHelper.ToBase64(asset.RowVersion)
             };
 
@@ -439,8 +557,20 @@ namespace SchoolInventoryManagement.Web.Controllers
         [HttpPost]
         [ValidateAntiForgeryToken]
         [Authorize(Roles = RoleNames.AssetOfficer + "," + RoleNames.Administrator)]
+        [RequestSizeLimit(FileUploads.MaxRequestBytes)]
+        [RequestFormLimits(MultipartBodyLengthLimit = FileUploads.MaxRequestBytes)]
         public async Task<IActionResult> Edit(int id, AssetEditViewModel model)
         {
+            // The current photo and warranty file come from the database,
+            // never from the form (see [BindNever] on the view model).
+            var current = await _assetService.GetAssetByIdAsync(id);
+            if (current is null)
+                return NotFound();
+
+            model.AssetID = id;
+            model.ImageURL = current.ImageURL;
+            model.WarrantyFileURL = current.WarrantyFileURL;
+
             if (!ModelState.IsValid)
             {
                 await PopulateDropdownsAsync();
@@ -449,16 +579,30 @@ namespace SchoolInventoryManagement.Web.Controllers
 
             try
             {
-                var newPath = await SaveAssetImageAsync(model.ImageFile);
+                FileUploads.Validate(model.ImageFile, FileUploads.ImageExtensions, "photo");
+                FileUploads.Validate(model.WarrantyFile, FileUploads.DocumentExtensions, "warranty file");
+
+                var newPath = await FileUploads.SaveAsync(model.ImageFile, _webHostEnvironment.WebRootPath, PhotoFolder);
+                var newWarrantyPath = await FileUploads.SaveAsync(model.WarrantyFile, _webHostEnvironment.WebRootPath, WarrantyFolder);
+
+                // A new file replaces the old one; "remove" with no new file
+                // clears it; otherwise the current one stays.
+                var warrantyFileUrl = newWarrantyPath
+                    ?? (model.RemoveWarrantyFile ? null : model.WarrantyFileURL);
+
                 var dto = new UpdateAssetDTO
                 {
                     AssetName = model.AssetName,
                     Description = model.Description,
                     SerialNumber = model.SerialNumber,
+                    Condition = model.Condition,
+                    AcquisitionCost = model.AcquisitionCost,
                     WarrantyInformation = model.WarrantyInformation,
+                    WarrantyFileURL = warrantyFileUrl,
                     ImageURL = newPath ?? model.ImageURL,
                     CurrentLocationID = model.CurrentLocationID,
                     BranchID = model.BranchID,
+                    DepartmentID = model.DepartmentID,
                     RowVersion = RowVersionHelper.FromBase64(model.RowVersionBase64)
                 };
 
@@ -569,46 +713,21 @@ namespace SchoolInventoryManagement.Web.Controllers
             return View(model);
         }
 
-        private const long MaxImageBytes = 5 * 1024 * 1024; // 5 MB
-        private static readonly string[] AllowedExtensions = { ".jpg", ".jpeg", ".png", ".webp" };
+        // Where uploads are kept, under wwwroot. Size and type rules are in
+        // Helpers/FileUploads (3 MB limit).
+        private const string PhotoFolder = "images/assets";
+        private const string WarrantyFolder = "uploads/warranty";
 
-        private async Task<string?> SaveAssetImageAsync(IFormFile? file)
-        {
-            if (file is null || file.Length == 0)
-                return null;
-
-            var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
-            if (!AllowedExtensions.Contains(ext))
-                throw new ArgumentException("Only JPG, PNG, or WEBP images are allowed.");
-            if (file.Length > MaxImageBytes)
-                throw new ArgumentException("Image must be under 5 MB.");
-
-            var fileName = $"{Guid.NewGuid():N}{ext}";
-
-            // WebRootPath (the real, absolute path to wwwroot) rather than a
-            // bare "wwwroot" string -- a relative path resolves against the
-            // process's current working directory, which is only the
-            // project folder by coincidence when running under the Visual
-            // Studio debugger.
-            var folder = Path.Combine(_webHostEnvironment.WebRootPath, "images", "assets");
-            Directory.CreateDirectory(folder);
-            var fullPath = Path.Combine(folder, fileName);
-
-            using (var stream = new FileStream(fullPath, FileMode.Create))
-                await file.CopyToAsync(stream);
-
-            return $"/images/assets/{fileName}";
-        }
-
-        // GET /Assets/QrCode/5 -- generates the PNG on demand, nothing stored.
+        // GET /Assets/QrCode/5 -- draws the PNG on demand from the code
+        // stored when the QR was created. Nothing stored means no QR.
         public async Task<IActionResult> QrCode(int id)
         {
             var asset = await _assetService.GetAssetByIdAsync(id);
-            if (asset is null)
+            if (asset is null || string.IsNullOrEmpty(asset.QRCodeData) || !CanOpenUnit(asset))
                 return NotFound();
 
             var scanUrl = Url.Action(nameof(Scan), "Assets",
-                new { code = asset.AssetCode }, Request.Scheme)!;
+                new { code = asset.QRCodeData }, Request.Scheme)!;
 
             using var generator = new QRCodeGenerator();
             using var data = generator.CreateQrCode(scanUrl, QRCodeGenerator.ECCLevel.M);
@@ -617,7 +736,31 @@ namespace SchoolInventoryManagement.Web.Controllers
             return File(png, "image/png");
         }
 
+        // POST /Assets/CreateQr/5 -- the Details page's "Create QR" button,
+        // for an asset that was registered without one.
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        [Authorize(Roles = RoleNames.AssetOfficer + "," + RoleNames.Administrator)]
+        public async Task<IActionResult> CreateQr(int id)
+        {
+            try
+            {
+                await _assetService.CreateQrCodeAsync(id, CurrentUserId);
+                TempData["StatusMessage"] = "QR code created.";
+            }
+            catch (Exception ex)
+            {
+                TempData["ErrorMessage"] = UserMessageFor(ex);
+            }
+
+            return RedirectToAction(nameof(Details), new { id });
+        }
+
         // GET /Assets/Scan?code=AST-0001
+        //
+        // Only opens an asset whose QR was created (Add QR on the register
+        // forms, or Create QR on its page). An asset without one is turned
+        // away, even though its code exists.
         public async Task<IActionResult> Scan(string code)
         {
             var results = await _assetService.SearchAssetsAsync(
@@ -627,6 +770,12 @@ namespace SchoolInventoryManagement.Web.Controllers
             if (asset is null)
             {
                 TempData["ErrorMessage"] = $"No asset found for code '{code}'.";
+                return RedirectToAction(nameof(Index));
+            }
+
+            if (string.IsNullOrEmpty(asset.QRCodeData))
+            {
+                TempData["ErrorMessage"] = $"{code} has no QR code. Open the asset and click Create QR to make one.";
                 return RedirectToAction(nameof(Index));
             }
 
@@ -660,7 +809,7 @@ namespace SchoolInventoryManagement.Web.Controllers
             try
             {
                 var rowVersion = RowVersionHelper.FromBase64(rowVersionBase64);
-                await _assetService.ChangeStatusAsync(id, AssetStatus.Available, rowVersion, CurrentUserId);
+                await _assetService.ReturnFromMaintenanceAsync(id, rowVersion, CurrentUserId);
             }
             catch (Exception ex)
             {

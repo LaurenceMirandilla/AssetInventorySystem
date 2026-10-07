@@ -61,6 +61,16 @@ namespace SchoolInventoryManagement.Web.Controllers
             User.IsInRole(RoleNames.Administrator) ||
             User.IsInRole(RoleNames.Principal);
 
+        private bool IsAssetManager =>
+            User.IsInRole(RoleNames.AssetOfficer) ||
+            User.IsInRole(RoleNames.Administrator);
+
+        // Teachers and Staff ask for what they need without seeing stock
+        // levels; the approver works out what is free. AssetRequestService
+        // applies the same rule when the request is saved.
+        private bool SeesAvailability =>
+            !User.IsInRole(RoleNames.Teacher) && !User.IsInRole(RoleNames.Staff);
+
         // GET /AssetRequests
         public IActionResult Index() => RedirectToAction(nameof(MyRequests));
 
@@ -80,6 +90,37 @@ namespace SchoolInventoryManagement.Web.Controllers
             var requests = await _requestService.GetPendingRequestsAsync(CurrentUserId);
             ViewBag.InProgress = await _requestService.GetInProgressRequestsAsync(CurrentUserId);
             return View(requests);
+        }
+
+        // GET /AssetRequests/History
+        // Every approved or rejected request, newest decision first, with
+        // filters. Asset Officers and Administrators only; the service
+        // checks the same.
+        [Authorize(Roles = AssetManagerRoles)]
+        public async Task<IActionResult> History(RequestHistoryViewModel model)
+        {
+            var result = await _requestService.GetDecisionHistoryAsync(new RequestHistoryFilterDTO
+            {
+                Decision = model.Decision,
+                Type = model.Type,
+                Keyword = model.Keyword,
+                DecidedByUserId = model.DecidedBy,
+                DepartmentId = model.DepartmentId,
+                FromDate = model.FromDate,
+                ToDate = model.ToDate,
+                Page = model.Page,
+                PageSize = RequestHistoryViewModel.PageSize
+            }, CurrentUserId);
+
+            model.Rows = result.Rows;
+            model.TotalCount = result.TotalCount;
+            model.ApprovedCount = result.ApprovedCount;
+            model.RejectedCount = result.RejectedCount;
+            model.Deciders = result.Deciders;
+            model.Departments = await _departmentService.GetAllDepartmentsAsync();
+            model.Page = Math.Clamp(model.Page, 1, model.TotalPages);
+
+            return View(model);
         }
 
         // GET /AssetRequests/Details/5
@@ -333,6 +374,12 @@ namespace SchoolInventoryManagement.Web.Controllers
             if (request is null)
                 return NotFound();
 
+            if (request.RequestStatus == RequestStatus.InTransit)
+            {
+                TempData["ErrorMessage"] = "Nothing on this request has been picked up or delivered yet. Cancel the request instead.";
+                return RedirectToAction(nameof(Details), new { id });
+            }
+
             if (request.UnitsOut == 0)
             {
                 TempData["ErrorMessage"] = "Nothing on this request is still out.";
@@ -442,53 +489,164 @@ namespace SchoolInventoryManagement.Web.Controllers
             }
         }
 
+        // Two kinds of cancel share one page, both needing a reason:
+        //   Pending    -- the requester withdrawing it (theirs alone,
+        //                 Administrators included; rejecting is what
+        //                 everyone else has).
+        //   In Transit -- an Officer or Administrator calling it off before
+        //                 pickup or delivery; the units' reservation is cancelled.
+        // No role attribute on purpose. The services enforce both rules;
+        // this only decides who gets the page.
+        private bool CanCancel(AssetRequestResponseDTO request) =>
+            (request.RequestStatus == RequestStatus.Pending && request.RequestedByUser.UserID == CurrentUserId) ||
+            (request.RequestStatus == RequestStatus.InTransit && IsAssetManager);
+
+        // GET /AssetRequests/Cancel/5
+        public async Task<IActionResult> Cancel(int id)
+        {
+            var request = await _requestService.GetRequestByIdAsync(id);
+            if (request is null)
+                return NotFound();
+
+            if (!CanCancel(request))
+            {
+                TempData["ErrorMessage"] =
+                    request.RequestStatus == RequestStatus.Pending || request.RequestStatus == RequestStatus.InTransit
+                        ? "You can't cancel this request."
+                        : $"This request is already {DisplayText.Humanize(request.RequestStatus.ToString())} and can no longer be cancelled.";
+                return RedirectToAction(nameof(Details), new { id });
+            }
+
+            var model = new CancelAssetRequestViewModel
+            {
+                RequestID = id,
+                RowVersionBase64 = RowVersionHelper.ToBase64(request.RowVersion)
+            };
+
+            // Borrow units were carried to the pickup point: each one starts
+            // at where it was before that.
+            if (NeedsPutBackLocations(request))
+            {
+                var original = await _fulfillmentService.GetOriginalLocationsAsync(id);
+                model.Units = request.Units
+                    .Where(u => u.ReturnDate == null)
+                    .Select(u => new CancelUnitPlacement
+                    {
+                        AssetID = u.AssetID,
+                        LocationID = original.GetValueOrDefault(u.AssetID)
+                    })
+                    .ToList();
+            }
+
+            return await ShowCancelAsync(request, model);
+        }
+
         // POST /AssetRequests/Cancel/5
-        // No role attribute on purpose: cancelling is the requester's alone,
-        // Administrators included — rejecting is what everyone else has.
-        // AssetRequestService.CancelRequestAsync is what enforces it.
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Cancel(int id, string rowVersionBase64)
+        public async Task<IActionResult> Cancel(int id, CancelAssetRequestViewModel model)
         {
+            var request = await _requestService.GetRequestByIdAsync(id);
+            if (request is null)
+                return NotFound();
+
+            if (NeedsPutBackLocations(request))
+            {
+                for (var i = 0; i < model.Units.Count; i++)
+                    if (model.Units[i].LocationID is null)
+                        ModelState.AddModelError($"Units[{i}].LocationID", "Choose where it was put back.");
+            }
+
+            if (!ModelState.IsValid)
+                return await ShowCancelAsync(request, model);
+
             try
             {
-                await _requestService.CancelRequestAsync(
-                    id,
-                    RowVersionHelper.FromBase64(rowVersionBase64),
-                    CurrentUserId);
+                var rowVersion = RowVersionHelper.FromBase64(model.RowVersionBase64);
+
+                if (request.RequestStatus == RequestStatus.InTransit)
+                {
+                    // The service checks there is one location per unit.
+                    var putBack = NeedsPutBackLocations(request)
+                        ? model.Units
+                            .Where(u => u.LocationID.HasValue)
+                            .GroupBy(u => u.AssetID)
+                            .ToDictionary(g => g.Key, g => g.First().LocationID!.Value)
+                        : null;
+
+                    await _fulfillmentService.CancelInTransitAsync(id, model.Reason, putBack, rowVersion, CurrentUserId);
+                }
+                else
+                {
+                    await _requestService.CancelRequestAsync(id, rowVersion, CurrentUserId, model.Reason);
+                }
+
+                TempData["StatusMessage"] = $"Request #{id} was cancelled.";
+                return RedirectToAction(nameof(Details), new { id });
             }
             catch (Exception ex)
             {
-                TempData["ErrorMessage"] = UserMessageFor(ex);
+                HandleServiceException(ex);
+                return await ShowCancelAsync(request, model);
+            }
+        }
+
+        // Only an In Transit Borrow has units sitting at a pickup point that
+        // have to be put somewhere.
+        private static bool NeedsPutBackLocations(AssetRequestResponseDTO request) =>
+            request.RequestStatus == RequestStatus.InTransit && request.RequestType == RequestType.Borrow;
+
+        private async Task<IActionResult> ShowCancelAsync(AssetRequestResponseDTO request, CancelAssetRequestViewModel model)
+        {
+            ViewBag.Request = request;
+
+            if (NeedsPutBackLocations(request))
+            {
+                await PopulateReturnLocationsAsync();
+                // Shown under each unit as "Was at: ..." so the default is
+                // explained even after someone changes it.
+                ViewBag.OriginalLocations = await _fulfillmentService.GetOriginalLocationsAsync(request.RequestID);
             }
 
-            return RedirectToAction(nameof(Details), new { id });
+            return View("Cancel", model);
         }
 
         // ---------- dropdown helpers ----------
 
         private async Task PopulateRequestDropdownsAsync()
         {
-            // Every model, grouped under its category, with how many units
-            // are on the shelf. That count is also the most a row can ask
-            // for; a model with none is shown greyed out. The service
-            // enforces both anyway.
+            // Every model, grouped under its category. Except for Teachers
+            // and Staff, each shows how many units are on the shelf, which
+            // is also the most a row can ask for; a model with none is
+            // greyed out. The service enforces both anyway.
             var models = await _modelService.GetAllModelsAsync();
+            var showAvailability = SeesAvailability;
+            ViewBag.ShowAvailability = showAvailability;
 
-            var available = await _assetService.SearchAssetsAsync(
-                null, null, null, null, null, AssetStatus.Available, null);
+            var available = showAvailability
+                ? await _assetService.SearchAssetsAsync(
+                    null, null, null, null, null, AssetStatus.Available, null)
+                : new List<AssetResponseDTO>();
             var availableByModel = available
                 .GroupBy(a => a.ModelID)
-                .ToDictionary(g => g.Key, g => g.Count());
+                .ToDictionary(g => g.Key, g => g.ToList());
 
             ViewBag.ModelOptions = models
                 .OrderBy(m => m.CategoryName).ThenBy(m => m.ModelName)
-                .Select(m => new RequestModelOption
+                .Select(m =>
                 {
-                    ModelID = m.ModelID,
-                    ModelName = m.ModelName,
-                    CategoryName = m.CategoryName,
-                    Available = availableByModel.GetValueOrDefault(m.ModelID)
+                    var units = availableByModel.GetValueOrDefault(m.ModelID) ?? new List<AssetResponseDTO>();
+                    return new RequestModelOption
+                    {
+                        ModelID = m.ModelID,
+                        ModelName = m.ModelName,
+                        CategoryName = m.CategoryName,
+                        Available = units.Count,
+                        AvailableByLocation = units
+                            .Where(u => u.CurrentLocationID is not null)
+                            .GroupBy(u => u.CurrentLocationID!.Value)
+                            .ToDictionary(g => g.Key, g => g.Count())
+                    };
                 })
                 .ToList();
 

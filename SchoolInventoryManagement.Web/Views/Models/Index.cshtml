@@ -37,8 +37,9 @@
                         <td>@item.ModelName</td>
                         <td>@item.CategoryName</td>
                         <td class="text-end">
-                            @* Clicking the count opens the asset list filtered to the model. *@
-                            <a asp-controller="Assets" asp-action="Index" asp-route-modelId="@item.ModelID" class="fw-semibold">@item.AssetCount</a>
+                            @* Clicking the count opens the asset list filtered to the model, disposed
+                               units included so the list matches this count. *@
+                            <a asp-controller="Assets" asp-action="Index" asp-route-modelId="@item.ModelID" asp-route-includeDisposed="true" class="fw-semibold">@item.AssetCount</a>
                             <div class="text-muted small">@item.AvailableCount available</div>
                         </td>
                         <td>@(string.IsNullOrWhiteSpace(item.Description) ? "—" : item.Description)</td>

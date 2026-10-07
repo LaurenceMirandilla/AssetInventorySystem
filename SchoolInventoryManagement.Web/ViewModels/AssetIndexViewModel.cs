@@ -39,6 +39,15 @@ namespace SchoolInventoryManagement.Web.ViewModels
         public int? ModelId { get; set; }
         public int? BranchId { get; set; }
 
+        // Disposed units are left out unless this is ticked, or Disposed is
+        // the status being filtered on. Not counted in HasFilters: it shows
+        // more, it does not narrow.
+        public bool IncludeDisposed { get; set; }
+
+        // Disposed units are actually in the list: ticked, or filtering on
+        // Disposed. When false, DisposedCount is how many are hidden.
+        public bool ShowsDisposed => IncludeDisposed || Status == AssetStatus.Disposed;
+
         // The cascading filter lists. The existing DTOs already carry each
         // child's parent (ModelDTO.CategoryID, LocationDTO/DepartmentDTO
         // .BranchID), which is all the page needs to narrow one list when

@@ -1,0 +1,217 @@
+@model SchoolInventoryManagement.Web.ViewModels.RequestHistoryViewModel
+@using SchoolInventoryManagement.DAL.Entities.Enums
+@{
+    ViewData["Title"] = "Request History";
+
+    var route = Model.FilterRoute();
+
+    // The same filters with one decision (or none) -- for the tiles.
+    Dictionary<string, string> WithDecision(string? decision)
+    {
+        var r = new Dictionary<string, string>(route);
+        if (decision != null) r["decision"] = decision;
+        return r;
+    }
+
+    // The same filters and decision on another page -- for the pager.
+    Dictionary<string, string> OnPage(int page)
+    {
+        var r = WithDecision(string.IsNullOrEmpty(Model.Decision) ? null : Model.Decision);
+        r["page"] = page.ToString();
+        return r;
+    }
+
+    var decision = Model.Decision ?? "";
+}
+
+<div class="sab-page-head">
+    <div>
+        <h2>Request History</h2>
+        <p class="sab-page-sub">
+            Every Borrow and Transfer request that has been approved or rejected, newest decision first.
+            Approved requests later cancelled show "Cancelled" under Now. Requests still pending, or
+            cancelled before a decision, are not listed.
+        </p>
+    </div>
+    <div class="sab-page-actions">
+        <a asp-action="Pending" class="btn btn-outline-secondary">Back to Approvals</a>
+    </div>
+</div>
+
+@* Tiles: a breakdown of the filtered list. Clicking one narrows to that
+   decision; clicking the active one again clears it. *@
+<div class="report-tiles mb-3">
+    <a asp-action="History" asp-all-route-data="@WithDecision(null)"
+       class="report-tile text-decoration-none @(decision == "" ? "active" : "")">
+        <span class="report-tile-value">@(Model.ApprovedCount + Model.RejectedCount)</span>
+        <span class="report-tile-label">All decided</span>
+    </a>
+    <a asp-action="History" asp-all-route-data="@WithDecision(decision == "Approved" ? null : "Approved")"
+       class="report-tile text-decoration-none @(decision == "Approved" ? "active" : "")">
+        <span class="report-tile-value">@Model.ApprovedCount</span>
+        <span class="report-tile-label">Approved</span>
+    </a>
+    <a asp-action="History" asp-all-route-data="@WithDecision(decision == "Rejected" ? null : "Rejected")"
+       class="report-tile text-decoration-none @(decision == "Rejected" ? "active" : "")">
+        <span class="report-tile-value @(Model.RejectedCount > 0 ? "text-danger" : "")">@Model.RejectedCount</span>
+        <span class="report-tile-label">Rejected</span>
+    </a>
+</div>
+
+<div class="sab-filter-card mb-3">
+    <form asp-action="History" method="get" class="row g-2 align-items-end">
+        <div class="col-md-3">
+            <label class="form-label">Search</label>
+            <input type="text" name="keyword" value="@Model.Keyword" class="form-control"
+                   placeholder="Request #, requester or item" />
+        </div>
+        <div class="col-md-2">
+            <label class="form-label">Decision</label>
+            <select name="decision" class="form-select">
+                <option value="">Approved and rejected</option>
+                <option value="Approved" selected="@(decision == "Approved")">Approved</option>
+                <option value="Rejected" selected="@(decision == "Rejected")">Rejected</option>
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label">Type</label>
+            <select name="type" class="form-select">
+                <option value="">All types</option>
+                <option value="Borrow" selected="@(Model.Type == RequestType.Borrow)">Borrow</option>
+                <option value="Transfer" selected="@(Model.Type == RequestType.Transfer)">Transfer</option>
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label">Decided by</label>
+            <select name="decidedBy" class="form-select">
+                <option value="">Anyone</option>
+                @foreach (var u in Model.Deciders)
+                {
+                    <option value="@u.UserID" selected="@(Model.DecidedBy == u.UserID)">@u.FullName</option>
+                }
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label">Department</label>
+            <select name="departmentId" class="form-select">
+                <option value="">All departments</option>
+                @foreach (var d in Model.Departments.OrderBy(d => d.BranchName).ThenBy(d => d.DepartmentName))
+                {
+                    <option value="@d.DepartmentID" selected="@(Model.DepartmentId == d.DepartmentID)">@d.BranchName — @d.DepartmentName</option>
+                }
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label">Decided from</label>
+            <input type="date" name="fromDate" class="form-control"
+                   value="@(Model.FromDate?.ToString("yyyy-MM-dd"))" />
+        </div>
+        <div class="col-md-2">
+            <label class="form-label">to</label>
+            <input type="date" name="toDate" class="form-control"
+                   value="@(Model.ToDate?.ToString("yyyy-MM-dd"))" />
+        </div>
+        <div class="col-md-3 d-flex" style="gap:8px;">
+            <button type="submit" class="btn btn-secondary">Apply</button>
+            @if (Model.HasFilters)
+            {
+                <a asp-action="History" class="btn btn-outline-secondary">Reset</a>
+            }
+        </div>
+    </form>
+</div>
+
+@if (Model.Rows.Any())
+{
+    <div class="sab-table-card">
+        <table class="table table-striped align-middle">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Type</th>
+                    <th>Decision</th>
+                    <th>Requester</th>
+                    <th>Items</th>
+                    <th>Decided</th>
+                    <th>Decided by</th>
+                    <th>Now</th>
+                    <th>Remarks</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var r in Model.Rows)
+                {
+                    var isRejected = r.RequestStatus == RequestStatus.Rejected;
+                    <tr>
+                        <td><a asp-action="Details" asp-route-id="@r.RequestID" class="fw-semibold">#@r.RequestID</a></td>
+                        <td><span class="status-pill status-@r.RequestType.ToString().ToLowerInvariant()">@r.RequestType</span></td>
+                        <td>
+                            @if (isRejected)
+                            {
+                                <span class="status-pill status-rejected">Rejected</span>
+                            }
+                            else
+                            {
+                                <span class="status-pill status-approved">Approved</span>
+                            }
+                        </td>
+                        <td>
+                            @r.RequestedByUser.FullName
+                            <div class="text-muted small">@r.RequestedByUser.RoleName &middot; @r.DepartmentName</div>
+                        </td>
+                        <td>
+                            @r.ItemsSummary
+                            @if (r.RequestType == RequestType.Transfer && r.RequestedLocationName != null)
+                            {
+                                <div class="text-muted small">&rarr; @r.RequestedLocationName</div>
+                            }
+                        </td>
+                        <td class="small text-nowrap">
+                            @(r.ApprovalDate?.ToString("MMM d, yyyy") ?? "—")
+                            <div class="text-muted">@(r.ApprovalDate?.ToString("h:mm tt"))</div>
+                        </td>
+                        <td>
+                            @(r.ApprovedByUser?.FullName ?? "—")
+                            @if (r.ApprovedByUser != null)
+                            {
+                                <div class="text-muted small">@r.ApprovedByUser.RoleName</div>
+                            }
+                        </td>
+                        <td>
+                            @if (isRejected)
+                            {
+                                <span class="text-muted">—</span>
+                            }
+                            else
+                            {
+                                <span class="status-pill status-@r.RequestStatus.ToString().ToLowerInvariant()">@DisplayText.Humanize(r.RequestStatus.ToString())</span>
+                            }
+                        </td>
+                        <td class="small" style="max-width:240px;">@(string.IsNullOrWhiteSpace(r.Remarks) ? "—" : r.Remarks)</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+
+        @if (Model.TotalPages > 1)
+        {
+            <div class="d-flex justify-content-between align-items-center p-3 border-top">
+                <span class="text-muted small">Page @Model.Page of @Model.TotalPages &middot; @Model.TotalCount request@(Model.TotalCount == 1 ? "" : "s")</span>
+                <div class="d-flex" style="gap:8px;">
+                    <a asp-action="History" asp-all-route-data="@OnPage(Model.Page - 1)"
+                       class="btn btn-outline-secondary btn-sm @(Model.Page <= 1 ? "disabled" : "")">Previous</a>
+                    <a asp-action="History" asp-all-route-data="@OnPage(Model.Page + 1)"
+                       class="btn btn-outline-secondary btn-sm @(Model.Page >= Model.TotalPages ? "disabled" : "")">Next</a>
+                </div>
+            </div>
+        }
+    </div>
+}
+else
+{
+    <div class="card">
+        <div class="card-body text-muted">
+            @(Model.HasFilters ? "No decided requests match these filters." : "No requests have been approved or rejected yet.")
+        </div>
+    </div>
+}

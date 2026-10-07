@@ -43,9 +43,8 @@ namespace SchoolInventoryManagement.BLL.Services
                 throw new InvalidOperationException("This asset is already disposed.");
 
             if (asset.Status == AssetStatus.Assigned ||
-                asset.Status == AssetStatus.InTransit ||
-                asset.Status == AssetStatus.Overdue ||
-                asset.Status == AssetStatus.Reserved)
+    asset.Status == AssetStatus.InTransit ||
+    asset.Status == AssetStatus.Overdue)
             {
                 throw new InvalidOperationException(
                     $"Asset is currently '{asset.Status}' and cannot be disposed.");

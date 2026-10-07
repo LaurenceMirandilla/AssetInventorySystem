@@ -117,6 +117,12 @@ namespace SchoolInventoryManagement.BLL.Services
             if (assignment.ReturnDate is not null)
                 throw new InvalidOperationException("This assignment has already been returned.");
 
+            // Reserved on an approved request but never collected or
+            // delivered: nothing to return. The request is cancelled instead.
+            if (assignment.Asset.Status == AssetStatus.InTransit)
+                throw new InvalidOperationException(
+                    "This unit hasn't been picked up or delivered yet, so it can't be returned. Cancel its request instead.");
+
             _context.Entry(assignment).Property(a => a.RowVersion).OriginalValue = rowVersion;
 
             assignment.ReturnDate = DateTime.Now;

@@ -28,15 +28,23 @@ namespace SchoolInventoryManagement.BLL.DTOs
         [MaxLength(255)]
         public string? WarrantyInformation { get; set; }
 
+        // Photo or PDF of the warranty card / receipt.
+        [MaxLength(500)]
+        public string? WarrantyFileURL { get; set; }
+
         [MaxLength(500)]
         public string? ImageURL { get; set; }
 
-        [MaxLength(255)]
-        public string? QRCodeData { get; set; }
+        // "Add QR" on the form. On: the asset is saved with its QR.
+        public bool CreateQr { get; set; }
 
         public ConditionStatus Condition { get; set; } = ConditionStatus.Good;
 
         public int? CurrentLocationID { get; set; }
+
+        // Must belong to BranchID.
+        [Required]
+        public int DepartmentID { get; set; }
 
         [Required]
         public int BranchID { get; set; }

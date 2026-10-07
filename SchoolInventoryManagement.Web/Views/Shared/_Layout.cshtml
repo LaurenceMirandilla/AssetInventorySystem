@@ -16,6 +16,8 @@
     var isApprover = User.IsInRole("Asset Officer") || User.IsInRole("Administrator") || User.IsInRole("Principal");
     var isUserManager = User.IsInRole("Administrator") || User.IsInRole("Principal");
     var isAssetManager = User.IsInRole("Asset Officer") || User.IsInRole("Administrator");
+    // Teachers and Staff browse models, not units (AssetsController.IsRequesterOnly).
+    var isRequesterOnly = User.IsInRole("Teacher") || User.IsInRole("Staff");
     // Who has new-item requests to act on (NewItemRequestsController.Pending).
     var actsOnNewItems = isAssetManager || User.IsInRole("Department Head");
     var roleName = User.FindFirst(ClaimTypes.Role)?.Value;
@@ -37,6 +39,8 @@
     var inRequests = isActive(new[] { "AssetRequests" });
     var onApprovals = inRequests
         && approvalActions.Contains(currentAction, StringComparer.OrdinalIgnoreCase);
+    var onRequestHistory = inRequests
+        && string.Equals(currentAction, "History", StringComparison.OrdinalIgnoreCase);
 
     // NewItemRequestsController splits the same way: Pending/Approve/Reject
     // are the reviewer's screens, MyRequests/Create the requester's.
@@ -94,7 +98,7 @@
                 <li class="sab-nav-item">
                     <a class="sab-nav-link @(isActive(new[]{"Assets"}) && currentAction != "MyAssets" ? "active" : "")"
                        asp-controller="Assets" asp-action="Index">
-                        <span class="sab-nav-label">@Html.Raw(navIcon("assets"))@(isAssetManager ? "Assets" : "Browse assets")</span>
+                        <span class="sab-nav-label">@Html.Raw(navIcon("assets"))@(isAssetManager ? "Assets" : isRequesterOnly ? "Browse items" : "Browse assets")</span>
                     </a>
                 </li>
                 <li class="sab-nav-item">
@@ -104,7 +108,7 @@
                     </a>
                 </li>
                 <li class="sab-nav-item">
-                    <a class="sab-nav-link @(inRequests && !onApprovals ? "active" : "")" asp-controller="AssetRequests" asp-action="MyRequests">
+                    <a class="sab-nav-link @(inRequests && !onApprovals && !onRequestHistory ? "active" : "")" asp-controller="AssetRequests" asp-action="MyRequests">
                         <span class="sab-nav-label">@Html.Raw(navIcon("requests"))My Requests</span>
                     </a>
                 </li>
@@ -123,6 +127,14 @@
                     <li class="sab-nav-item">
                         <a class="sab-nav-link @(onApprovals ? "active" : "")" asp-controller="AssetRequests" asp-action="Pending">
                             <span class="sab-nav-label">@Html.Raw(navIcon("approvals"))Approvals</span>
+                        </a>
+                    </li>
+                }
+                @if (isAssetManager)
+                {
+                    <li class="sab-nav-item">
+                        <a class="sab-nav-link @(onRequestHistory ? "active" : "")" asp-controller="AssetRequests" asp-action="History">
+                            <span class="sab-nav-label">@Html.Raw(navIcon("requests"))Request History</span>
                         </a>
                     </li>
                 }
@@ -204,18 +216,6 @@
 
     <div class="sab-main">
         <header class="sab-topbar">
-            <span class="sab-topbar-title">Ste. Anne De Beaupre School</span>
-
-            @if (isAuthed)
-            {
-                <div class="sab-search sab-search-wrap">
-                    <span class="sab-search-icon">&#128269;</span>
-                    <form asp-controller="Assets" asp-action="Index" method="get">
-                        <input type="text" name="keyword" placeholder="Search assets, codes, serials&hellip;" />
-                    </form>
-                </div>
-            }
-
             <div class="sab-topbar-right">
                 @if (isAuthed)
                 {

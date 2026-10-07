@@ -42,8 +42,9 @@
                         <td><span class="sab-code">@category.CodePrefix-0001</span></td>
                         <td class="text-end">@category.ModelCount</td>
                         <td class="text-end">
-                            @* Clicking the count opens the asset list filtered to the category. *@
-                            <a asp-controller="Assets" asp-action="Index" asp-route-categoryId="@category.CategoryID" class="fw-semibold">@category.AssetCount</a>
+                            @* Clicking the count opens the asset list filtered to the category, disposed
+                               units included so the list matches this count. *@
+                            <a asp-controller="Assets" asp-action="Index" asp-route-categoryId="@category.CategoryID" asp-route-includeDisposed="true" class="fw-semibold">@category.AssetCount</a>
                             <div class="text-muted small">@category.AvailableCount available</div>
                         </td>
                         <td>@(string.IsNullOrWhiteSpace(category.Description) ? "—" : category.Description)</td>

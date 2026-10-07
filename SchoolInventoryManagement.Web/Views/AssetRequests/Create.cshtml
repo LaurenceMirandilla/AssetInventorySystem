@@ -8,6 +8,20 @@
 
     // Always at least one row, even after a post that removed them all.
     var rows = Model.Items.Count > 0 ? Model.Items : new List<RequestItemInput> { new RequestItemInput() };
+
+    // Teachers and Staff see model names only -- no counts, nothing greyed
+    // out, no cap on the amount. Everyone else sees how many are free.
+    var showAvailability = (bool)ViewBag.ShowAvailability;
+
+    string OptionLabel(RequestModelOption m) =>
+        !showAvailability ? m.ModelName
+        : m.Available > 0 ? $"{m.ModelName} — {m.Available} available"
+        : $"{m.ModelName} — none available";
+
+    // Available units per location, read by the script to leave out the
+    // ones already at a Transfer's destination.
+    string AtJson(RequestModelOption m) =>
+        System.Text.Json.JsonSerializer.Serialize(m.AvailableByLocation);
 }
 
 <h2>New Request</h2>
@@ -48,9 +62,12 @@
                             <optgroup label="@group.Key">
                                 @foreach (var m in group)
                                 {
-                                    <option value="@m.ModelID" data-available="@m.Available"
-                                            disabled="@(m.Available == 0)"
-                                            selected="@(row.ModelID == m.ModelID)">@m.ModelName — @(m.Available > 0 ? $"{m.Available} available" : "none available")</option>
+                                    <option value="@m.ModelID" data-name="@m.ModelName"
+                                            data-total="@(showAvailability ? m.Available : null)"
+                                            data-at="@(showAvailability ? AtJson(m) : null)"
+                                            data-available="@(showAvailability ? m.Available : null)"
+                                            disabled="@(showAvailability && m.Available == 0)"
+                                            selected="@(row.ModelID == m.ModelID)">@OptionLabel(m)</option>
                                 }
                             </optgroup>
                         }
@@ -72,8 +89,11 @@
                         <optgroup label="@group.Key">
                             @foreach (var m in group)
                             {
-                                <option value="@m.ModelID" data-available="@m.Available"
-                                        disabled="@(m.Available == 0)">@m.ModelName — @(m.Available > 0 ? $"{m.Available} available" : "none available")</option>
+                                <option value="@m.ModelID" data-name="@m.ModelName"
+                                        data-total="@(showAvailability ? m.Available : null)"
+                                        data-at="@(showAvailability ? AtJson(m) : null)"
+                                        data-available="@(showAvailability ? m.Available : null)"
+                                        disabled="@(showAvailability && m.Available == 0)">@OptionLabel(m)</option>
                             }
                         </optgroup>
                     }
@@ -90,8 +110,16 @@
            cannot be requested. The link covers the other dead end: the
            thing needed is not in the catalogue at all. *@
         <div class="form-text">
-            All items go in one request. The amount can't be more than is available.
-            Greyed-out models have none available right now.
+            All items go in one request.
+            @if (showAvailability)
+            {
+                <text>The amount can't be more than is available. Greyed-out models have none available right now.
+                For a Transfer, units already at the destination are not counted.</text>
+            }
+            else
+            {
+                <text>Staff check what is free when they approve your request.</text>
+            }
             Not on the list?
             <a asp-controller="NewItemRequests" asp-action="Create">Request a new item</a>
         </div>
@@ -262,6 +290,42 @@
                 addButton.disabled = rows.length >= maxRows || rows.length >= selectable;
             }
 
+            // ---- Availability (not shown to Teachers and Staff) ---------
+            // A Transfer cannot use units already at its destination, so
+            // once one is chosen they come off each model's count -- the
+            // same rule the approval page and the service apply. For
+            // Teachers and Staff the options keep their plain model names:
+            // Razor still writes data-* attributes when the value is null
+            // (as empty strings), so the flag below is what skips them.
+            var showAvailability = @(showAvailability ? "true" : "false");
+            var locationSelect = document.getElementById('RequestedLocationID');
+
+            function refreshAvailability() {
+                if (!showAvailability) {
+                    sync();
+                    return;
+                }
+
+                var isTransfer = borrowValues.indexOf(typeSelect.value) === -1;
+                var dest = isTransfer && locationSelect ? locationSelect.value : '';
+                var options = Array.from(rowsBox.querySelectorAll('option[data-total]'))
+                    .concat(Array.from(template.content.querySelectorAll('option[data-total]')));
+
+                options.forEach(function (opt) {
+                    var total = parseInt(opt.getAttribute('data-total'), 10);
+                    var at = JSON.parse(opt.getAttribute('data-at') || '{}');
+                    var n = dest ? total - (at[dest] || 0) : total;
+                    opt.setAttribute('data-available', n);
+                    opt.textContent = opt.getAttribute('data-name') + ' — ' +
+                        (n > 0 ? n + ' available' : (dest ? 'none available to move there' : 'none available'));
+                });
+
+                sync();
+            }
+
+            typeSelect.addEventListener('change', refreshAvailability);
+            if (locationSelect) locationSelect.addEventListener('change', refreshAvailability);
+
             addButton.addEventListener('click', function () {
                 var row = template.content.firstElementChild.cloneNode(true);
                 rowsBox.appendChild(row);
@@ -301,7 +365,7 @@
             });
 
             renumber();
-            sync();
+            refreshAvailability(); // also runs sync()
         })();
     </script>
 }

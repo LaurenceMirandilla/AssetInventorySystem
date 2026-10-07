@@ -1,0 +1,86 @@
+@model SchoolInventoryManagement.Web.ViewModels.AssetCatalogViewModel
+@{
+    ViewData["Title"] = "Browse items";
+}
+
+@if (TempData["ErrorMessage"] != null)
+{
+    <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
+}
+
+<div class="sab-page-head">
+    <div>
+        <h2>Browse items</h2>
+        <p class="sab-page-sub">
+            What the school keeps. Request the item you need; staff check what is free and choose the unit when they approve.
+        </p>
+    </div>
+    <div class="sab-page-actions">
+        <a asp-action="MyAssets" class="btn btn-outline-secondary">My Assets</a>
+        <a asp-controller="AssetRequests" asp-action="Create" class="btn btn-primary">+ New Request</a>
+    </div>
+</div>
+
+<form asp-action="Index" method="get" class="row g-2 mb-3">
+    <div class="col-md-6">
+        <input type="text" name="keyword" value="@Model.Keyword" class="form-control" placeholder="Search by name, category or description" />
+    </div>
+    <div class="col-md-4">
+        <select name="categoryId" class="form-select">
+            <option value="">All categories</option>
+            @foreach (var c in Model.CategoryOptions)
+            {
+                <option value="@c.CategoryID" selected="@(Model.CategoryId == c.CategoryID)">@c.CategoryName</option>
+            }
+        </select>
+    </div>
+    <div class="col-md-2 d-flex" style="gap:8px;">
+        <button type="submit" class="btn btn-outline-primary flex-grow-1">Search</button>
+        @if (Model.HasFilters)
+        {
+            <a asp-action="Index" class="btn btn-link">Clear</a>
+        }
+    </div>
+</form>
+
+@if (Model.Models.Any())
+{
+    <div class="sab-table-card">
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Item</th>
+                    <th>Category</th>
+                    <th>Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var m in Model.Models)
+                {
+                    <tr>
+                        <td class="fw-semibold">@m.ModelName</td>
+                        <td>@m.CategoryName</td>
+                        <td>@(string.IsNullOrWhiteSpace(m.Description) ? "—" : m.Description)</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+else
+{
+    <div class="card">
+        <div class="card-body text-muted">
+            @if (Model.HasFilters)
+            {
+                <text>Nothing matches your search.</text>
+            }
+            else
+            {
+                <text>No items have been added yet.</text>
+            }
+            Need something that is not listed?
+            <a asp-controller="NewItemRequests" asp-action="Create">Request a new item</a>
+        </div>
+    </div>
+}

@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using SchoolInventoryManagement.BLL.DTOs;
 using SchoolInventoryManagement.BLL.Interfaces;
 using SchoolInventoryManagement.BLL.Mappings;
+using SchoolInventoryManagement.DAL.Constants;
 using SchoolInventoryManagement.DAL.Context;
 using SchoolInventoryManagement.DAL.Entities;
 using SchoolInventoryManagement.DAL.Entities.Enums;
@@ -84,35 +85,73 @@ namespace SchoolInventoryManagement.BLL.Services
             if (dto.ReturnBy.Value <= dto.NeededFrom.Value)
                 throw new ArgumentException("The return date must be after the date you need the item.");
 
-            // No asking for more than is on the shelf. The form caps each
-            // amount; this is the check a hand-built post cannot skip.
-            // Pending requests do not hold units -- approval reserves them
-            // -- so the Available count is the whole story.
             var modelIds = dto.Items.Select(i => i.ModelID).ToList();
-
-            var availableByModel = await _context.Assets
-                .Where(a => modelIds.Contains(a.ModelID) && a.Status == AssetStatus.Available)
-                .GroupBy(a => a.ModelID)
-                .Select(g => new { ModelID = g.Key, Count = g.Count() })
-                .ToDictionaryAsync(x => x.ModelID, x => x.Count);
 
             var modelNames = await _context.Models
                 .Where(m => modelIds.Contains(m.ModelID))
                 .ToDictionaryAsync(m => m.ModelID, m => m.ModelName);
 
-            foreach (var item in dto.Items)
-            {
-                if (!modelNames.TryGetValue(item.ModelID, out var modelName))
-                    throw new KeyNotFoundException("Model not found.");
+            if (dto.Items.Any(i => !modelNames.ContainsKey(i.ModelID)))
+                throw new KeyNotFoundException("Model not found.");
 
-                var available = availableByModel.GetValueOrDefault(item.ModelID);
-                if (available == 0)
-                    throw new InvalidOperationException(
-                        $"No units of {modelName} are available right now, so it cannot be requested.");
-                if (item.Quantity > available)
-                    throw new InvalidOperationException(
-                        $"You asked for {item.Quantity} of {modelName}, but only {available} " +
-                        $"{(available == 1 ? "is" : "are")} available.");
+            // Teachers and Staff are not shown stock levels and may ask for
+            // anything, even when none is free; the approver sees what is
+            // available and approves, waits or rejects. Everyone else is
+            // shown the counts, and this is the check a hand-built post
+            // cannot skip.
+            var roleName = requestingUser.Role.RoleName;
+            var checkStock = roleName != RoleNames.Teacher && roleName != RoleNames.Staff;
+
+            if (checkStock)
+            {
+                // Pending requests do not hold units -- approval reserves
+                // them -- so the Available count is the whole story. A
+                // Transfer cannot use units already at its destination,
+                // the same rule the approval page applies.
+                int? destinationId = dto.RequestType == RequestType.Transfer ? dto.RequestedLocationID : null;
+
+                var availableByModel = await _context.Assets
+                    .Where(a => modelIds.Contains(a.ModelID)
+                                && a.Status == AssetStatus.Available
+                                && (destinationId == null || a.CurrentLocationID != destinationId))
+                    .GroupBy(a => a.ModelID)
+                    .Select(g => new { ModelID = g.Key, Count = g.Count() })
+                    .ToDictionaryAsync(x => x.ModelID, x => x.Count);
+
+                var destinationName = destinationId is null
+                    ? null
+                    : await _context.Locations
+                        .Where(l => l.LocationID == destinationId.Value)
+                        .Select(l => l.LocationName)
+                        .FirstAsync();
+
+                foreach (var item in dto.Items)
+                {
+                    var modelName = modelNames[item.ModelID];
+                    var available = availableByModel.GetValueOrDefault(item.ModelID);
+
+                    if (destinationName is null)
+                    {
+                        if (available == 0)
+                            throw new InvalidOperationException(
+                                $"No units of {modelName} are available right now, so it cannot be requested.");
+                        if (item.Quantity > available)
+                            throw new InvalidOperationException(
+                                $"You asked for {item.Quantity} of {modelName}, but only {available} " +
+                                $"{(available == 1 ? "is" : "are")} available.");
+                    }
+                    else
+                    {
+                        if (available == 0)
+                            throw new InvalidOperationException(
+                                $"No units of {modelName} can be moved to {destinationName}: " +
+                                "none are available outside it.");
+                        if (item.Quantity > available)
+                            throw new InvalidOperationException(
+                                $"You asked to move {item.Quantity} of {modelName} to {destinationName}, " +
+                                $"but only {available} available {(available == 1 ? "unit is" : "units are")} somewhere else.");
+                    }
+                }
             }
 
             var request = new AssetRequest
@@ -197,6 +236,104 @@ namespace SchoolInventoryManagement.BLL.Services
                 .ToListAsync();
 
             return requests.Select(r => r.ToResponseDTO()).ToList();
+        }
+
+        // Every request that has been decided: approved (whatever happened
+        // after -- in transit, assigned, returned, or cancelled while still
+        // in transit) or rejected. Requests still pending, or cancelled
+        // before anyone decided them, are left out.
+        public async Task<RequestHistoryResultDTO> GetDecisionHistoryAsync(
+            RequestHistoryFilterDTO filter, int actingUserId)
+        {
+            await PermissionHelper.EnsureIsAssetManagerAsync(_context, actingUserId);
+
+            var query = RequestQueryWithIncludes().Where(r =>
+                r.RequestStatus == RequestStatus.Rejected ||
+                r.RequestStatus == RequestStatus.Approved ||
+                r.RequestStatus == RequestStatus.Fulfilled ||
+                r.RequestStatus == RequestStatus.InTransit ||
+                r.RequestStatus == RequestStatus.Assigned ||
+                r.RequestStatus == RequestStatus.Returned ||
+                (r.RequestStatus == RequestStatus.Cancelled && r.ApprovedByUserID != null));
+
+            // Everyone who has decided anything, before the filters narrow
+            // the list, so the dropdown does not empty itself out.
+            var deciderIds = await query
+                .Where(r => r.ApprovedByUserID != null)
+                .Select(r => r.ApprovedByUserID!.Value)
+                .Distinct()
+                .ToListAsync();
+
+            var deciders = await _context.Users
+                .Where(u => deciderIds.Contains(u.UserID))
+                .OrderBy(u => u.FirstName).ThenBy(u => u.LastName)
+                .Select(u => new UserSummaryDTO
+                {
+                    UserID = u.UserID,
+                    FullName = u.FirstName + " " + u.LastName,
+                    Email = u.Email,
+                    RoleName = u.Role.RoleName
+                })
+                .ToListAsync();
+
+            if (string.Equals(filter.Decision, "Approved", StringComparison.OrdinalIgnoreCase))
+                query = query.Where(r => r.RequestStatus != RequestStatus.Rejected);
+            else if (string.Equals(filter.Decision, "Rejected", StringComparison.OrdinalIgnoreCase))
+                query = query.Where(r => r.RequestStatus == RequestStatus.Rejected);
+
+            if (filter.Type.HasValue)
+                query = query.Where(r => r.RequestType == filter.Type.Value);
+
+            if (filter.DecidedByUserId.HasValue)
+                query = query.Where(r => r.ApprovedByUserID == filter.DecidedByUserId.Value);
+
+            if (filter.DepartmentId.HasValue)
+                query = query.Where(r => r.DepartmentID == filter.DepartmentId.Value);
+
+            if (filter.FromDate.HasValue)
+                query = query.Where(r => r.ApprovalDate >= filter.FromDate.Value.Date);
+
+            if (filter.ToDate.HasValue)
+                query = query.Where(r => r.ApprovalDate < filter.ToDate.Value.Date.AddDays(1));
+
+            if (!string.IsNullOrWhiteSpace(filter.Keyword))
+            {
+                var term = filter.Keyword.Trim().TrimStart('#');
+                if (int.TryParse(term, out var requestId))
+                {
+                    query = query.Where(r => r.RequestID == requestId);
+                }
+                else
+                {
+                    query = query.Where(r =>
+                        (r.RequestedByUser.FirstName + " " + r.RequestedByUser.LastName).Contains(term) ||
+                        r.Items.Any(i => i.Model.ModelName.Contains(term)) ||
+                        (r.Model != null && r.Model.ModelName.Contains(term)));
+                }
+            }
+
+            var total = await query.CountAsync();
+            var rejected = await query.CountAsync(r => r.RequestStatus == RequestStatus.Rejected);
+
+            var pageSize = Math.Clamp(filter.PageSize, 1, 100);
+            var lastPage = Math.Max(1, (int)Math.Ceiling(total / (double)pageSize));
+            var page = Math.Clamp(filter.Page, 1, lastPage);
+
+            var rows = await query
+                .OrderByDescending(r => r.ApprovalDate)
+                .ThenByDescending(r => r.RequestID)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+
+            return new RequestHistoryResultDTO
+            {
+                Rows = rows.Select(r => r.ToResponseDTO()).ToList(),
+                TotalCount = total,
+                ApprovedCount = total - rejected,
+                RejectedCount = rejected,
+                Deciders = deciders
+            };
         }
 
         private async Task<(AssetRequest request, User approver)> ValidateApproverActionAsync(
@@ -288,8 +425,14 @@ namespace SchoolInventoryManagement.BLL.Services
             }
         }
 
-        public async Task CancelRequestAsync(int requestId, byte[] rowVersion, int actingUserId)
+        public async Task CancelRequestAsync(int requestId, byte[] rowVersion, int actingUserId, string reason)
         {
+            reason = (reason ?? string.Empty).Trim();
+            if (reason.Length == 0)
+                throw new ArgumentException("Give a reason for cancelling.");
+            if (reason.Length > 500)
+                throw new ArgumentException("The reason is longer than 500 characters.");
+
             var request = await _context.AssetRequests.FindAsync(requestId);
             if (request is null)
                 throw new KeyNotFoundException("Request not found.");
@@ -303,6 +446,7 @@ namespace SchoolInventoryManagement.BLL.Services
             _context.Entry(request).Property(r => r.RowVersion).OriginalValue = rowVersion;
 
             request.RequestStatus = RequestStatus.Cancelled;
+            request.Remarks = reason;
 
             try
             {

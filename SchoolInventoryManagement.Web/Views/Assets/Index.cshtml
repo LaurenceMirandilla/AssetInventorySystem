@@ -4,6 +4,16 @@
     ViewData["Title"] = "Assets";
     var canManage = User.IsInRole("Asset Officer") || User.IsInRole("Administrator");
     var activeStatus = Model.Status?.ToString();
+
+    // Rides along on every link (tiles, pager, export) so the "Include
+    // disposed" choice survives clicking around. Null leaves it out of
+    // the URL entirely when unticked.
+    string? includeDisposedRoute = Model.IncludeDisposed ? "true" : null;
+}
+
+@if (TempData["ErrorMessage"] != null)
+{
+    <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
 }
 
 <div class="sab-page-head">
@@ -17,6 +27,10 @@
         {
             <p class="sab-page-sub">@Model.TotalFilteredCount registered unit@(Model.TotalFilteredCount == 1 ? "" : "s").</p>
         }
+        @if (!Model.ShowsDisposed && Model.DisposedCount > 0)
+        {
+            <p class="sab-page-sub mt-0">@Model.DisposedCount disposed unit@(Model.DisposedCount == 1 ? " is" : "s are") hidden — tick "Include disposed" to show @(Model.DisposedCount == 1 ? "it" : "them").</p>
+        }
     </div>
     <div class="sab-page-actions">
         <a asp-action="ExportAssets"
@@ -24,7 +38,7 @@
            asp-route-categoryId="@Model.CategoryId"
            asp-route-departmentId="@Model.DepartmentId"
            asp-route-status="@Model.Status"
-           asp-route-condition="@Model.Condition" asp-route-locationId="@Model.LocationId" asp-route-modelId="@Model.ModelId" asp-route-branchId="@Model.BranchId"
+           asp-route-condition="@Model.Condition" asp-route-locationId="@Model.LocationId" asp-route-modelId="@Model.ModelId" asp-route-branchId="@Model.BranchId" asp-route-includeDisposed="@includeDisposedRoute"
            class="btn btn-outline-secondary">Export CSV</a>
 
         @if (canManage)
@@ -36,7 +50,9 @@
 </div>
 
 @* KPI tiles -- a live breakdown of the rows below, so they always add up
-   to what the table is showing. Every filter narrows them, status
+   to what the table is showing. The one exception is Disposed while
+   disposed units are hidden: it then counts the hidden ones, and
+   clicking it shows them. Every filter narrows them, status
    included, which means selecting a status zeroes the others. That is
    the honest count, so the highlighted tile doubles as the way out:
    clicking it drops the status and restores the full breakdown, as does
@@ -45,7 +61,7 @@
 <div class="report-tiles mb-3">
     <a asp-action="Index"
        asp-route-keyword="@Model.Keyword" asp-route-categoryId="@Model.CategoryId"
-       asp-route-departmentId="@Model.DepartmentId" asp-route-condition="@Model.Condition" asp-route-locationId="@Model.LocationId" asp-route-modelId="@Model.ModelId" asp-route-branchId="@Model.BranchId"
+       asp-route-departmentId="@Model.DepartmentId" asp-route-condition="@Model.Condition" asp-route-locationId="@Model.LocationId" asp-route-modelId="@Model.ModelId" asp-route-branchId="@Model.BranchId" asp-route-includeDisposed="@includeDisposedRoute"
        class="report-tile text-decoration-none @(activeStatus == null ? "active" : "")">
         <span class="report-tile-value">@Model.TotalFilteredCount</span>
         <span class="report-tile-label">@(Model.HasFilters ? "All matches" : "All assets")</span>
@@ -53,7 +69,7 @@
     <a asp-action="Index"
        asp-route-status="@(activeStatus == "Available" ? null : "Available")"
        asp-route-keyword="@Model.Keyword" asp-route-categoryId="@Model.CategoryId"
-       asp-route-departmentId="@Model.DepartmentId" asp-route-condition="@Model.Condition" asp-route-locationId="@Model.LocationId" asp-route-modelId="@Model.ModelId" asp-route-branchId="@Model.BranchId"
+       asp-route-departmentId="@Model.DepartmentId" asp-route-condition="@Model.Condition" asp-route-locationId="@Model.LocationId" asp-route-modelId="@Model.ModelId" asp-route-branchId="@Model.BranchId" asp-route-includeDisposed="@includeDisposedRoute"
        class="report-tile text-decoration-none @(activeStatus == "Available" ? "active" : "")">
         <span class="report-tile-value">@Model.AvailableCount</span>
         <span class="report-tile-label">Available</span>
@@ -61,7 +77,7 @@
     <a asp-action="Index"
        asp-route-status="@(activeStatus == "Assigned" ? null : "Assigned")"
        asp-route-keyword="@Model.Keyword" asp-route-categoryId="@Model.CategoryId"
-       asp-route-departmentId="@Model.DepartmentId" asp-route-condition="@Model.Condition" asp-route-locationId="@Model.LocationId" asp-route-modelId="@Model.ModelId" asp-route-branchId="@Model.BranchId"
+       asp-route-departmentId="@Model.DepartmentId" asp-route-condition="@Model.Condition" asp-route-locationId="@Model.LocationId" asp-route-modelId="@Model.ModelId" asp-route-branchId="@Model.BranchId" asp-route-includeDisposed="@includeDisposedRoute"
        class="report-tile text-decoration-none @(activeStatus == "Assigned" ? "active" : "")">
         <span class="report-tile-value">@Model.AssignedCount</span>
         <span class="report-tile-label">Assigned</span>
@@ -69,7 +85,7 @@
     <a asp-action="Index"
        asp-route-status="@(activeStatus == "InTransit" ? null : "InTransit")"
        asp-route-keyword="@Model.Keyword" asp-route-categoryId="@Model.CategoryId"
-       asp-route-departmentId="@Model.DepartmentId" asp-route-condition="@Model.Condition" asp-route-locationId="@Model.LocationId" asp-route-modelId="@Model.ModelId" asp-route-branchId="@Model.BranchId"
+       asp-route-departmentId="@Model.DepartmentId" asp-route-condition="@Model.Condition" asp-route-locationId="@Model.LocationId" asp-route-modelId="@Model.ModelId" asp-route-branchId="@Model.BranchId" asp-route-includeDisposed="@includeDisposedRoute"
        class="report-tile text-decoration-none @(activeStatus == "InTransit" ? "active" : "")">
         <span class="report-tile-value">@Model.InTransitCount</span>
         <span class="report-tile-label">In transit</span>
@@ -77,7 +93,7 @@
     <a asp-action="Index"
        asp-route-status="@(activeStatus == "Overdue" ? null : "Overdue")"
        asp-route-keyword="@Model.Keyword" asp-route-categoryId="@Model.CategoryId"
-       asp-route-departmentId="@Model.DepartmentId" asp-route-condition="@Model.Condition" asp-route-locationId="@Model.LocationId" asp-route-modelId="@Model.ModelId" asp-route-branchId="@Model.BranchId"
+       asp-route-departmentId="@Model.DepartmentId" asp-route-condition="@Model.Condition" asp-route-locationId="@Model.LocationId" asp-route-modelId="@Model.ModelId" asp-route-branchId="@Model.BranchId" asp-route-includeDisposed="@includeDisposedRoute"
        class="report-tile text-decoration-none @(activeStatus == "Overdue" ? "active" : "")">
         <span class="report-tile-value @(Model.OverdueCount > 0 ? "text-danger" : "")">@Model.OverdueCount</span>
         <span class="report-tile-label">Overdue</span>
@@ -85,7 +101,7 @@
     <a asp-action="Index"
        asp-route-status="@(activeStatus == "UnderMaintenance" ? null : "UnderMaintenance")"
        asp-route-keyword="@Model.Keyword" asp-route-categoryId="@Model.CategoryId"
-       asp-route-departmentId="@Model.DepartmentId" asp-route-condition="@Model.Condition" asp-route-locationId="@Model.LocationId" asp-route-modelId="@Model.ModelId" asp-route-branchId="@Model.BranchId"
+       asp-route-departmentId="@Model.DepartmentId" asp-route-condition="@Model.Condition" asp-route-locationId="@Model.LocationId" asp-route-modelId="@Model.ModelId" asp-route-branchId="@Model.BranchId" asp-route-includeDisposed="@includeDisposedRoute"
        class="report-tile text-decoration-none @(activeStatus == "UnderMaintenance" ? "active" : "")">
         <span class="report-tile-value">@Model.UnderMaintenanceCount</span>
         <span class="report-tile-label">Under maintenance</span>
@@ -93,10 +109,10 @@
     <a asp-action="Index"
        asp-route-status="@(activeStatus == "Disposed" ? null : "Disposed")"
        asp-route-keyword="@Model.Keyword" asp-route-categoryId="@Model.CategoryId"
-       asp-route-departmentId="@Model.DepartmentId" asp-route-condition="@Model.Condition" asp-route-locationId="@Model.LocationId" asp-route-modelId="@Model.ModelId" asp-route-branchId="@Model.BranchId"
+       asp-route-departmentId="@Model.DepartmentId" asp-route-condition="@Model.Condition" asp-route-locationId="@Model.LocationId" asp-route-modelId="@Model.ModelId" asp-route-branchId="@Model.BranchId" asp-route-includeDisposed="@includeDisposedRoute"
        class="report-tile text-decoration-none @(activeStatus == "Disposed" ? "active" : "")">
-        <span class="report-tile-value">@Model.DisposedCount</span>
-        <span class="report-tile-label">Disposed</span>
+        <span class="report-tile-value @(Model.ShowsDisposed ? "" : "text-muted")">@Model.DisposedCount</span>
+        <span class="report-tile-label">Disposed@(Model.ShowsDisposed ? "" : " (hidden)")</span>
     </a>
 </div>
 
@@ -170,6 +186,14 @@
                  "All statuses", new { @class = "form-select", style = "width:auto;" })
             @Html.DropDownList("condition", (IEnumerable<SelectListItem>)ViewBag.ConditionFilter,
                  "All conditions", new { @class = "form-select", style = "width:auto;" })
+            @* Off by default: the list is what the school still has. Ticking
+               it applies straight away. Choosing Disposed under status
+               shows them either way. *@
+            <div class="form-check mb-0 align-self-center">
+                <input class="form-check-input" type="checkbox" name="includeDisposed" value="true" id="fIncludeDisposed"
+                       checked="@Model.IncludeDisposed" onchange="this.form.submit()" />
+                <label class="form-check-label small text-nowrap" for="fIncludeDisposed">Include disposed</label>
+            </div>
             <button type="submit" class="btn btn-secondary">Apply</button>
             <a asp-action="Index" class="btn btn-outline-secondary">Reset</a>
         </div>
@@ -248,12 +272,12 @@
                        asp-action="Index"
                        asp-route-keyword="@Model.Keyword" asp-route-categoryId="@Model.CategoryId"
                        asp-route-departmentId="@Model.DepartmentId" asp-route-status="@Model.Status"
-                       asp-route-condition="@Model.Condition" asp-route-locationId="@Model.LocationId" asp-route-modelId="@Model.ModelId" asp-route-branchId="@Model.BranchId" asp-route-page="@(Model.Page - 1)">Previous</a>
+                       asp-route-condition="@Model.Condition" asp-route-locationId="@Model.LocationId" asp-route-modelId="@Model.ModelId" asp-route-branchId="@Model.BranchId" asp-route-includeDisposed="@includeDisposedRoute" asp-route-page="@(Model.Page - 1)">Previous</a>
                     <a class="btn btn-outline-secondary btn-sm @(Model.Page >= Model.TotalPages ? "disabled" : "")"
                        asp-action="Index"
                        asp-route-keyword="@Model.Keyword" asp-route-categoryId="@Model.CategoryId"
                        asp-route-departmentId="@Model.DepartmentId" asp-route-status="@Model.Status"
-                       asp-route-condition="@Model.Condition" asp-route-locationId="@Model.LocationId" asp-route-modelId="@Model.ModelId" asp-route-branchId="@Model.BranchId" asp-route-page="@(Model.Page + 1)">Next</a>
+                       asp-route-condition="@Model.Condition" asp-route-locationId="@Model.LocationId" asp-route-modelId="@Model.ModelId" asp-route-branchId="@Model.BranchId" asp-route-includeDisposed="@includeDisposedRoute" asp-route-page="@(Model.Page + 1)">Next</a>
                 </div>
             </div>
         }

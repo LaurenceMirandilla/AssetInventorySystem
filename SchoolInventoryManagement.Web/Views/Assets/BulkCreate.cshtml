@@ -22,7 +22,7 @@
     </div>
 </div>
 
-<form asp-action="BulkCreate" method="post">
+<form asp-action="BulkCreate" method="post" enctype="multipart/form-data">
     @Html.AntiForgeryToken()
     <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
 
@@ -93,12 +93,26 @@
                     <div class="mb-3">
                         <label asp-for="CurrentLocationID" class="form-label"></label>
                         <select asp-for="CurrentLocationID" id="locationSelect" class="form-select">
-                            <option value="">-- None --</option>
+                            <option value="">-- Pick a branch first --</option>
                             @foreach (var loc in (List<SchoolInventoryManagement.BLL.DTOs.LocationDTO>)ViewBag.LocationsByBranch)
                             {
-                                <option value="@loc.LocationID" data-branch="@loc.BranchID">@loc.LocationName</option>
+                                <option value="@loc.LocationID" data-branch="@loc.BranchID"
+                                        selected="@(loc.LocationID == Model.CurrentLocationID)">@loc.LocationName</option>
                             }
                         </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="DepartmentID" class="form-label"></label>
+                        <select asp-for="DepartmentID" id="departmentSelect" class="form-select">
+                            <option value="">-- Pick a branch first --</option>
+                            @foreach (var dept in (List<SchoolInventoryManagement.BLL.DTOs.DepartmentDTO>)ViewBag.DepartmentsByBranch)
+                            {
+                                <option value="@dept.DepartmentID" data-branch="@dept.BranchID"
+                                        selected="@(dept.DepartmentID == Model.DepartmentID)">@dept.DepartmentName</option>
+                            }
+                        </select>
+                        <span asp-validation-for="DepartmentID" class="text-danger"></span>
                     </div>
 
                     <div class="mb-3">
@@ -124,7 +138,14 @@
 
                     <div class="mb-3">
                         <label asp-for="WarrantyInformation" class="form-label"></label>
-                        <input asp-for="WarrantyInformation" class="form-control" />
+                        <input asp-for="WarrantyInformation" class="form-control" placeholder="e.g. 1 year, until Mar 2027" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="WarrantyFile" class="form-label">Warranty photo or file <span class="text-muted">(optional)</span></label>
+                        <input asp-for="WarrantyFile" type="file" accept="@SchoolInventoryManagement.Web.Helpers.FileUploads.DocumentAccept"
+                               data-max-bytes="@SchoolInventoryManagement.Web.Helpers.FileUploads.MaxBytes" class="form-control" />
+                        <div class="form-text">Warranty card or receipt, photo or PDF, max @SchoolInventoryManagement.Web.Helpers.FileUploads.MaxMegabytes MB. Linked to every unit.</div>
                     </div>
 
                     <div class="mb-0">
@@ -133,12 +154,23 @@
                     </div>
                 </div>
             </div>
+
+            <div class="card mb-3">
+                <div class="card-body">
+                    <h5 class="mb-2">QR labels</h5>
+                    <input asp-for="CreateQr" type="checkbox" id="createQr" class="btn-check" autocomplete="off" />
+                    <label for="createQr" id="createQrLabel" class="btn btn-outline-primary w-100">Add QR</label>
+                    <div class="form-text">Click to make a QR code for every unit in the batch. Left off, none are made; you can add one later from each asset's page.</div>
+                </div>
+            </div>
         </div>
     </div>
 
     <button type="submit" id="submitBtn" class="btn btn-primary">Register assets</button>
     <a asp-action="Index" class="btn btn-secondary">Cancel</a>
 </form>
+
+<partial name="_QuickAddModel" />
 
 @section Scripts {
     @{
@@ -230,22 +262,69 @@
             });
             update();
 
-            // Location narrows to the chosen branch, as on the single form.
-            var branchSelect = document.getElementById('branchSelect');
-            var locationSelect = document.getElementById('locationSelect');
+            // ---- Add QR toggle ------------------------------------------
+            // The label says what will happen, so "on" isn't just a color.
+            var createQr = document.getElementById('createQr');
+            var createQrLabel = document.getElementById('createQrLabel');
+            function syncQr() {
+                createQrLabel.textContent = createQr.checked ? '✓ QR for every unit' : 'Add QR';
+            }
+            createQr.addEventListener('change', syncQr);
+            syncQr(); // a failed post keeps the choice
 
-            function filterLocations() {
-                var branchId = branchSelect.value;
-                Array.from(locationSelect.options).forEach(function (opt) {
-                    if (!opt.value) { opt.hidden = false; return; }
-                    opt.hidden = branchId === '' || opt.getAttribute('data-branch') !== branchId;
+            // ---- Location and department follow branch -----------------
+            // Each list only ever holds the chosen branch's entries, and
+            // stays locked until a branch is picked. Options are rebuilt
+            // rather than hidden, because some browsers ignore "hidden" on
+            // <option>.
+            var branchSelect = document.getElementById('branchSelect');
+            if (!branchSelect) return;
+
+            function followBranch(select, emptyText) {
+                if (!select) return;
+
+                var all = Array.from(select.options)
+                    .filter(function (o) { return o.value; })
+                    .map(function (o) {
+                        return { value: o.value, text: o.text, branch: o.getAttribute('data-branch') };
+                    });
+                var selected = select.value;
+
+                function rebuild() {
+                    var branchId = branchSelect.value;
+                    select.innerHTML = '';
+
+                    var placeholder = document.createElement('option');
+                    placeholder.value = '';
+                    placeholder.text = branchId ? emptyText : '-- Pick a branch first --';
+                    select.appendChild(placeholder);
+
+                    all
+                        .filter(function (x) { return x.branch === branchId; })
+                        .forEach(function (x) {
+                            var opt = document.createElement('option');
+                            opt.value = x.value;
+                            opt.text = x.text;
+                            if (x.value === selected) opt.selected = true;
+                            select.appendChild(opt);
+                        });
+
+                    select.disabled = !branchId;
+                }
+
+                branchSelect.addEventListener('change', function () {
+                    selected = ''; // a new branch means its own entries
+                    rebuild();
                 });
-                var selected = locationSelect.options[locationSelect.selectedIndex];
-                if (selected && selected.hidden) locationSelect.value = '';
+                select.addEventListener('change', function () {
+                    selected = select.value;
+                });
+
+                rebuild(); // on load too, so an edit or a failed post shows the right list
             }
 
-            branchSelect.addEventListener('change', filterLocations);
-            filterLocations();
+            followBranch(document.getElementById('locationSelect'), '-- None --');
+            followBranch(document.getElementById('departmentSelect'), '-- Select Department --');
         })();
     </script>
 }

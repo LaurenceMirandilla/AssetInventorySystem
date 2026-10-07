@@ -13,6 +13,7 @@ namespace SchoolInventoryManagement.BLL.DTOs
         public DateTime? AcquisitionDate { get; set; }
         public decimal? AcquisitionCost { get; set; }
         public string? WarrantyInformation { get; set; }
+        public string? WarrantyFileURL { get; set; }
         public string? ImageURL { get; set; }
         public string? QRCodeData { get; set; }
         public ConditionStatus Condition { get; set; }

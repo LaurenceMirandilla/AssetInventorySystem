@@ -100,7 +100,7 @@ namespace SchoolInventoryManagement.Web.Controllers
                 new[] { "Totals", "Assigned out", Num(s.AssignedCount), null },
                 new[] { "Totals", "Open assignments", Num(s.OutstandingAssignmentCount), null },
                 new[] { "Totals", "Under maintenance", Num(s.UnderMaintenanceCount), null },
-                new[] { "Totals", "Lost or damaged", Num(s.LostOrDamagedCount), null },
+                new[] { "Totals", "Damaged condition", Num(s.DamagedCount), null },
                 new[] { "Totals", "Disposed", Num(s.DisposedCount), null },
                 new[] { "Totals", "Pending requests", Num(s.PendingRequestCount), null },
                 new[] { "Totals", "Active users", Num(s.ActiveUserCount), null }

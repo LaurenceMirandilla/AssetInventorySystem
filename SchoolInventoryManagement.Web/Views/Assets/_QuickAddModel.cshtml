@@ -1,0 +1,158 @@
+@* The "+ New model" popup on Register and Bulk register (the button is in
+   _ModelPicker). Rendered after the asset form, not inside it -- a form
+   inside a form is not allowed. Saves through Models/QuickCreate without
+   leaving the page, so nothing typed into the asset form is lost. On
+   success it raises "model-added", which the picker turns into a new,
+   already-picked entry. *@
+@{
+    var categories = (List<SchoolInventoryManagement.BLL.DTOs.CategoryDTO>)ViewBag.QuickAddCategories;
+}
+
+<div class="modal fade" id="quickAddModel" tabindex="-1" aria-labelledby="quickAddModelTitle" aria-hidden="true">
+    <div class="modal-dialog">
+        <form class="modal-content" id="quickAddForm" novalidate>
+            @Html.AntiForgeryToken()
+            <div class="modal-header">
+                <h5 class="modal-title" id="quickAddModelTitle">New model</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body">
+                <div id="qaError" class="alert alert-danger d-none"></div>
+
+                <div class="mb-3">
+                    <label for="qaModelName" class="form-label">Model name</label>
+                    <input id="qaModelName" name="ModelName" maxlength="150" class="form-control" placeholder="e.g. Monobloc Chair" />
+                </div>
+
+                <div class="mb-3" id="qaExistingCategory">
+                    <label for="qaCategory" class="form-label">Category</label>
+                    <select id="qaCategory" name="CategoryID" class="form-select">
+                        <option value="">-- Select Category --</option>
+                        @foreach (var c in categories)
+                        {
+                            <option value="@c.CategoryID">@c.CategoryName (@c.CodePrefix)</option>
+                        }
+                    </select>
+                    <button type="button" id="qaShowNewCategory" class="btn btn-link btn-sm p-0 mt-1">+ New category</button>
+                </div>
+
+                <div class="mb-3 p-3 d-none" id="qaNewCategory" style="background:var(--sab-bg); border-radius:var(--sab-radius-sm);">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="fw-semibold">New category</span>
+                        <button type="button" id="qaUseExisting" class="btn btn-link btn-sm p-0">Use an existing one</button>
+                    </div>
+                    <div class="mb-2">
+                        <label for="qaCategoryName" class="form-label">Category name</label>
+                        <input id="qaCategoryName" name="NewCategoryName" maxlength="100" class="form-control" placeholder="e.g. Chairs" />
+                    </div>
+                    <div>
+                        <label for="qaCodePrefix" class="form-label">Code prefix</label>
+                        <input id="qaCodePrefix" name="NewCodePrefix" maxlength="10" class="form-control text-uppercase" placeholder="e.g. CHAIR" />
+                        <div class="form-text">2 to 10 letters or digits. Assets get codes like <span id="qaPrefixPreview" class="sab-code">CHAIR</span>-0001.</div>
+                    </div>
+                </div>
+
+                <div>
+                    <label for="qaDescription" class="form-label">Description <span class="text-muted">(optional)</span></label>
+                    <textarea id="qaDescription" name="Description" maxlength="500" rows="2" class="form-control"></textarea>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="submit" id="qaSave" class="btn btn-primary">Save model</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    (function () {
+        var modalEl = document.getElementById('quickAddModel');
+        var form = document.getElementById('quickAddForm');
+        var errorBox = document.getElementById('qaError');
+        var modelName = document.getElementById('qaModelName');
+        var categorySelect = document.getElementById('qaCategory');
+        var existingBox = document.getElementById('qaExistingCategory');
+        var newBox = document.getElementById('qaNewCategory');
+        var categoryName = document.getElementById('qaCategoryName');
+        var prefix = document.getElementById('qaCodePrefix');
+        var prefixPreview = document.getElementById('qaPrefixPreview');
+        var saveBtn = document.getElementById('qaSave');
+        var url = '@Url.Action("QuickCreate", "Models")';
+
+        function showError(text) {
+            errorBox.textContent = text || '';
+            errorBox.classList.toggle('d-none', !text);
+        }
+
+        // Existing category, or the fields for a new one -- never both, so
+        // the server is never unsure which was meant.
+        function useNewCategory(on) {
+            newBox.classList.toggle('d-none', !on);
+            existingBox.classList.toggle('d-none', on);
+            if (on) {
+                categorySelect.value = '';
+                categoryName.focus();
+            } else {
+                categoryName.value = '';
+                prefix.value = '';
+                prefixPreview.textContent = 'CHAIR';
+            }
+        }
+
+        document.getElementById('qaShowNewCategory').addEventListener('click', function () { useNewCategory(true); });
+        document.getElementById('qaUseExisting').addEventListener('click', function () { useNewCategory(false); });
+
+        prefix.addEventListener('input', function () {
+            prefixPreview.textContent = prefix.value.trim().toUpperCase() || 'CHAIR';
+        });
+
+        // Starts clean every time it opens.
+        modalEl.addEventListener('show.bs.modal', function () {
+            form.reset();
+            useNewCategory(false);
+            showError('');
+        });
+        modalEl.addEventListener('shown.bs.modal', function () { modelName.focus(); });
+
+        form.addEventListener('submit', function (e) {
+            e.preventDefault();
+            showError('');
+            saveBtn.disabled = true;
+
+            fetch(url, { method: 'POST', body: new FormData(form), credentials: 'same-origin' })
+                .then(function (response) {
+                    // A signed-out session answers with the login page, not
+                    // JSON -- that lands in the catch below as "no reply".
+                    return response.json().then(function (body) {
+                        return { ok: response.ok, body: body };
+                    });
+                })
+                .then(function (result) {
+                    var m = result.body;
+                    if (!result.ok || !m || m.error || !m.modelId) {
+                        showError((m && m.error) || 'Could not save the model. Please try again.');
+                        return;
+                    }
+
+                    // A new category goes into this popup's list too, so the
+                    // next model can use it without reloading.
+                    if (m.newCategory) {
+                        var opt = document.createElement('option');
+                        opt.value = m.categoryId;
+                        opt.text = m.categoryName + ' (' + m.prefix + ')';
+                        categorySelect.appendChild(opt);
+                    }
+
+                    document.dispatchEvent(new CustomEvent('model-added', { detail: m }));
+                    bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+                })
+                .catch(function () {
+                    showError('Could not save the model. Check your connection, or reload the page if you were signed out.');
+                })
+                .finally(function () { saveBtn.disabled = false; });
+        });
+    })();
+</script>

@@ -1,0 +1,126 @@
+@model SchoolInventoryManagement.Web.ViewModels.CancelAssetRequestViewModel
+@using Microsoft.AspNetCore.Mvc.Rendering
+@using SchoolInventoryManagement.DAL.Entities.Enums
+@{
+    ViewData["Title"] = "Cancel Request";
+    var request = ViewBag.Request as SchoolInventoryManagement.BLL.DTOs.AssetRequestResponseDTO;
+    var isInTransit = request?.RequestStatus == RequestStatus.InTransit;
+
+    // In Transit Borrow: the units sit at the pickup point and need putting
+    // back somewhere (the controller fills these only then).
+    var locations = ViewBag.Locations as SelectList;
+    var original = ViewBag.OriginalLocations as Dictionary<int, int?> ?? new Dictionary<int, int?>();
+    var showPlacement = locations is not null && Model.Units.Any();
+
+    string LocationName(int? id) =>
+        id is null ? "no location" : locations?.FirstOrDefault(l => l.Value == id.ToString())?.Text ?? "unknown";
+}
+
+<h2>Cancel Request #@Model.RequestID</h2>
+
+@if (request is not null)
+{
+    <p class="text-muted">
+        From @request.RequestedByUser.FullName (@request.RequestedByUser.RoleName)
+        — @request.RequestType — @request.ItemsSummary
+    </p>
+
+    @if (isInTransit)
+    {
+        <div class="alert alert-warning">
+            This request was approved but nothing has been
+            @(request.RequestType == RequestType.Borrow ? "picked up" : "delivered") yet.
+            Cancelling it cancels the reservation on the @request.UnitsOut unit@(request.UnitsOut == 1 ? "" : "s")
+            set aside for it, makes @(request.UnitsOut == 1 ? "it" : "them") Available again, and tells the requester.
+            @if (request.RequestType == RequestType.Transfer)
+            {
+                <text>Transfer units were never moved, so they stay where they are.</text>
+            }
+        </div>
+    }
+}
+
+<form asp-action="Cancel" asp-route-id="@Model.RequestID" method="post">
+    @Html.AntiForgeryToken()
+    <input type="hidden" asp-for="RequestID" />
+    <input type="hidden" asp-for="RowVersionBase64" />
+    <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+
+    <div class="mb-3">
+        <label asp-for="Reason" class="form-label"></label>
+        <textarea asp-for="Reason" class="form-control" rows="4"></textarea>
+        <div class="form-text">Kept on the request, where the requester and approvers can see it.</div>
+        <span asp-validation-for="Reason" class="text-danger"></span>
+    </div>
+
+    @if (showPlacement && request is not null)
+    {
+        <div class="card mb-3">
+            <div class="card-body">
+                <h5 class="mb-1">Where were they put back?</h5>
+                <p class="text-muted small mb-3">
+                    These units were set aside at @(request.PickupLocationName ?? "the pickup point").
+                    Each starts at where it was before that — change any that went somewhere else.
+                </p>
+
+                @if (Model.Units.Count > 1)
+                {
+                    <div class="d-flex align-items-center mb-3" style="gap:8px;">
+                        <label for="putAllAt" class="small text-muted text-nowrap mb-0">Put them all at</label>
+                        <select id="putAllAt" class="form-select form-select-sm" style="max-width:320px;">
+                            <option value="">-- Choose to set every unit --</option>
+                            @foreach (var l in locations!)
+                            {
+                                <option value="@l.Value">@l.Text</option>
+                            }
+                        </select>
+                    </div>
+                }
+
+                @for (var i = 0; i < Model.Units.Count; i++)
+                {
+                    var unit = request.Units.FirstOrDefault(u => u.AssetID == Model.Units[i].AssetID);
+                    var was = original.GetValueOrDefault(Model.Units[i].AssetID);
+
+                    <div class="row g-2 align-items-start mb-2">
+                        <div class="col-md-5">
+                            <span class="sab-code">@unit?.AssetCode</span>
+                            <span class="text-muted small ms-1">@unit?.AssetName</span>
+                            <div class="text-muted small">Was at: @LocationName(was)</div>
+                        </div>
+                        <div class="col-md-7">
+                            <input type="hidden" asp-for="Units[i].AssetID" />
+                            <select asp-for="Units[i].LocationID" asp-items="new SelectList(locations!, nameof(SelectListItem.Value), nameof(SelectListItem.Text), Model.Units[i].LocationID?.ToString())"
+                                    class="form-select put-back">
+                                <option value="">-- Select Location --</option>
+                            </select>
+                            <span asp-validation-for="Units[i].LocationID" class="text-danger"></span>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    <button type="submit" class="btn btn-danger">Cancel Request</button>
+    <a asp-action="Details" asp-route-id="@Model.RequestID" class="btn btn-secondary">Go back</a>
+</form>
+
+@section Scripts {
+    @{
+        await Html.RenderPartialAsync("_ValidationScriptsPartial");
+    }
+    <script>
+        (function () {
+            // "Put them all at" fills every unit's box, then resets itself so
+            // each box can still be changed on its own.
+            var all = document.getElementById('putAllAt');
+            if (!all) return;
+            all.addEventListener('change', function () {
+                if (!all.value) return;
+                document.querySelectorAll('select.put-back').forEach(function (s) { s.value = all.value; });
+                all.value = '';
+            });
+        })();
+    </script>
+}

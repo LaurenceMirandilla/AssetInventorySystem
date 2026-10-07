@@ -6,9 +6,6 @@
         Assigned,
         InTransit,
         UnderMaintenance,
-        Reserved,
-        Lost,
-        Damaged,
         Disposed,
 
         // Picked up on a request and not back by its ReturnBy. Set only by

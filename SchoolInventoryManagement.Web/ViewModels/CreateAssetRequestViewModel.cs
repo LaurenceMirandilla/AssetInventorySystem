@@ -42,11 +42,16 @@ namespace SchoolInventoryManagement.Web.ViewModels
 
     // One entry in the form's model list: grouped by category, with how
     // many are on the shelf -- which is also the most anyone can ask for.
+    // The counts are left at zero, and not shown, for Teachers and Staff.
     public class RequestModelOption
     {
         public int ModelID { get; set; }
         public string ModelName { get; set; } = null!;
         public string CategoryName { get; set; } = null!;
         public int Available { get; set; }
+
+        // How many of those Available units sit at each location, so a
+        // Transfer can leave out the ones already at its destination.
+        public Dictionary<int, int> AvailableByLocation { get; set; } = new();
     }
 }

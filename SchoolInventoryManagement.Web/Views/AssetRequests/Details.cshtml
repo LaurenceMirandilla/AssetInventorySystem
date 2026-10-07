@@ -18,8 +18,24 @@
     var isMine = Model.RequestedByUser.UserID == currentUserId;
     var isPending = Model.RequestStatus == RequestStatus.Pending;
     var isInTransit = Model.RequestStatus == RequestStatus.InTransit;
-    var isOut = isInTransit || Model.RequestStatus == RequestStatus.Assigned;
+    var isAssigned = Model.RequestStatus == RequestStatus.Assigned;
+    var isOut = isInTransit || isAssigned;
+    var isCancelled = Model.RequestStatus == RequestStatus.Cancelled;
     var isBorrow = Model.RequestType == RequestType.Borrow;
+
+    // Pending: the requester can withdraw it. In Transit: an Officer or
+    // Administrator can call it off before pickup or delivery. Both ask
+    // for a reason first (AssetRequests/Cancel).
+    var canCancel = (isPending && isMine) || (isInTransit && canManageAssets);
+
+    // Remarks hold the rejection or cancellation reason, so label them by
+    // what happened.
+    var remarksLabel = Model.RequestStatus switch
+    {
+        RequestStatus.Cancelled => "Reason for cancelling",
+        RequestStatus.Rejected => "Reason for rejection",
+        _ => "Remarks"
+    };
 
     // Borrow: where the units are (or will be) collected. The approver's
     // pickup point once approved; before that, the requester's preference.
@@ -71,6 +87,21 @@
             else
             {
                 <text>Approved. @Model.UnitsOut unit@(Model.UnitsOut == 1 ? " is" : "s are") on the way to <strong>@Model.RequestedLocationName</strong>.</text>
+            }
+        </div>
+    }
+
+    @if (isCancelled)
+    {
+        <div class="alert alert-secondary rounded-0 border-0 border-bottom mb-0">
+            <strong>This request was cancelled.</strong>
+            @if (Model.Units.Any())
+            {
+                <text>The reservation on @(Model.Units.Count == 1 ? "its unit" : $"its {Model.Units.Count} units") was cancelled, and @(Model.Units.Count == 1 ? "it is" : "they are") available again.</text>
+            }
+            @if (!string.IsNullOrWhiteSpace(Model.Remarks))
+            {
+                <div class="small mt-1">Reason: @Model.Remarks</div>
             }
         </div>
     }
@@ -160,7 +191,12 @@
                                 <a asp-controller="Assets" asp-action="Details" asp-route-id="@unit.AssetID" class="sab-code">@unit.AssetCode</a>
                                 <span class="text-muted small ms-1">@unit.AssetName</span>
                             </div>
-                            @if (unit.ReturnDate is not null)
+                            @if (unit.ReturnDate is not null && isCancelled)
+                            {
+                                @* Never handed over -- reservation cancelled with the request. *@
+                                <span class="status-pill status-cancelled" title="@unit.ReturnDate.Value.ToString("MMM d, yyyy h:mm tt")">Reservation Cancelled</span>
+                            }
+                            else if (unit.ReturnDate is not null)
                             {
                                 <span class="status-pill status-returned" title="@unit.ReturnDate.Value.ToString("MMM d, yyyy h:mm tt")">Returned</span>
                             }
@@ -198,7 +234,7 @@
         @if (!string.IsNullOrWhiteSpace(Model.Remarks))
         {
             <div class="mt-3 small">
-                <div class="text-muted">Remarks</div>
+                <div class="text-muted">@remarksLabel</div>
                 <div>@Model.Remarks</div>
             </div>
         }
@@ -222,19 +258,16 @@
             </form>
         }
 
-        @if (isOut && canManageAssets && Model.UnitsOut > 0)
+        @* Only what was picked up or delivered can come back. Before that,
+           the request is cancelled instead. *@
+        @if (isAssigned && canManageAssets && Model.UnitsOut > 0)
         {
             <a asp-action="RecordReturn" asp-route-id="@Model.RequestID" class="btn btn-outline-primary">Record Return</a>
         }
 
-        @if (isPending && isMine)
+        @if (canCancel)
         {
-            <form asp-action="Cancel" asp-route-id="@Model.RequestID" method="post" class="d-inline"
-                  onsubmit="return confirm('Cancel this request?');">
-                @Html.AntiForgeryToken()
-                <input type="hidden" name="rowVersionBase64" value="@Convert.ToBase64String(Model.RowVersion)" />
-                <button type="submit" class="btn btn-outline-danger">Cancel Request</button>
-            </form>
+            <a asp-action="Cancel" asp-route-id="@Model.RequestID" class="btn btn-outline-danger">Cancel Request</a>
         }
 
         <span class="flex-grow-1"></span>

@@ -28,13 +28,52 @@
     </div>
 
     <div class="mb-3">
-        <label asp-for="WarrantyInformation" class="form-label"></label>
-        <input asp-for="WarrantyInformation" class="form-control" />
+        <label asp-for="Condition" class="form-label"></label>
+        <select asp-for="Condition" class="form-select"
+                asp-items="Html.GetEnumSelectList<SchoolInventoryManagement.DAL.Entities.Enums.ConditionStatus>()"></select>
+        <div class="form-text">Its physical state right now — for example, mark it Damaged if a crack is found on the shelf.</div>
     </div>
 
-    @* The stored photo path travels hidden, so saving without choosing a
-       new photo keeps the current one. Nobody needs to see or type it. *@
-    <input type="hidden" asp-for="ImageURL" />
+    <div class="mb-3">
+        <label asp-for="AcquisitionCost" class="form-label"></label>
+        <div class="input-group">
+            <span class="input-group-text">₱</span>
+            <input asp-for="AcquisitionCost" type="number" step="0.01" min="0" placeholder="0.00" class="form-control" />
+        </div>
+        <span asp-validation-for="AcquisitionCost" class="text-danger"></span>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="WarrantyInformation" class="form-label"></label>
+        <input asp-for="WarrantyInformation" class="form-control" placeholder="e.g. 1 year, until Mar 2027" />
+    </div>
+
+    @* The current files are not sent back with the form: the server reads
+       them from the database, so saving without choosing a new file keeps
+       them and nobody can swap in a file of their own. *@
+    <div class="mb-3">
+        <label asp-for="WarrantyFile" class="form-label">Warranty photo or file <span class="text-muted">(optional)</span></label>
+        @if (!string.IsNullOrWhiteSpace(Model.WarrantyFileURL))
+        {
+            <div class="mb-2 d-flex align-items-center" style="gap:12px;">
+                <a href="@Model.WarrantyFileURL" target="_blank" rel="noopener">View current warranty file</a>
+                <div class="form-check mb-0">
+                    <input asp-for="RemoveWarrantyFile" class="form-check-input" />
+                    <label asp-for="RemoveWarrantyFile" class="form-check-label small">Remove it</label>
+                </div>
+            </div>
+        }
+        <input asp-for="WarrantyFile" type="file" accept="@SchoolInventoryManagement.Web.Helpers.FileUploads.DocumentAccept"
+               data-max-bytes="@SchoolInventoryManagement.Web.Helpers.FileUploads.MaxBytes" class="form-control" />
+        <div class="form-text">
+            A photo of the warranty card or receipt, or a PDF. Max @SchoolInventoryManagement.Web.Helpers.FileUploads.MaxMegabytes MB.
+            @if (!string.IsNullOrWhiteSpace(Model.WarrantyFileURL))
+            {
+                <text>Choosing a new file replaces the current one.</text>
+            }
+        </div>
+    </div>
+
     <div class="mb-3">
         <label asp-for="ImageFile" class="form-label">Photo <span class="text-muted">(optional)</span></label>
         @if (!string.IsNullOrWhiteSpace(Model.ImageURL))
@@ -43,11 +82,15 @@
                 <img src="@Model.ImageURL" alt="Current photo" class="rounded border" style="max-height:120px;" />
             </div>
         }
-        <input asp-for="ImageFile" type="file" accept="image/jpeg,image/png,image/webp" class="form-control" />
-        @if (!string.IsNullOrWhiteSpace(Model.ImageURL))
-        {
-            <div class="form-text">Leave empty to keep the current photo.</div>
-        }
+        <input asp-for="ImageFile" type="file" accept="@SchoolInventoryManagement.Web.Helpers.FileUploads.ImageAccept"
+               data-max-bytes="@SchoolInventoryManagement.Web.Helpers.FileUploads.MaxBytes" class="form-control" />
+        <div class="form-text">
+            JPG, PNG or WEBP. Max @SchoolInventoryManagement.Web.Helpers.FileUploads.MaxMegabytes MB.
+            @if (!string.IsNullOrWhiteSpace(Model.ImageURL))
+            {
+                <text>Leave empty to keep the current photo.</text>
+            }
+        </div>
     </div>
     <div class="mb-3">
         <label asp-for="BranchID" class="form-label">Branch</label>
@@ -70,6 +113,20 @@
         <div class="form-text">Only locations in the chosen branch are listed.</div>
     </div>
 
+    <div class="mb-3">
+        <label asp-for="DepartmentID" class="form-label">Department</label>
+        <select asp-for="DepartmentID" id="departmentSelect" class="form-select">
+            <option value="">-- Pick a branch first --</option>
+            @foreach (var dept in (List<SchoolInventoryManagement.BLL.DTOs.DepartmentDTO>)ViewBag.DepartmentsByBranch)
+            {
+                <option value="@dept.DepartmentID" data-branch="@dept.BranchID"
+                        selected="@(dept.DepartmentID == Model.DepartmentID)">@dept.DepartmentName</option>
+            }
+        </select>
+        <span asp-validation-for="DepartmentID" class="text-danger"></span>
+        <div class="form-text">Only departments in the chosen branch are listed.</div>
+    </div>
+
     <button type="submit" class="btn btn-primary">Save</button>
     <a asp-action="Details" asp-route-id="@Model.AssetID" class="btn btn-secondary">Cancel</a>
 </form>
@@ -80,52 +137,59 @@
     }
     <script>
         (function () {
-            // Location is chosen within a branch: the list only ever holds
-            // that branch's locations, and stays locked until a branch is
-            // picked. The options are rebuilt rather than hidden, because
-            // some browsers ignore "hidden" on <option>.
+            // ---- Location and department follow branch -----------------
+            // Each list only ever holds the chosen branch's entries, and
+            // stays locked until a branch is picked. Options are rebuilt
+            // rather than hidden, because some browsers ignore "hidden" on
+            // <option>.
             var branchSelect = document.getElementById('branchSelect');
-            var locationSelect = document.getElementById('locationSelect');
-            if (!branchSelect || !locationSelect) return;
+            if (!branchSelect) return;
 
-            var allLocations = Array.from(locationSelect.options)
-                .filter(function (o) { return o.value; })
-                .map(function (o) {
-                    return { value: o.value, text: o.text, branch: o.getAttribute('data-branch') };
-                });
-            var selected = locationSelect.value;
+            function followBranch(select, emptyText) {
+                if (!select) return;
 
-            function rebuild() {
-                var branchId = branchSelect.value;
-                locationSelect.innerHTML = '';
-
-                var placeholder = document.createElement('option');
-                placeholder.value = '';
-                placeholder.text = branchId ? '-- None --' : '-- Pick a branch first --';
-                locationSelect.appendChild(placeholder);
-
-                allLocations
-                    .filter(function (l) { return l.branch === branchId; })
-                    .forEach(function (l) {
-                        var opt = document.createElement('option');
-                        opt.value = l.value;
-                        opt.text = l.text;
-                        if (l.value === selected) opt.selected = true;
-                        locationSelect.appendChild(opt);
+                var all = Array.from(select.options)
+                    .filter(function (o) { return o.value; })
+                    .map(function (o) {
+                        return { value: o.value, text: o.text, branch: o.getAttribute('data-branch') };
                     });
+                var selected = select.value;
 
-                locationSelect.disabled = !branchId;
+                function rebuild() {
+                    var branchId = branchSelect.value;
+                    select.innerHTML = '';
+
+                    var placeholder = document.createElement('option');
+                    placeholder.value = '';
+                    placeholder.text = branchId ? emptyText : '-- Pick a branch first --';
+                    select.appendChild(placeholder);
+
+                    all
+                        .filter(function (x) { return x.branch === branchId; })
+                        .forEach(function (x) {
+                            var opt = document.createElement('option');
+                            opt.value = x.value;
+                            opt.text = x.text;
+                            if (x.value === selected) opt.selected = true;
+                            select.appendChild(opt);
+                        });
+
+                    select.disabled = !branchId;
+                }
+
+                branchSelect.addEventListener('change', function () {
+                    selected = ''; // a new branch means its own entries
+                    rebuild();
+                });
+                select.addEventListener('change', function () {
+                    selected = select.value;
+                });
+
+                rebuild(); // on load too, so an edit or a failed post shows the right list
             }
 
-            branchSelect.addEventListener('change', function () {
-                selected = ''; // a new branch means its own location
-                rebuild();
-            });
-            locationSelect.addEventListener('change', function () {
-                selected = locationSelect.value;
-            });
-
-            rebuild(); // on load too, so an edit or a failed post shows the right list
+            followBranch(document.getElementById('locationSelect'), '-- None --');
+            followBranch(document.getElementById('departmentSelect'), '-- Select Department --');
         })();
     </script>
 }

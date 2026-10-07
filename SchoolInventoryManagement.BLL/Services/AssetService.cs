@@ -84,6 +84,10 @@ namespace SchoolInventoryManagement.BLL.Services
                 throw new ArgumentException("Enter a name for the asset.");
 
             await EnsureLocationInBranchAsync(dto.BranchID, dto.CurrentLocationID);
+            await EnsureDepartmentInBranchAsync(dto.BranchID, dto.DepartmentID);
+
+            EnsureUploadedFile(dto.ImageURL, PhotoFolder, current: null);
+            EnsureUploadedFile(dto.WarrantyFileURL, WarrantyFolder, current: null);
 
             var (prefix, next) = await NextCodeForModelAsync(dto.ModelID);
             if (next > AssetCodes.MaxNumber)
@@ -91,9 +95,10 @@ namespace SchoolInventoryManagement.BLL.Services
                     $"Codes for {prefix} have reached {AssetCodes.Format(prefix, AssetCodes.MaxNumber)}. " +
                     "Give the category a new prefix to keep registering.");
 
+            var code = AssetCodes.Format(prefix, next);
             var asset = new Asset
             {
-                AssetCode = AssetCodes.Format(prefix, next),
+                AssetCode = code,
                 ModelID = dto.ModelID,
                 AssetName = dto.AssetName.Trim(),
                 Description = dto.Description,
@@ -101,12 +106,14 @@ namespace SchoolInventoryManagement.BLL.Services
                 AcquisitionDate = dto.AcquisitionDate,
                 AcquisitionCost = dto.AcquisitionCost,
                 WarrantyInformation = dto.WarrantyInformation,
+                WarrantyFileURL = dto.WarrantyFileURL,
                 ImageURL = dto.ImageURL,
-                QRCodeData = dto.QRCodeData,
+                QRCodeData = dto.CreateQr ? code : null,
                 Condition = dto.Condition,
                 Status = AssetStatus.Available,
                 CurrentLocationID = dto.CurrentLocationID,
-                BranchID = dto.BranchID
+                BranchID = dto.BranchID,
+                DepartmentID = dto.DepartmentID
             };
 
             _context.Assets.Add(asset);
@@ -135,6 +142,9 @@ namespace SchoolInventoryManagement.BLL.Services
                 throw new KeyNotFoundException("Branch not found.");
 
             await EnsureLocationInBranchAsync(dto.BranchID, dto.CurrentLocationID);
+            await EnsureDepartmentInBranchAsync(dto.BranchID, dto.DepartmentID);
+
+            EnsureUploadedFile(dto.WarrantyFileURL, WarrantyFolder, current: null);
 
             // One serial per line, in code order. Blank lines are dropped so
             // a trailing newline from a spreadsheet paste does not count.
@@ -202,10 +212,13 @@ namespace SchoolInventoryManagement.BLL.Services
                 AcquisitionDate = dto.AcquisitionDate,
                 AcquisitionCost = dto.AcquisitionCost,
                 WarrantyInformation = dto.WarrantyInformation,
+                WarrantyFileURL = dto.WarrantyFileURL,
+                QRCodeData = dto.CreateQr ? u.Code : null,
                 Condition = dto.Condition,
                 Status = AssetStatus.Available,
                 CurrentLocationID = dto.CurrentLocationID,
-                BranchID = dto.BranchID
+                BranchID = dto.BranchID,
+                DepartmentID = dto.DepartmentID
             }).ToList();
 
             _context.Assets.AddRange(assets);
@@ -229,6 +242,41 @@ namespace SchoolInventoryManagement.BLL.Services
                 l.LocationID == locationId.Value && l.BranchID == branchId);
             if (!locationInBranch)
                 throw new ArgumentException("That location does not belong to the selected branch.");
+        }
+
+        // Same rule for the department: required, and it has to be one of
+        // the chosen branch's departments.
+        private async Task EnsureDepartmentInBranchAsync(int? branchId, int? departmentId)
+        {
+            if (departmentId is null || departmentId.Value <= 0)
+                throw new ArgumentException("Pick a department.");
+
+            var departmentInBranch = await _context.Departments.AnyAsync(d =>
+                d.DepartmentID == departmentId.Value && d.BranchID == branchId);
+            if (!departmentInBranch)
+                throw new ArgumentException("That department does not belong to the selected branch.");
+        }
+
+        // Where the Web project saves uploads (AssetsController's PhotoFolder
+        // and WarrantyFolder). Every stored file address must be one of
+        // ours: a file saved there has been through the 3 MB, type and
+        // content checks.
+        private const string PhotoFolder = "/images/assets/";
+        private const string WarrantyFolder = "/uploads/warranty/";
+
+        // Refuses a file address that did not come from our own upload
+        // folder -- a link to some other site, or a "javascript:" link --
+        // unless it is the one the asset already has. The upload form never
+        // produces one; only a hand-built post could.
+        private static void EnsureUploadedFile(string? url, string folder, string? current)
+        {
+            if (string.IsNullOrEmpty(url) || url == current)
+                return;
+
+            var name = url.StartsWith(folder, StringComparison.Ordinal) ? url.Substring(folder.Length) : null;
+            var safe = !string.IsNullOrEmpty(name) && name.All(ch => char.IsLetterOrDigit(ch) || ch == '.');
+            if (!safe)
+                throw new ArgumentException("That file was not uploaded through this system.");
         }
 
         // Two people registering in the same category at the same moment can
@@ -320,15 +368,27 @@ namespace SchoolInventoryManagement.BLL.Services
                 throw new InvalidOperationException(
                     "This asset is out on a request and cannot be edited until it's returned.");
 
+            EnsureUploadedFile(dto.ImageURL, PhotoFolder, current: asset.ImageURL);
+            EnsureUploadedFile(dto.WarrantyFileURL, WarrantyFolder, current: asset.WarrantyFileURL);
+
+            await EnsureDepartmentInBranchAsync(dto.BranchID, dto.DepartmentID);
+
+            if (dto.AcquisitionCost < 0)
+                throw new ArgumentException("The cost cannot be negative.");
+
             _context.Entry(asset).Property(a => a.RowVersion).OriginalValue = dto.RowVersion;
 
             asset.AssetName = dto.AssetName;
             asset.Description = dto.Description;
             asset.SerialNumber = dto.SerialNumber;
+            asset.Condition = dto.Condition;
             asset.WarrantyInformation = dto.WarrantyInformation;
+            asset.WarrantyFileURL = dto.WarrantyFileURL;
             asset.ImageURL = dto.ImageURL;
             asset.CurrentLocationID = dto.CurrentLocationID;
             asset.BranchID = dto.BranchID;
+            asset.DepartmentID = dto.DepartmentID;
+            asset.AcquisitionCost = dto.AcquisitionCost;
 
             try
             {
@@ -380,6 +440,14 @@ namespace SchoolInventoryManagement.BLL.Services
                 throw new InvalidOperationException(
                     "This asset is disposed. Use the Disposal service to restore it — this also updates the disposal record.");
 
+            // Out on a request -- reserved and waiting (InTransit) or with
+            // someone (Assigned, Overdue). Changing its status here, say to
+            // Under Maintenance, would pull it out from under the request.
+            if (asset.Status == AssetStatus.InTransit || asset.Status == AssetStatus.Assigned ||
+                asset.Status == AssetStatus.Overdue)
+                throw new InvalidOperationException(
+                    "This asset is out on a request. Return it, or cancel the request, before changing its status.");
+
             // Overdue is worked out from the request's return time, and a
             // return clears it. Setting it by hand would skip the alerts.
             if (newStatus == AssetStatus.Overdue)
@@ -389,6 +457,64 @@ namespace SchoolInventoryManagement.BLL.Services
             _context.Entry(asset).Property(a => a.RowVersion).OriginalValue = rowVersion;
 
             asset.Status = newStatus;
+
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                throw new ConcurrencyConflictException(
+                    "This asset was modified by someone else. Please reload and try again.");
+            }
+        }
+
+        // Under Maintenance -> Available, and the condition becomes Repaired
+        // in the same save, so the item never shows as fixed but unavailable
+        // (or available but still marked Damaged).
+        public async Task ReturnFromMaintenanceAsync(int assetId, byte[] rowVersion, int actingUserId)
+        {
+            await PermissionHelper.EnsureIsAssetManagerAsync(_context, actingUserId);
+
+            var asset = await _context.Assets.FindAsync(assetId);
+            if (asset is null)
+                throw new KeyNotFoundException("Asset not found.");
+
+            if (asset.Status != AssetStatus.UnderMaintenance)
+                throw new InvalidOperationException(
+                    "Only an asset that is under maintenance can be returned to service.");
+
+            _context.Entry(asset).Property(a => a.RowVersion).OriginalValue = rowVersion;
+
+            asset.Status = AssetStatus.Available;
+            asset.Condition = ConditionStatus.Repaired;
+
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                throw new ConcurrencyConflictException(
+                    "This asset was modified by someone else. Please reload and try again.");
+            }
+        }
+
+        // Gives an asset that was registered without a QR its QR. What is
+        // stored is the asset code the QR points to; null means none yet.
+        public async Task CreateQrCodeAsync(int assetId, int actingUserId)
+        {
+            await PermissionHelper.EnsureIsAssetManagerAsync(_context, actingUserId);
+
+            var asset = await _context.Assets.FindAsync(assetId);
+            if (asset is null)
+                throw new KeyNotFoundException("Asset not found.");
+
+            // Already has one -- a double click or a stale page.
+            if (!string.IsNullOrEmpty(asset.QRCodeData))
+                return;
+
+            asset.QRCodeData = asset.AssetCode;
 
             try
             {
