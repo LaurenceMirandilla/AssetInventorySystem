@@ -21,6 +21,7 @@ namespace SchoolInventoryManagement.BLL.Mappings
                 DepartmentName = request.Department.DepartmentName,
                 ItemName = request.ItemName,
                 Quantity = request.Quantity,
+                EstimatedUnitPrice = request.EstimatedUnitPrice,
                 Reason = request.Reason,
                 NeededBy = request.NeededBy,
                 RequestDate = request.RequestDate,

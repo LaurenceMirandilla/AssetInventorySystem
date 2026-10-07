@@ -232,17 +232,17 @@ namespace SchoolInventoryManagement.Web.Controllers
 
             ViewBag.Request = request;
 
+            // Nothing is ticked here: the page runs Auto-fill as it loads
+            // (see _ApprovalUnitPicker), so the common case is still just
+            // "check and approve", using the same rule as the button.
             if (request.RequestType == RequestType.Borrow)
             {
-                // First N units of each line ticked, so the common case is
-                // just "check and approve".
-                var lines = await BuildApprovalLinesAsync(request, null);
+                await BuildApprovalLinesAsync(request, null);
                 await PopulateBorrowApprovalDropdownsAsync();
 
                 return View("ApproveBorrow", new ApproveBorrowRequestViewModel
                 {
                     RequestID = id,
-                    AssetIDs = DefaultPicks(lines),
                     DepartmentID = request.DepartmentID,
                     // The requester's preferred pickup point, if they gave one.
                     PickupLocationID = request.RequestedLocationID,
@@ -250,11 +250,10 @@ namespace SchoolInventoryManagement.Web.Controllers
                 });
             }
 
-            var transferLines = await BuildApprovalLinesAsync(request, null);
+            await BuildApprovalLinesAsync(request, null);
             return View("ApproveTransfer", new ApproveTransferRequestViewModel
             {
                 RequestID = id,
-                AssetIDs = DefaultPicks(transferLines),
                 RowVersionBase64 = RowVersionHelper.ToBase64(request.RowVersion)
             });
         }
@@ -296,7 +295,7 @@ namespace SchoolInventoryManagement.Web.Controllers
                 await _fulfillmentService.ApproveBorrowAsync(
                     id,
                     model.AssetIDs,
-                    model.ConditionOnAssignment,
+                    null, // each unit is recorded in the condition it is in
                     model.DepartmentID,
                     pickupLocationId!.Value,
                     RowVersionHelper.FromBase64(model.RowVersionBase64),
@@ -326,7 +325,7 @@ namespace SchoolInventoryManagement.Web.Controllers
                 await _fulfillmentService.ApproveTransferAsync(
                     id,
                     model.AssetIDs,
-                    model.ConditionOnTransfer,
+                    null, // each unit keeps the condition it is in
                     RowVersionHelper.FromBase64(model.RowVersionBase64),
                     CurrentUserId,
                     model.Remarks);
@@ -659,7 +658,10 @@ namespace SchoolInventoryManagement.Web.Controllers
         // One entry per line of the ticket: its model, how many to pick,
         // and the Available units of that model. For a Transfer, units
         // already at the destination are left out -- sending one to where
-        // it already is would only fail. Also put in ViewBag.Lines.
+        // it already is would only fail. Also put in ViewBag.Lines, with
+        // what Auto-fill ranks by: the target location (the Transfer
+        // destination, or the requester's pickup point) and each
+        // location's branch.
         private async Task<List<ApprovalLineChoice>> BuildApprovalLinesAsync(
             AssetRequestResponseDTO request, List<int>? ticked)
         {
@@ -682,32 +684,26 @@ namespace SchoolInventoryManagement.Web.Controllers
                     Quantity = item.Quantity,
                     Units = candidates
                         .OrderBy(a => a.AssetCode)
-                        .Select(a => new SelectListItem
+                        .Select(a => new ApprovalUnitOption
                         {
-                            Value = a.AssetID.ToString(),
-                            Text = $"{a.AssetCode} — {a.Condition}, at {a.CurrentLocationName ?? "no location"}",
+                            AssetID = a.AssetID,
+                            AssetCode = a.AssetCode,
+                            Condition = a.Condition,
+                            LocationID = a.CurrentLocationID,
+                            LocationName = a.CurrentLocationName,
+                            BranchID = a.BranchID,
                             Selected = ticked?.Contains(a.AssetID) ?? false
                         })
                         .ToList()
                 });
             }
 
+            var locations = await _locationService.GetAllLocationsAsync();
+            ViewBag.LocationBranches = locations.ToDictionary(l => l.LocationID, l => l.BranchID);
+            ViewBag.TargetLocationID = request.RequestedLocationID;
+
             ViewBag.Lines = lines;
             return lines;
-        }
-
-        // The first N units of every line, N being the amount asked for.
-        private static List<int> DefaultPicks(List<ApprovalLineChoice> lines)
-        {
-            var picks = lines
-                .SelectMany(l => l.Units.Take(l.Quantity).Select(u => int.Parse(u.Value)))
-                .ToList();
-
-            foreach (var line in lines)
-                foreach (var unit in line.Units)
-                    unit.Selected = picks.Contains(int.Parse(unit.Value));
-
-            return picks;
         }
 
         private async Task PopulateBorrowApprovalDropdownsAsync()

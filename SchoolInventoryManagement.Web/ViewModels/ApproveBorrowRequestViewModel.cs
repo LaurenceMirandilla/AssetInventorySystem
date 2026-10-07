@@ -1,6 +1,5 @@
 ﻿using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
-using Microsoft.AspNetCore.Mvc.Rendering;
 using SchoolInventoryManagement.DAL.Entities.Enums;
 
 namespace SchoolInventoryManagement.Web.ViewModels
@@ -9,16 +8,14 @@ namespace SchoolInventoryManagement.Web.ViewModels
     // line, staff tick exactly that many units of that model, confirm the
     // department they are issued to, and -- unless the requester already
     // named a pickup spot -- say where they can collect them. The request
-    // is then In Transit until they do.
+    // is then In Transit until they do. No condition is asked for: each
+    // unit is recorded as it stands.
     public class ApproveBorrowRequestViewModel
     {
         public int RequestID { get; set; }
 
         // Every unit ticked, across all lines.
         public List<int> AssetIDs { get; set; } = new();
-
-        [Required]
-        public ConditionStatus ConditionOnAssignment { get; set; } = ConditionStatus.Good;
 
         [Required]
         public int DepartmentID { get; set; }
@@ -42,6 +39,20 @@ namespace SchoolInventoryManagement.Web.ViewModels
         public int ModelID { get; set; }
         public string ModelName { get; set; } = null!;
         public int Quantity { get; set; }
-        public List<SelectListItem> Units { get; set; } = new();
+        public List<ApprovalUnitOption> Units { get; set; } = new();
+    }
+
+    // One Available unit on an approval line, with what the page's filters
+    // and Auto-fill need: where it is (location and branch) and its
+    // condition.
+    public class ApprovalUnitOption
+    {
+        public int AssetID { get; set; }
+        public string AssetCode { get; set; } = null!;
+        public ConditionStatus Condition { get; set; }
+        public int? LocationID { get; set; }
+        public string? LocationName { get; set; }
+        public int? BranchID { get; set; }
+        public bool Selected { get; set; }
     }
 }

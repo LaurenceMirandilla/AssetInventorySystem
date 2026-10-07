@@ -104,7 +104,8 @@ namespace SchoolInventoryManagement.Web.Controllers
             return View(new CreateNewItemRequestViewModel
             {
                 ItemNames = new() { itemName ?? "" },
-                Quantities = new() { 1 }
+                Quantities = new() { 1 },
+                EstimatedPrices = new() { null }
             });
         }
 
@@ -113,13 +114,14 @@ namespace SchoolInventoryManagement.Web.Controllers
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Create(CreateNewItemRequestViewModel model)
         {
-            // Each row is a name and an amount, posted as two parallel
-            // lists. Blank rows (an added "+" row left empty) are dropped;
-            // at least one item has to be named.
+            // Each row is a name, a quantity and an estimated price, posted
+            // as three parallel lists. Blank rows (an added "+" row left
+            // empty) are dropped; at least one item has to be named.
             var items = model.ItemNames
                 .Select((name, i) => (
                     Name: name?.Trim() ?? "",
-                    Quantity: i < model.Quantities.Count ? model.Quantities[i] : null))
+                    Quantity: i < model.Quantities.Count ? model.Quantities[i] : null,
+                    Price: i < model.EstimatedPrices.Count ? model.EstimatedPrices[i] : null))
                 .Where(item => item.Name.Length > 0)
                 .ToList();
 
@@ -128,7 +130,9 @@ namespace SchoolInventoryManagement.Web.Controllers
             else if (items.Any(item => item.Name.Length > 150))
                 ModelState.AddModelError(nameof(model.ItemNames), "An item name can be at most 150 characters.");
             else if (items.Any(item => item.Quantity is null or < 1 or > 1000))
-                ModelState.AddModelError(nameof(model.ItemNames), "Give each item an amount from 1 to 1000.");
+                ModelState.AddModelError(nameof(model.ItemNames), "Give each item a quantity from 1 to 1000.");
+            else if (items.Any(item => item.Price is null or <= 0))
+                ModelState.AddModelError(nameof(model.ItemNames), "Give each item an estimated price.");
 
             // Caught here so the message sits under the field; the service
             // checks the same rule for anything that bypasses this form.
@@ -144,6 +148,7 @@ namespace SchoolInventoryManagement.Web.Controllers
                 {
                     ItemName = item.Name,
                     Quantity = item.Quantity!.Value,
+                    EstimatedUnitPrice = item.Price,
                     Reason = model.Reason,
                     NeededBy = model.NeededBy
                 }).ToList();

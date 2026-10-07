@@ -32,7 +32,8 @@
 }
 
 <div class="alert alert-info">
-    Tick the units to send — exactly the amount asked for on each line. Units
+    Tick the units to send — exactly the amount asked for on each line. The
+    best units are already ticked for you (see Auto-fill below). Units
     already at the destination are not listed. Approving reserves them to the
     requester; the request is then <strong>In Transit</strong> and stays under
     Approvals until an Asset Officer or Administrator marks it delivered, and
@@ -47,18 +48,6 @@
 
     <h5 class="mb-2">Units to send</h5>
     <partial name="_ApprovalUnitPicker" model="lines" />
-
-    <div class="mb-3">
-        <label asp-for="ConditionOnTransfer" class="form-label">
-            Condition at hand-over <span class="text-muted">(optional)</span>
-        </label>
-        <select asp-for="ConditionOnTransfer"
-                asp-items="Html.GetEnumSelectList<SchoolInventoryManagement.DAL.Entities.Enums.ConditionStatus>()"
-                class="form-select">
-            <option value="">-- Leave unchanged --</option>
-        </select>
-        <div class="form-text">Leaving this blank keeps each unit's condition as recorded.</div>
-    </div>
 
     <div class="mb-3">
         <label asp-for="Remarks" class="form-label">Notes <span class="text-muted">(optional)</span></label>

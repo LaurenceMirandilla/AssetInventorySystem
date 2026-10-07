@@ -11,8 +11,11 @@ namespace SchoolInventoryManagement.Web.ViewModels
         // One entry per row. Starts with one empty row.
         public List<string?> ItemNames { get; set; } = new() { "" };
 
-        // The amount for each row, in the same order as ItemNames.
+        // The quantity for each row, in the same order as ItemNames.
         public List<int?> Quantities { get; set; } = new() { 1 };
+
+        // The estimated price of one, for each row, in the same order.
+        public List<decimal?> EstimatedPrices { get; set; } = new() { null };
 
         [Required(ErrorMessage = "Tell us why it is needed.")]
         [MaxLength(500)]

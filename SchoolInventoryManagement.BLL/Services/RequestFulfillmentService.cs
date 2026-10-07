@@ -47,7 +47,7 @@ namespace SchoolInventoryManagement.BLL.Services
         }
 
         public async Task ApproveBorrowAsync(
-            int requestId, List<int> assetIds, ConditionStatus conditionOnAssignment,
+            int requestId, List<int> assetIds, ConditionStatus? conditionOnAssignment,
             int departmentId, int pickupLocationId, byte[] requestRowVersion,
             int actingUserId, string? remarks)
         {
@@ -83,10 +83,11 @@ namespace SchoolInventoryManagement.BLL.Services
                     // remember where it was.
                     var origin = unit.CurrentLocationID;
 
+                    // No condition given: record each unit as it stands.
                     await _assignmentService.AssignAssetAsync(
                         unit.AssetID,
                         request.RequestedByUser.UserID,
-                        conditionOnAssignment,
+                        conditionOnAssignment ?? unit.Condition,
                         departmentId,
                         actingUserId,
                         remarks,

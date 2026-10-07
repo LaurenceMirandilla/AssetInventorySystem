@@ -32,7 +32,8 @@
                 <tr>
                     <th>#</th>
                     <th>Item</th>
-                    <th class="text-end">Amount</th>
+                    <th class="text-end">Quantity</th>
+                    <th class="text-end">Est. total</th>
                     <th>Needed by</th>
                     <th>Requested by</th>
                     <th>Stage</th>
@@ -55,6 +56,7 @@
                             }
                         </td>
                         <td class="text-end">@request.Quantity</td>
+                        <td class="text-end text-nowrap">@DisplayText.Peso(request.EstimatedTotal)</td>
                         <td class="@(late ? "text-danger fw-semibold" : "")">
                             @(request.NeededBy?.ToString("MMM d, yyyy") ?? "—")
                             @if (late)

@@ -53,6 +53,9 @@ namespace SchoolInventoryManagement.BLL.Services
         private const int MaxItemsPerSubmission = 20;
         private const int MaxQuantity = 1000;
 
+        // The largest value the decimal(12,2) column holds.
+        private const decimal MaxUnitPrice = 9999999999.99m;
+
         // The stage that follows each one when it is approved / moved on.
         private static readonly Dictionary<NewItemStatus, NewItemStatus> NextStage = new()
         {
@@ -155,7 +158,12 @@ namespace SchoolInventoryManagement.BLL.Services
                     throw new ArgumentException("An item name can be at most 150 characters.");
 
                 if (dto.Quantity < 1 || dto.Quantity > MaxQuantity)
-                    throw new ArgumentException($"The amount for {dto.ItemName.Trim()} must be from 1 to {MaxQuantity}.");
+                    throw new ArgumentException($"The quantity for {dto.ItemName.Trim()} must be from 1 to {MaxQuantity}.");
+
+                if (dto.EstimatedUnitPrice is null or <= 0)
+                    throw new ArgumentException($"Give an estimated price for {dto.ItemName.Trim()}.");
+                if (dto.EstimatedUnitPrice > MaxUnitPrice)
+                    throw new ArgumentException($"The estimated price for {dto.ItemName.Trim()} is too large.");
 
                 if (string.IsNullOrWhiteSpace(dto.Reason))
                     throw new ArgumentException("Tell us why it is needed.");
@@ -182,6 +190,7 @@ namespace SchoolInventoryManagement.BLL.Services
                     DepartmentID = requester.DepartmentID,
                     ItemName = dto.ItemName.Trim(),
                     Quantity = dto.Quantity,
+                    EstimatedUnitPrice = decimal.Round(dto.EstimatedUnitPrice!.Value, 2),
                     Reason = dto.Reason.Trim(),
                     NeededBy = dto.NeededBy!.Value.Date,
                     RequestDate = now,

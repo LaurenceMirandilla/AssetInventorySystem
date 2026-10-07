@@ -1,64 +1,287 @@
 ﻿@model List<SchoolInventoryManagement.Web.ViewModels.ApprovalLineChoice>
+@using SchoolInventoryManagement.DAL.Entities.Enums
 @* The unit picker shared by ApproveBorrow and ApproveTransfer: one card per
    line of the ticket, a checkbox per Available unit of that model. Each
    line allows exactly its amount to be ticked -- once it is reached, the
-   rest of that line locks. The service checks the same thing. *@
+   rest of that line locks. The service checks the same thing.
 
-@foreach (var line in Model)
-{
-    <div class="card mb-3 unit-line" data-quantity="@line.Quantity">
-        <div class="card-body">
-            <div class="d-flex justify-content-between align-items-center mb-2">
-                <div class="fw-semibold">@line.ModelName</div>
-                <div class="small">
-                    <span class="line-count">0</span> of @line.Quantity picked
+   Every line has its own filters (search, location, condition), listing
+   only where that model's units actually are, and its own Auto-fill.
+   Filters only hide units from view; a ticked unit always stays visible
+   so nothing is picked out of sight.
+
+   Auto-fill picks, for its line, the best units among those its filters
+   leave showing:
+     1. closest to where they are going -- already at the target location,
+        then in the target's branch, then anywhere else;
+     2. then best condition (New, Excellent, Good, Repaired, Fair, Poor);
+     3. then lowest code.
+   Damaged units are never auto-picked, though they can still be ticked by
+   hand. The target is the pickup location for a Borrow (the dropdown on
+   the page when the approver chooses it) and the destination for a
+   Transfer. Every line is auto-filled as the page loads when nothing is
+   ticked yet. *@
+@{
+    var targetLocationId = ViewBag.TargetLocationID as int?;
+    var locationBranches = ViewBag.LocationBranches as Dictionary<int, int> ?? new Dictionary<int, int>();
+
+    // Lower is better; Auto-fill sorts by it. Damaged is left out entirely.
+    int ConditionRank(ConditionStatus c) => c switch
+    {
+        ConditionStatus.New => 0,
+        ConditionStatus.Excellent => 1,
+        ConditionStatus.Good => 2,
+        ConditionStatus.Repaired => 3,
+        ConditionStatus.Fair => 4,
+        ConditionStatus.Poor => 5,
+        _ => 9
+    };
+}
+
+<div id="unitPicker"
+     data-target-location="@targetLocationId"
+     data-location-branches="@System.Text.Json.JsonSerializer.Serialize(locationBranches.ToDictionary(kv => kv.Key.ToString(), kv => kv.Value))">
+
+    @if (Model.Any(l => l.Units.Any()))
+    {
+        <div class="form-text mb-2">
+            Each model has its own filters and Auto-fill. Auto-fill picks the units closest to where
+            they're going, then in the best condition, from the units that model's filters are showing.
+            Damaged units are skipped.
+        </div>
+    }
+
+    @foreach (var line in Model)
+    {
+        // This model's own choices: only the places its units are, and
+        // only the conditions they are in.
+        var locationChoices = line.Units
+            .Where(u => u.LocationID is not null)
+            .GroupBy(u => u.LocationID!.Value)
+            .Select(g => new { Id = g.Key, Name = g.First().LocationName })
+            .OrderBy(x => x.Name)
+            .ToList();
+        var anyWithoutLocation = line.Units.Any(u => u.LocationID is null);
+        var conditionChoices = line.Units.Select(u => u.Condition).Distinct().OrderBy(c => c).ToList();
+
+        <div class="card mb-3 unit-line" data-quantity="@line.Quantity">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <div class="fw-semibold">@line.ModelName</div>
+                    <div class="small">
+                        <span class="line-count">0</span> of @line.Quantity picked
+                    </div>
                 </div>
-            </div>
 
-            @if (line.Units.Count < line.Quantity)
-            {
-                <div class="alert alert-warning py-2 mb-2">
-                    Only @line.Units.Count unit@(line.Units.Count == 1 ? " is" : "s are") available now,
-                    but @line.Quantity @(line.Quantity == 1 ? "was" : "were") asked for.
-                    This request cannot be approved as it stands — reject it with a note, or wait for units to come back.
-                </div>
-            }
-
-            <div class="row row-cols-1 row-cols-md-2 g-1">
-                @foreach (var unit in line.Units)
+                @if (line.Units.Count < line.Quantity)
                 {
-                    <div class="col">
-                        <label class="form-check">
-                            <input type="checkbox" class="form-check-input unit-box" name="AssetIDs"
-                                   value="@unit.Value" checked="@unit.Selected" />
-                            <span class="form-check-label small">@unit.Text</span>
-                        </label>
+                    <div class="alert alert-warning py-2 mb-2">
+                        Only @line.Units.Count unit@(line.Units.Count == 1 ? " is" : "s are") available now,
+                        but @line.Quantity @(line.Quantity == 1 ? "was" : "were") asked for.
+                        This request cannot be approved as it stands — reject it with a note, or wait for units to come back.
                     </div>
                 }
+
+                @if (line.Units.Any())
+                {
+                    <div class="d-flex flex-wrap align-items-center mb-2 pb-2 border-bottom" style="gap:8px;">
+                        <input type="search" class="form-control form-control-sm line-search" style="width:160px;"
+                               placeholder="Search code…" autocomplete="off" />
+                        <select class="form-select form-select-sm line-location" style="width:auto;">
+                            <option value="">All locations</option>
+                            @foreach (var l in locationChoices)
+                            {
+                                <option value="@l.Id">@l.Name</option>
+                            }
+                            @if (anyWithoutLocation)
+                            {
+                                <option value="none">No location</option>
+                            }
+                        </select>
+                        <select class="form-select form-select-sm line-condition" style="width:auto;">
+                            <option value="">All conditions</option>
+                            @foreach (var c in conditionChoices)
+                            {
+                                <option value="@c">@DisplayText.Humanize(c.ToString())</option>
+                            }
+                        </select>
+                        <button type="button" class="btn btn-link btn-sm p-0 line-clear-filters">Clear filters</button>
+
+                        <span class="flex-grow-1"></span>
+
+                        <button type="button" class="btn btn-outline-primary btn-sm line-autofill">Auto-fill</button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm line-untick">Untick all</button>
+                    </div>
+                }
+
+                <div class="line-short alert alert-warning py-2 mb-2 d-none"></div>
+
+                <div class="row row-cols-1 row-cols-md-2 g-1">
+                    @foreach (var unit in line.Units)
+                    {
+                        <div class="col unit-row"
+                             data-code="@unit.AssetCode.ToLowerInvariant()"
+                             data-location="@(unit.LocationID?.ToString() ?? "none")"
+                             data-branch="@unit.BranchID"
+                             data-condition="@unit.Condition"
+                             data-condition-rank="@ConditionRank(unit.Condition)">
+                            <label class="form-check">
+                                <input type="checkbox" class="form-check-input unit-box" name="AssetIDs"
+                                       value="@unit.AssetID" checked="@unit.Selected" />
+                                <span class="form-check-label small">
+                                    <span class="sab-code">@unit.AssetCode</span>
+                                    — <span class="@(unit.Condition == ConditionStatus.Damaged || unit.Condition == ConditionStatus.Poor ? "text-danger" : "")">@DisplayText.Humanize(unit.Condition.ToString())</span>,
+                                    at @(unit.LocationName ?? "no location")
+                                </span>
+                            </label>
+                        </div>
+                    }
+                </div>
+                <div class="line-hidden text-muted small mt-1 d-none"></div>
             </div>
         </div>
-    </div>
-}
+    }
+</div>
 
 <script>
     (function () {
-        // Per line: count the ticks, and lock the unticked boxes once the
-        // amount is reached so no line can be over-picked.
-        document.querySelectorAll('.unit-line').forEach(function (line) {
+        var picker = document.getElementById('unitPicker');
+        if (!picker) return;
+
+        var branchOf = JSON.parse(picker.getAttribute('data-location-branches') || '{}');
+
+        // Borrow with no pickup point from the requester: the approver's
+        // dropdown decides. Otherwise the fixed target from the server.
+        var pickupSelect = document.getElementById('PickupLocationID');
+        function targetLocation() {
+            return (pickupSelect && pickupSelect.value) || picker.getAttribute('data-target-location') || '';
+        }
+
+        function nearness(row, target) {
+            if (!target) return 0;
+            if (row.getAttribute('data-location') === target) return 0;
+            var targetBranch = branchOf[target];
+            if (targetBranch !== undefined && row.getAttribute('data-branch') === String(targetBranch)) return 1;
+            return 2;
+        }
+
+        // Everything below works on one line (one model) at a time.
+        function setUpLine(line) {
             var quantity = parseInt(line.getAttribute('data-quantity'), 10);
-            var boxes = Array.from(line.querySelectorAll('.unit-box'));
-            var counter = line.querySelector('.line-count');
+            var rows = Array.from(line.querySelectorAll('.unit-row'));
+            var boxes = rows.map(function (r) { return r.querySelector('.unit-box'); });
+            var search = line.querySelector('.line-search');
+            var locationFilter = line.querySelector('.line-location');
+            var conditionFilter = line.querySelector('.line-condition');
+            var short = line.querySelector('.line-short');
+            var hiddenNote = line.querySelector('.line-hidden');
+
+            // Re-ranks on a new pickup point only while the picks are still
+            // Auto-fill's own -- never over a hand-made choice.
+            var autoFilled = false;
 
             function sync() {
                 var ticked = boxes.filter(function (b) { return b.checked; }).length;
+                var counter = line.querySelector('.line-count');
                 counter.textContent = ticked;
                 counter.parentElement.classList.toggle('text-success', ticked === quantity);
                 counter.parentElement.classList.toggle('text-danger', ticked !== quantity);
                 boxes.forEach(function (b) { if (!b.checked) b.disabled = ticked >= quantity; });
             }
 
-            boxes.forEach(function (b) { b.addEventListener('change', sync); });
-            sync();
-        });
+            function matches(row) {
+                var text = (search && search.value || '').trim().toLowerCase();
+                if (text && row.getAttribute('data-code').indexOf(text) === -1) return false;
+                if (locationFilter && locationFilter.value && row.getAttribute('data-location') !== locationFilter.value) return false;
+                if (conditionFilter && conditionFilter.value && row.getAttribute('data-condition') !== conditionFilter.value) return false;
+                return true;
+            }
+
+            function applyFilters() {
+                var hidden = 0;
+                rows.forEach(function (row) {
+                    var show = row.querySelector('.unit-box').checked || matches(row);
+                    row.classList.toggle('d-none', !show);
+                    if (!show) hidden++;
+                });
+                hiddenNote.textContent = hidden ? hidden + ' more unit' + (hidden === 1 ? '' : 's') + ' hidden by the filters.' : '';
+                hiddenNote.classList.toggle('d-none', !hidden);
+            }
+
+            function autoFill() {
+                var target = targetLocation();
+                boxes.forEach(function (b) { b.checked = false; b.disabled = false; });
+
+                var candidates = rows
+                    .filter(function (r) { return matches(r) && r.getAttribute('data-condition') !== 'Damaged'; })
+                    .sort(function (a, b) {
+                        return (nearness(a, target) - nearness(b, target))
+                            || (parseInt(a.getAttribute('data-condition-rank'), 10) - parseInt(b.getAttribute('data-condition-rank'), 10))
+                            || a.getAttribute('data-code').localeCompare(b.getAttribute('data-code'));
+                    });
+
+                candidates.slice(0, quantity).forEach(function (r) { r.querySelector('.unit-box').checked = true; });
+
+                var picked = Math.min(candidates.length, quantity);
+                short.textContent = picked < quantity && rows.length >= quantity
+                    ? 'Auto-fill found only ' + picked + ' suitable unit' + (picked === 1 ? '' : 's') +
+                      ' with these filters (Damaged units are skipped). Clear the filters or tick the rest by hand.'
+                    : '';
+                short.classList.toggle('d-none', !short.textContent);
+
+                sync();
+                applyFilters();
+                autoFilled = true;
+            }
+
+            boxes.forEach(function (b) {
+                b.addEventListener('change', function () {
+                    autoFilled = false;
+                    short.classList.add('d-none');
+                    sync();
+                    applyFilters();
+                });
+            });
+
+            [search, locationFilter, conditionFilter].forEach(function (el) {
+                if (!el) return;
+                el.addEventListener('input', applyFilters);
+                el.addEventListener('change', applyFilters);
+            });
+
+            var clear = line.querySelector('.line-clear-filters');
+            if (clear) clear.addEventListener('click', function () {
+                search.value = ''; locationFilter.value = ''; conditionFilter.value = '';
+                applyFilters();
+            });
+
+            var fill = line.querySelector('.line-autofill');
+            if (fill) fill.addEventListener('click', autoFill);
+
+            var untick = line.querySelector('.line-untick');
+            if (untick) untick.addEventListener('click', function () {
+                boxes.forEach(function (b) { b.checked = false; });
+                short.classList.add('d-none');
+                autoFilled = false;
+                sync();
+                applyFilters();
+            });
+
+            if (pickupSelect) pickupSelect.addEventListener('change', function () {
+                if (autoFilled) autoFill();
+            });
+
+            return { autoFill: autoFill, sync: sync, applyFilters: applyFilters };
+        }
+
+        var lines = Array.from(picker.querySelectorAll('.unit-line')).map(setUpLine);
+
+        // First visit: nothing ticked, so every line is filled. After a
+        // failed post the approver's own ticks come back and are kept.
+        if (picker.querySelector('.unit-box:checked')) {
+            lines.forEach(function (l) { l.sync(); l.applyFilters(); });
+        } else {
+            lines.forEach(function (l) { l.autoFill(); });
+        }
     })();
 </script>

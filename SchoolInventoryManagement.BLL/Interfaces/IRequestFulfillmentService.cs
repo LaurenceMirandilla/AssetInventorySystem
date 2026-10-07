@@ -15,8 +15,10 @@ namespace SchoolInventoryManagement.BLL.Interfaces
         // the amount on each line, of that line's model. They are reserved
         // to the requester and set aside at pickupLocationId; the request
         // becomes InTransit. departmentId is where the units are issued to.
+        // conditionOnAssignment null records each unit's own condition (the
+        // approval page no longer asks for one).
         Task ApproveBorrowAsync(
-            int requestId, List<int> assetIds, ConditionStatus conditionOnAssignment,
+            int requestId, List<int> assetIds, ConditionStatus? conditionOnAssignment,
             int departmentId, int pickupLocationId, byte[] requestRowVersion,
             int actingUserId, string? remarks);
 

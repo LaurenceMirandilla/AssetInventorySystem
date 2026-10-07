@@ -70,8 +70,12 @@
                 <dl class="row mb-0 small">
                     <dt class="col-5">Item</dt>
                     <dd class="col-7">@Model.ItemName</dd>
-                    <dt class="col-5">Amount</dt>
+                    <dt class="col-5">Quantity</dt>
                     <dd class="col-7">@Model.Quantity</dd>
+                    <dt class="col-5">Estimated price (each)</dt>
+                    <dd class="col-7">@DisplayText.Peso(Model.EstimatedUnitPrice)</dd>
+                    <dt class="col-5">Estimated total</dt>
+                    <dd class="col-7 fw-semibold">@DisplayText.Peso(Model.EstimatedTotal)</dd>
                     <dt class="col-5">Requested by</dt>
                     <dd class="col-7">@Model.RequestedByUserName</dd>
                     <dt class="col-5">Department</dt>

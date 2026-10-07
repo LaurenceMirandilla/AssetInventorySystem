@@ -82,7 +82,8 @@
                 <tr>
                     <th>#</th>
                     <th>Item</th>
-                    <th class="text-end">Amount</th>
+                    <th class="text-end">Quantity</th>
+                    <th class="text-end">Est. total</th>
                     @if (showAll)
                     {
                         <th>Requested by</th>
@@ -106,6 +107,7 @@
                             }
                         </td>
                         <td class="text-end">@request.Quantity</td>
+                        <td class="text-end text-nowrap">@DisplayText.Peso(request.EstimatedTotal)</td>
                         @if (showAll)
                         {
                             <td>

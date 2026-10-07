@@ -32,6 +32,7 @@
 
 <div class="alert alert-info">
     Tick the units to hand over — exactly the amount asked for on each line.
+    The best units are already ticked for you (see Auto-fill below); change any you like.
     Approving reserves them to the requester and sets them aside at the pickup
     location. The request is then <strong>In Transit</strong> and stays under
     Approvals until an Asset Officer or Administrator marks it collected, and
@@ -46,13 +47,6 @@
 
     <h5 class="mb-2">Units to hand over</h5>
     <partial name="_ApprovalUnitPicker" model="lines" />
-
-    <div class="mb-3">
-        <label asp-for="ConditionOnAssignment" class="form-label">Condition at hand-over</label>
-        <select asp-for="ConditionOnAssignment"
-                asp-items="Html.GetEnumSelectList<SchoolInventoryManagement.DAL.Entities.Enums.ConditionStatus>()"
-                class="form-select"></select>
-    </div>
 
     @if (request?.RequestedLocationID is not null)
     {

@@ -19,5 +19,9 @@ namespace SchoolInventoryManagement.BLL.DTOs
         // How many are wanted.
         [Range(1, 1000)]
         public int Quantity { get; set; } = 1;
+
+        // Estimated price of ONE, in pesos. Required on new requests.
+        [Range(0.01, 9999999999.99)]
+        public decimal? EstimatedUnitPrice { get; set; }
     }
 }

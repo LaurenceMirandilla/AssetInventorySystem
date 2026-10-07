@@ -40,6 +40,11 @@ namespace SchoolInventoryManagement.DAL.Entities
         // How many are wanted. The form asks for it on every item.
         public int Quantity { get; set; } = 1;
 
+        // The requester's estimate of what ONE costs, in pesos (Scripts/013).
+        // The form requires it; null only on rows made before it existed.
+        [Column(TypeName = "decimal(12,2)")]
+        public decimal? EstimatedUnitPrice { get; set; }
+
         [MaxLength(500)]
         public string? Specifications { get; set; }
 

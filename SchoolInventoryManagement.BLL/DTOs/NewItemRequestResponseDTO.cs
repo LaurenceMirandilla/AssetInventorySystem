@@ -16,6 +16,11 @@ namespace SchoolInventoryManagement.BLL.DTOs
 
         public string ItemName { get; set; } = null!;
         public int Quantity { get; set; }
+
+        // Estimated price of one, and of the whole request (Quantity x
+        // price). Null on requests made before prices were asked for.
+        public decimal? EstimatedUnitPrice { get; set; }
+        public decimal? EstimatedTotal => EstimatedUnitPrice * Quantity;
         public string? Reason { get; set; }
 
         // Null only on requests made before this was asked for.
