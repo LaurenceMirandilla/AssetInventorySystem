@@ -49,7 +49,9 @@ namespace SchoolInventoryManagement.Web.Controllers
             {
                 var summary = await _reportService.GetInventorySummaryAsync(CurrentUserId);
 
-                model.TotalAssets = summary.TotalAssets;
+                // In service only -- disposed units are no longer stock, and
+                // this matches the Assets list, which hides them by default.
+                model.TotalAssets = summary.InServiceAssets;
                 model.CurrentlyIssued = summary.AssignedCount;
                 model.UnderMaintenanceCount = summary.UnderMaintenanceCount;
                 model.ValueInService = summary.TotalValue;
