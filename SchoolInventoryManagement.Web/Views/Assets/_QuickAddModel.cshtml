@@ -47,9 +47,9 @@
                         <input id="qaCategoryName" name="NewCategoryName" maxlength="100" class="form-control" placeholder="e.g. Chairs" />
                     </div>
                     <div>
-                        <label for="qaCodePrefix" class="form-label">Code prefix</label>
-                        <input id="qaCodePrefix" name="NewCodePrefix" maxlength="10" class="form-control text-uppercase" placeholder="e.g. CHAIR" />
-                        <div class="form-text">2 to 10 letters or digits. Assets get codes like <span id="qaPrefixPreview" class="sab-code">CHAIR</span>-0001.</div>
+                        <label for="qaCodePrefix" class="form-label">Category code</label>
+                        <input id="qaCodePrefix" name="NewCodePrefix" maxlength="3" class="form-control text-uppercase" placeholder="e.g. CHR" />
+                        <div class="form-text">Exactly 3 letters. Assets get codes like <span id="qaPrefixPreview" class="sab-code">CHR</span>-0001.</div>
                     </div>
                 </div>
 
@@ -98,7 +98,7 @@
             } else {
                 categoryName.value = '';
                 prefix.value = '';
-                prefixPreview.textContent = 'CHAIR';
+                prefixPreview.textContent = 'CHR';
             }
         }
 
@@ -106,7 +106,9 @@
         document.getElementById('qaUseExisting').addEventListener('click', function () { useNewCategory(false); });
 
         prefix.addEventListener('input', function () {
-            prefixPreview.textContent = prefix.value.trim().toUpperCase() || 'CHAIR';
+            var clean = prefix.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3);
+            if (clean !== prefix.value) prefix.value = clean;
+            prefixPreview.textContent = clean || 'CHR';
         });
 
         // Starts clean every time it opens.

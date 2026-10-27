@@ -16,8 +16,8 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Security.Claims;
+using System.Text;
 using System.Threading.Tasks;
-using QRCoder;
 
 namespace SchoolInventoryManagement.Web.Controllers
 {
@@ -100,12 +100,18 @@ namespace SchoolInventoryManagement.Web.Controllers
                 await _context.Branches.OrderBy(b => b.BranchName).ToListAsync(),
                 "BranchID", "BranchName");
 
+            // Branch letter by id, so the register forms can show the full
+            // code (M-LIB-CHR-0001) before saving.
+            ViewBag.BranchCodes = await _context.Branches
+                .ToDictionaryAsync(b => b.BranchID, b => b.BranchCode);
+
             ViewBag.LocationsByBranch = await _context.Locations
                 .OrderBy(l => l.LocationName)
                 .Select(l => new LocationDTO
                 {
                     LocationID = l.LocationID,
                     LocationName = l.LocationName,
+                    LocationCode = l.LocationCode,
                     Description = l.Description,
                     BranchID = l.BranchID,
                     BranchName = l.Branch.BranchName
@@ -219,7 +225,7 @@ namespace SchoolInventoryManagement.Web.Controllers
                 keyword, categoryId, modelId, branchId, departmentId, status, condition, locationId);
 
             // Disposed units are hidden unless asked for. Done here, not in
-            // SearchAssetsAsync, because the request screens and QR scan use
+            // SearchAssetsAsync, because the request screens and barcode scan use
             // that too and must keep finding every unit. The Disposed tile
             // still counts them, so it says how many are hidden.
             var showDisposed = includeDisposed || status == AssetStatus.Disposed;
@@ -431,7 +437,7 @@ namespace SchoolInventoryManagement.Web.Controllers
                     WarrantyInformation = model.WarrantyInformation,
                     WarrantyFileURL = warrantyPath,
                     ImageURL = savedPath,
-                    CreateQr = model.CreateQr,
+                    CreateBarcode = model.CreateBarcode,
                     Condition = model.Condition,
                     CurrentLocationID = model.CurrentLocationID,
                     BranchID = model.BranchID,
@@ -492,7 +498,7 @@ namespace SchoolInventoryManagement.Web.Controllers
                     CurrentLocationID = model.CurrentLocationID,
                     BranchID = model.BranchID!.Value,
                     DepartmentID = model.DepartmentID!.Value,
-                    CreateQr = model.CreateQr
+                    CreateBarcode = model.CreateBarcode
                 };
 
                 var codes = await _assetService.BulkCreateAssetsAsync(dto, CurrentUserId);
@@ -718,35 +724,32 @@ namespace SchoolInventoryManagement.Web.Controllers
         private const string PhotoFolder = "images/assets";
         private const string WarrantyFolder = "uploads/warranty";
 
-        // GET /Assets/QrCode/5 -- draws the PNG on demand from the code
-        // stored when the QR was created. Nothing stored means no QR.
-        public async Task<IActionResult> QrCode(int id)
+        // GET /Assets/Barcode/5 -- draws the Code 128 label as SVG on demand
+        // from the code stored when the barcode was created. Nothing stored
+        // means no barcode. ?download=true sends it as a file to print.
+        public async Task<IActionResult> Barcode(int id, bool download = false)
         {
             var asset = await _assetService.GetAssetByIdAsync(id);
-            if (asset is null || string.IsNullOrEmpty(asset.QRCodeData) || !CanOpenUnit(asset))
+            if (asset is null || string.IsNullOrEmpty(asset.BarcodeData) || !CanOpenUnit(asset))
                 return NotFound();
 
-            var scanUrl = Url.Action(nameof(Scan), "Assets",
-                new { code = asset.QRCodeData }, Request.Scheme)!;
-
-            using var generator = new QRCodeGenerator();
-            using var data = generator.CreateQrCode(scanUrl, QRCodeGenerator.ECCLevel.M);
-            var png = new PngByteQRCode(data).GetGraphic(20);
-
-            return File(png, "image/png");
+            var svg = Encoding.UTF8.GetBytes(Code128.Svg(asset.BarcodeData));
+            return download
+                ? File(svg, "image/svg+xml", $"{asset.BarcodeData}.svg")
+                : File(svg, "image/svg+xml");
         }
 
-        // POST /Assets/CreateQr/5 -- the Details page's "Create QR" button,
-        // for an asset that was registered without one.
+        // POST /Assets/CreateBarcode/5 -- the Details page's "Create barcode"
+        // button, for an asset that was registered without one.
         [HttpPost]
         [ValidateAntiForgeryToken]
         [Authorize(Roles = RoleNames.AssetOfficer + "," + RoleNames.Administrator)]
-        public async Task<IActionResult> CreateQr(int id)
+        public async Task<IActionResult> CreateBarcode(int id)
         {
             try
             {
-                await _assetService.CreateQrCodeAsync(id, CurrentUserId);
-                TempData["StatusMessage"] = "QR code created.";
+                await _assetService.CreateBarcodeAsync(id, CurrentUserId);
+                TempData["StatusMessage"] = "Barcode created.";
             }
             catch (Exception ex)
             {
@@ -756,30 +759,59 @@ namespace SchoolInventoryManagement.Web.Controllers
             return RedirectToAction(nameof(Details), new { id });
         }
 
-        // GET /Assets/Scan?code=AST-0001
-        //
-        // Only opens an asset whose QR was created (Add QR on the register
-        // forms, or Create QR on its page). An asset without one is turned
-        // away, even though its code exists.
-        public async Task<IActionResult> Scan(string code)
+        // POST /Assets/DeleteBarcode/5 -- the Details page's "Delete barcode"
+        // button. The page asks "are you sure?" before posting.
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        [Authorize(Roles = RoleNames.AssetOfficer + "," + RoleNames.Administrator)]
+        public async Task<IActionResult> DeleteBarcode(int id)
         {
-            var results = await _assetService.SearchAssetsAsync(
-                code, null, null, null, null, null, null);
-            var asset = results.FirstOrDefault(a => a.AssetCode == code);
-
-            if (asset is null)
+            try
             {
-                TempData["ErrorMessage"] = $"No asset found for code '{code}'.";
+                await _assetService.DeleteBarcodeAsync(id, CurrentUserId);
+                TempData["StatusMessage"] = "Barcode deleted.";
+            }
+            catch (Exception ex)
+            {
+                TempData["ErrorMessage"] = UserMessageFor(ex);
+            }
+
+            return RedirectToAction(nameof(Details), new { id });
+        }
+
+        // GET /Assets/Scan?code=M-LIB-CHR-0001
+        //
+        // The Scan box on the Assets page. A USB barcode scanner types the
+        // barcode into it and presses Enter, which submits here. Typing the
+        // asset code (CHR-0001) works too, but only for an asset whose
+        // barcode was created. A deleted barcode's old label finds nothing.
+        public async Task<IActionResult> Scan(string? code)
+        {
+            code = code?.Trim().ToUpperInvariant();
+            if (string.IsNullOrEmpty(code))
+            {
+                TempData["ErrorMessage"] = "Scan a barcode or type an asset code.";
                 return RedirectToAction(nameof(Index));
             }
 
-            if (string.IsNullOrEmpty(asset.QRCodeData))
+            var match = await _context.Assets
+                .Where(a => a.BarcodeData == code || a.AssetCode == code)
+                .Select(a => new { a.AssetID, a.AssetCode, a.BarcodeData })
+                .FirstOrDefaultAsync();
+
+            if (match is null)
             {
-                TempData["ErrorMessage"] = $"{code} has no QR code. Open the asset and click Create QR to make one.";
+                TempData["ErrorMessage"] = $"No asset found for '{code}'.";
                 return RedirectToAction(nameof(Index));
             }
 
-            return RedirectToAction(nameof(Details), new { id = asset.AssetID });
+            if (string.IsNullOrEmpty(match.BarcodeData))
+            {
+                TempData["ErrorMessage"] = $"{match.AssetCode} has no barcode. Open the asset and click Create barcode to make one.";
+                return RedirectToAction(nameof(Index));
+            }
+
+            return RedirectToAction(nameof(Details), new { id = match.AssetID });
         }
 
         [HttpPost]

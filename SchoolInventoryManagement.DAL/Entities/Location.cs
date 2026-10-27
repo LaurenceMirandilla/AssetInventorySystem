@@ -15,6 +15,13 @@ namespace SchoolInventoryManagement.DAL.Entities
         [MaxLength(100)]
         public string LocationName { get; set; } = null!;
 
+        // Second part of every asset code registered here: M-LIB-CHR-0001.
+        // Three letters or digits, stored upper-case, unique within the
+        // branch (UX_Locations_Branch_LocationCode).
+        [Required]
+        [MaxLength(3)]
+        public string LocationCode { get; set; } = null!;
+
         [MaxLength(255)]
         public string? Description { get; set; }
 

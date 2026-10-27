@@ -1,6 +1,6 @@
-﻿@* Shared by Create and Edit: keeps the prefix upper-case, letters and
-   digits only, and shows the first code it would give. The service checks
-   the same rules. *@
+﻿@* Shared by Create and Edit: keeps the category code upper-case, three
+   letters only, and shows what asset codes will look like. The service
+   checks the same rules. *@
 <script>
     (function () {
         var input = document.getElementById('codePrefix');
@@ -8,9 +8,9 @@
         if (!input || !example) return;
 
         function sync() {
-            var clean = input.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10);
+            var clean = input.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3);
             if (clean !== input.value) input.value = clean;
-            example.textContent = (clean || 'PREFIX') + '-0001';
+            example.textContent = (clean || 'CHR') + '-0001';
         }
 
         input.addEventListener('input', sync);

@@ -23,6 +23,24 @@
         <span asp-validation-for="LocationName" class="text-danger"></span>
     </div>
 
+    <div class="mb-3" style="max-width:320px;">
+        <label asp-for="LocationCode" class="form-label"></label>
+        @if (ViewBag.CodeLocked == true)
+        {
+            <input asp-for="LocationCode" class="form-control" readonly />
+            <div class="form-text">Locked while assets are in this location. Move them out to change it.</div>
+        }
+        else
+        {
+            <input asp-for="LocationCode" id="locationCode" class="form-control text-uppercase" maxlength="3" autocomplete="off" />
+            <div class="form-text">
+                Exactly 3 letters or digits, unique within the branch. Barcodes made for assets here look like
+                <span class="sab-code">M-<span id="codeExample">LIB</span>-CHR-0001</span>.
+            </div>
+        }
+        <span asp-validation-for="LocationCode" class="text-danger"></span>
+    </div>
+
     <div class="mb-3">
         <label asp-for="Description" class="form-label">Description <span class="text-muted">(optional)</span></label>
         <textarea asp-for="Description" class="form-control"></textarea>
@@ -41,4 +59,5 @@
     @{
         await Html.RenderPartialAsync("_ValidationScriptsPartial");
     }
+    <partial name="_LocationCodeScript" />
 }

@@ -78,10 +78,12 @@ namespace SchoolInventoryManagement.Web.Controllers
             {
                 BranchID = location.BranchID,
                 LocationName = location.LocationName,
+                LocationCode = location.LocationCode,
                 Description = location.Description
             };
 
             ViewBag.LocationID = id;
+            ViewBag.CodeLocked = await _locationService.HasAssetsAsync(id);
             await LoadAuditHistoryAsync("Location", id);
             return View(dto);
         }
@@ -94,6 +96,7 @@ namespace SchoolInventoryManagement.Web.Controllers
             {
                 await PopulateBranchDropdownAsync();
                 ViewBag.LocationID = id;
+                ViewBag.CodeLocked = await _locationService.HasAssetsAsync(id);
                 return View(dto);
             }
 
@@ -107,6 +110,7 @@ namespace SchoolInventoryManagement.Web.Controllers
                 HandleServiceException(ex);
                 await PopulateBranchDropdownAsync();
                 ViewBag.LocationID = id;
+                ViewBag.CodeLocked = await _locationService.HasAssetsAsync(id);
                 return View(dto);
             }
         }

@@ -33,9 +33,9 @@ namespace SchoolInventoryManagement.BLL.Services
                 .Include(a => a.AssetAssignments); // needed for ActiveAssignmentID
         }
 
-        // The model's category prefix, and the next number free for it.
-        // Refuses a category with no prefix -- there would be nothing to
-        // build a code from.
+        // The model's category code, and the next number free for it.
+        // Refuses a category with no code -- there would be nothing to
+        // build an asset code from.
         private async Task<(string Prefix, int Next)> NextCodeForModelAsync(int modelId)
         {
             var model = await _context.Models
@@ -48,7 +48,7 @@ namespace SchoolInventoryManagement.BLL.Services
             var prefix = model.Category.CodePrefix;
             if (string.IsNullOrWhiteSpace(prefix))
                 throw new InvalidOperationException(
-                    $"The category {model.Category.CategoryName} has no code prefix yet. " +
+                    $"The category {model.Category.CategoryName} has no code yet. " +
                     "Set one under Catalog > Categories first.");
 
             var start = prefix + "-";
@@ -60,7 +60,32 @@ namespace SchoolInventoryManagement.BLL.Services
             return (prefix, AssetCodes.NextNumber(prefix, codes));
         }
 
-        // Next free number for every category prefix -- what the register
+        // The barcode for an asset code, from where the asset is: the
+        // location's branch and code, or the asset's branch and XXX when
+        // it has no location (e.g. it is with a person).
+        private async Task<string> BarcodeForAsync(string assetCode, int? branchId, int? locationId)
+        {
+            if (locationId is not null)
+            {
+                var location = await _context.Locations
+                    .Where(l => l.LocationID == locationId.Value)
+                    .Select(l => new { l.LocationCode, l.Branch.BranchCode })
+                    .FirstOrDefaultAsync();
+                if (location is not null)
+                    return AssetCodes.Barcode(location.BranchCode, location.LocationCode, assetCode);
+            }
+
+            var branchCode = await _context.Branches
+                .Where(b => b.BranchID == branchId)
+                .Select(b => b.BranchCode)
+                .FirstOrDefaultAsync();
+            if (branchCode is null)
+                throw new KeyNotFoundException("Branch not found.");
+
+            return AssetCodes.Barcode(branchCode, null, assetCode);
+        }
+
+        // Next free number for every category code -- what the register
         // forms show as the code a new asset will get.
         public async Task<Dictionary<string, int>> GetNextCodeNumbersAsync()
         {
@@ -74,8 +99,7 @@ namespace SchoolInventoryManagement.BLL.Services
             return prefixes.ToDictionary(p => p, p => AssetCodes.NextNumber(p, codes));
         }
 
-        // The code is generated from the model's category prefix; nobody
-        // types it.
+        // The code is generated from the model's category; nobody types it.
         public async Task<AssetResponseDTO> CreateAssetAsync(CreateAssetDTO dto, int actingUserId)
         {
             await PermissionHelper.EnsureIsAssetManagerAsync(_context, actingUserId);
@@ -92,10 +116,13 @@ namespace SchoolInventoryManagement.BLL.Services
             var (prefix, next) = await NextCodeForModelAsync(dto.ModelID);
             if (next > AssetCodes.MaxNumber)
                 throw new InvalidOperationException(
-                    $"Codes for {prefix} have reached {AssetCodes.Format(prefix, AssetCodes.MaxNumber)}. " +
-                    "Give the category a new prefix to keep registering.");
+                    $"Codes for {prefix} have reached {AssetCodes.MaxNumber}. " +
+                    "Give the category a new code to keep registering.");
 
             var code = AssetCodes.Format(prefix, next);
+            var barcode = dto.CreateBarcode
+                ? await BarcodeForAsync(code, dto.BranchID, dto.CurrentLocationID)
+                : null;
             var asset = new Asset
             {
                 AssetCode = code,
@@ -108,7 +135,7 @@ namespace SchoolInventoryManagement.BLL.Services
                 WarrantyInformation = dto.WarrantyInformation,
                 WarrantyFileURL = dto.WarrantyFileURL,
                 ImageURL = dto.ImageURL,
-                QRCodeData = dto.CreateQr ? code : null,
+                BarcodeData = barcode,
                 Condition = dto.Condition,
                 Status = AssetStatus.Available,
                 CurrentLocationID = dto.CurrentLocationID,
@@ -172,8 +199,8 @@ namespace SchoolInventoryManagement.BLL.Services
             if (repeatedSerial is not null)
                 throw new ArgumentException($"Serial number '{repeatedSerial.Key}' appears more than once.");
 
-            // Codes carry on from the highest number already used with the
-            // category's prefix.
+            // Codes carry on from the highest number already used in the
+            // category.
             var (prefix, first) = await NextCodeForModelAsync(dto.ModelID);
             var last = first + dto.Quantity - 1;
             if (last > AssetCodes.MaxNumber)
@@ -181,9 +208,15 @@ namespace SchoolInventoryManagement.BLL.Services
                 var left = Math.Max(0, AssetCodes.MaxNumber - first + 1);
                 throw new InvalidOperationException(
                     $"Only {left} code{(left == 1 ? "" : "s")} left for {prefix} " +
-                    $"(they stop at {AssetCodes.Format(prefix, AssetCodes.MaxNumber)}). " +
-                    "Register fewer, or give the category a new prefix.");
+                    $"(numbers stop at {AssetCodes.MaxNumber}). " +
+                    "Register fewer, or give the category a new code.");
             }
+
+            // Every unit is in the same place, so the barcodes share their
+            // branch and location parts. "M-LIB-" + code.
+            var barcodeStart = dto.CreateBarcode
+                ? (await BarcodeForAsync("", dto.BranchID, dto.CurrentLocationID))
+                : null;
 
             var units = Enumerable.Range(0, dto.Quantity)
                 .Select(i =>
@@ -213,7 +246,7 @@ namespace SchoolInventoryManagement.BLL.Services
                 AcquisitionCost = dto.AcquisitionCost,
                 WarrantyInformation = dto.WarrantyInformation,
                 WarrantyFileURL = dto.WarrantyFileURL,
-                QRCodeData = dto.CreateQr ? u.Code : null,
+                BarcodeData = barcodeStart is null ? null : barcodeStart + u.Code,
                 Condition = dto.Condition,
                 Status = AssetStatus.Available,
                 CurrentLocationID = dto.CurrentLocationID,
@@ -500,9 +533,10 @@ namespace SchoolInventoryManagement.BLL.Services
             }
         }
 
-        // Gives an asset that was registered without a QR its QR. What is
-        // stored is the asset code the QR points to; null means none yet.
-        public async Task CreateQrCodeAsync(int assetId, int actingUserId)
+        // Gives an asset that was registered without a barcode its barcode,
+        // built from where the asset is now (M-LIB-CHR-0001). Stored as
+        // printed; null means none yet.
+        public async Task CreateBarcodeAsync(int assetId, int actingUserId)
         {
             await PermissionHelper.EnsureIsAssetManagerAsync(_context, actingUserId);
 
@@ -511,10 +545,39 @@ namespace SchoolInventoryManagement.BLL.Services
                 throw new KeyNotFoundException("Asset not found.");
 
             // Already has one -- a double click or a stale page.
-            if (!string.IsNullOrEmpty(asset.QRCodeData))
+            if (!string.IsNullOrEmpty(asset.BarcodeData))
                 return;
 
-            asset.QRCodeData = asset.AssetCode;
+            asset.BarcodeData = await BarcodeForAsync(asset.AssetCode, asset.BranchID, asset.CurrentLocationID);
+
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                throw new ConcurrencyConflictException(
+                    "This asset was modified by someone else. Please reload and try again.");
+            }
+        }
+
+        // Takes the barcode off an asset, e.g. after a label is lost or the
+        // asset has moved. The asset code stays; "Create barcode" later
+        // builds a new barcode from where the asset is then. Scanning the
+        // old label is turned away.
+        public async Task DeleteBarcodeAsync(int assetId, int actingUserId)
+        {
+            await PermissionHelper.EnsureIsAssetManagerAsync(_context, actingUserId);
+
+            var asset = await _context.Assets.FindAsync(assetId);
+            if (asset is null)
+                throw new KeyNotFoundException("Asset not found.");
+
+            // Already gone -- a double click or a stale page.
+            if (string.IsNullOrEmpty(asset.BarcodeData))
+                return;
+
+            asset.BarcodeData = null;
 
             try
             {

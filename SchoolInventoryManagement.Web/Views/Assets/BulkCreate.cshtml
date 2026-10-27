@@ -96,8 +96,8 @@
                             <option value="">-- Pick a branch first --</option>
                             @foreach (var loc in (List<SchoolInventoryManagement.BLL.DTOs.LocationDTO>)ViewBag.LocationsByBranch)
                             {
-                                <option value="@loc.LocationID" data-branch="@loc.BranchID"
-                                        selected="@(loc.LocationID == Model.CurrentLocationID)">@loc.LocationName</option>
+                                <option value="@loc.LocationID" data-branch="@loc.BranchID" data-code="@loc.LocationCode"
+                                        selected="@(loc.LocationID == Model.CurrentLocationID)">@loc.LocationName (@loc.LocationCode)</option>
                             }
                         </select>
                     </div>
@@ -157,10 +157,10 @@
 
             <div class="card mb-3">
                 <div class="card-body">
-                    <h5 class="mb-2">QR labels</h5>
-                    <input asp-for="CreateQr" type="checkbox" id="createQr" class="btn-check" autocomplete="off" />
-                    <label for="createQr" id="createQrLabel" class="btn btn-outline-primary w-100">Add QR</label>
-                    <div class="form-text">Click to make a QR code for every unit in the batch. Left off, none are made; you can add one later from each asset's page.</div>
+                    <h5 class="mb-2">Barcode labels</h5>
+                    <input asp-for="CreateBarcode" type="checkbox" id="createBarcode" class="btn-check" autocomplete="off" />
+                    <label for="createBarcode" id="createBarcodeLabel" class="btn btn-outline-primary w-100">Add barcode</label>
+                    <div class="form-text">Click to make a barcode for every unit in the batch. Left off, none are made; you can add one later from each asset's page.</div>
                 </div>
             </div>
         </div>
@@ -185,17 +185,29 @@
             var serialCount = document.getElementById('serialCount');
             var submitBtn = document.getElementById('submitBtn');
             var maxNumber = @SchoolInventoryManagement.BLL.Services.AssetCodes.MaxNumber;
+            var branchSelect = document.getElementById('branchSelect');
+            var locationSelect = document.getElementById('locationSelect');
+            var branchCodes = @Json.Serialize(ViewBag.BranchCodes);
 
-            // The picked model's code prefix and next free number, from the
-            // model search box.
+            // The picked model's category code and next free number, from
+            // the model search box.
             var picked = null;
             var autoName = '';
 
-            // Mirrors AssetService: {prefix}-{number:D4}, "{name} - Unit {number}".
+            // Mirrors AssetService: code {category}-{number:D4}, barcode
+            // {branch}-{location}-{code}, name "{name} - Unit {number}".
             function pad(n) {
                 var s = String(n);
                 while (s.length < 4) s = '0' + s;
                 return s;
+            }
+
+            // "M-LIB", or null until a branch is picked. XXX with no location.
+            function codeStart() {
+                var branchCode = branchCodes[branchSelect.value];
+                if (!branchCode) return null;
+                var option = locationSelect.options[locationSelect.selectedIndex];
+                return branchCode + '-' + ((option && option.getAttribute('data-code')) || '@SchoolInventoryManagement.BLL.Services.AssetCodes.NoLocation');
             }
 
             function escapeHtml(text) {
@@ -208,6 +220,15 @@
                 var qty = parseInt(quantity.value, 10) || 0;
                 var n = baseName.value.trim();
 
+                // Barcodes are only shown when "Add barcode" is on and a
+                // branch is picked.
+                var start = document.getElementById('createBarcode').checked ? codeStart() : null;
+                function line(number) {
+                    var code = picked.prefix + '-' + pad(number);
+                    return '<code>' + escapeHtml(code) + '</code> ' + escapeHtml(n + ' - Unit ' + number)
+                        + (start ? ' <span class="text-muted small">barcode ' + escapeHtml(start + '-' + code) + '</span>' : '');
+                }
+
                 if (!picked || qty < 1 || !n) {
                     previewBody.textContent = 'Pick a model and enter a name to see the codes.';
                 } else {
@@ -216,13 +237,13 @@
                     if (last > maxNumber) {
                         var left = Math.max(0, maxNumber - first + 1);
                         previewBody.innerHTML = '<span class="text-danger">Only ' + left + ' code' + (left === 1 ? '' : 's')
-                            + ' left for ' + escapeHtml(picked.prefix) + '. Register fewer, or give the category a new prefix.</span>';
+                            + ' left for ' + escapeHtml(picked.prefix) + '. Register fewer, or give the category a new code.</span>';
                     } else {
-                        var firstLine = '<code>' + escapeHtml(picked.prefix + '-' + pad(first)) + '</code> ' + escapeHtml(n + ' - Unit ' + first);
+                        var firstLine = line(first);
                         if (qty === 1) {
                             previewBody.innerHTML = firstLine;
                         } else {
-                            var lastLine = '<code>' + escapeHtml(picked.prefix + '-' + pad(last)) + '</code> ' + escapeHtml(n + ' - Unit ' + last);
+                            var lastLine = line(last);
                             previewBody.innerHTML = firstLine
                                 + '<div class="text-muted">&vellip; ' + (qty - 2 > 0 ? (qty - 2) + ' more' : '') + '</div>'
                                 + lastLine;
@@ -262,22 +283,21 @@
             });
             update();
 
-            // ---- Add QR toggle ------------------------------------------
+            // ---- Add barcode toggle -------------------------------------
             // The label says what will happen, so "on" isn't just a color.
-            var createQr = document.getElementById('createQr');
-            var createQrLabel = document.getElementById('createQrLabel');
-            function syncQr() {
-                createQrLabel.textContent = createQr.checked ? '✓ QR for every unit' : 'Add QR';
+            var createBarcode = document.getElementById('createBarcode');
+            var createBarcodeLabel = document.getElementById('createBarcodeLabel');
+            function syncBarcode() {
+                createBarcodeLabel.textContent = createBarcode.checked ? '✓ Barcode for every unit' : 'Add barcode';
             }
-            createQr.addEventListener('change', syncQr);
-            syncQr(); // a failed post keeps the choice
+            createBarcode.addEventListener('change', function () { syncBarcode(); update(); });
+            syncBarcode(); // a failed post keeps the choice
 
             // ---- Location and department follow branch -----------------
             // Each list only ever holds the chosen branch's entries, and
             // stays locked until a branch is picked. Options are rebuilt
             // rather than hidden, because some browsers ignore "hidden" on
             // <option>.
-            var branchSelect = document.getElementById('branchSelect');
             if (!branchSelect) return;
 
             function followBranch(select, emptyText) {
@@ -286,7 +306,7 @@
                 var all = Array.from(select.options)
                     .filter(function (o) { return o.value; })
                     .map(function (o) {
-                        return { value: o.value, text: o.text, branch: o.getAttribute('data-branch') };
+                        return { value: o.value, text: o.text, branch: o.getAttribute('data-branch'), code: o.getAttribute('data-code') };
                     });
                 var selected = select.value;
 
@@ -305,6 +325,7 @@
                             var opt = document.createElement('option');
                             opt.value = x.value;
                             opt.text = x.text;
+                            if (x.code) opt.setAttribute('data-code', x.code);
                             if (x.value === selected) opt.selected = true;
                             select.appendChild(opt);
                         });
@@ -323,8 +344,13 @@
                 rebuild(); // on load too, so an edit or a failed post shows the right list
             }
 
-            followBranch(document.getElementById('locationSelect'), '-- None --');
+            followBranch(locationSelect, '-- None --');
             followBranch(document.getElementById('departmentSelect'), '-- Select Department --');
+
+            // After followBranch, so the location list is rebuilt first.
+            branchSelect.addEventListener('change', update);
+            locationSelect.addEventListener('change', update);
+            update();
         })();
     </script>
 }

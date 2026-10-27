@@ -23,7 +23,7 @@ namespace SchoolInventoryManagement.BLL.Mappings
                 WarrantyInformation = asset.WarrantyInformation,
                 WarrantyFileURL = asset.WarrantyFileURL,
                 ImageURL = asset.ImageURL,
-                QRCodeData = asset.QRCodeData,
+                BarcodeData = asset.BarcodeData,
                 Condition = asset.Condition,
                 Status = asset.Status,
                 ModelID = asset.ModelID,

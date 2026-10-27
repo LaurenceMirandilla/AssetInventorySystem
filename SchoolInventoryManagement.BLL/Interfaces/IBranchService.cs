@@ -10,6 +10,9 @@ namespace SchoolInventoryManagement.BLL.Interfaces
         Task<BranchDTO?> GetBranchByIdAsync(int branchId);
         Task<List<BranchDTO>> GetAllBranchesAsync();
         Task UpdateBranchAsync(int branchId, UpdateBranchDTO dto, int actingUserId);
+
+        // True while any asset belongs to the branch -- its code is locked then.
+        Task<bool> HasAssetsAsync(int branchId);
         Task DeleteBranchAsync(int branchId, int actingUserId);
     }
 }

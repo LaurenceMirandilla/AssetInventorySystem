@@ -23,7 +23,7 @@ namespace SchoolInventoryManagement.BLL.Interfaces
         Task<List<AssetResponseDTO>> GetAllAssetsAsync();
 
         // locationId is last and optional so the existing callers (request
-        // approval screens, QR scan) compile unchanged.
+        // approval screens, barcode scan) compile unchanged.
         Task<List<AssetResponseDTO>> SearchAssetsAsync(
             string? keyword, int? categoryId, int? modelId, int? branchId,
             int? departmentId, AssetStatus? status, ConditionStatus? condition,
@@ -36,8 +36,12 @@ namespace SchoolInventoryManagement.BLL.Interfaces
         // Under Maintenance -> Available, with the condition set to Repaired.
         Task ReturnFromMaintenanceAsync(int assetId, byte[] rowVersion, int actingUserId);
 
-        // Makes the QR for an asset registered without one. Does nothing if
-        // it already has one.
-        Task CreateQrCodeAsync(int assetId, int actingUserId);
+        // Makes the barcode for an asset registered without one. Does
+        // nothing if it already has one.
+        Task CreateBarcodeAsync(int assetId, int actingUserId);
+
+        // Removes the asset's barcode (the asset and its code stay). Does
+        // nothing if it has none.
+        Task DeleteBarcodeAsync(int assetId, int actingUserId);
     }
 }

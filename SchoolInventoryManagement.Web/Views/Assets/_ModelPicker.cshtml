@@ -3,7 +3,7 @@
    a normal dropdown, but you can also type to narrow the list. The list is
    drawn by the page (not a <datalist>, whose popup the browser styles its
    own way). The hidden ModelID is what posts. Picking a model raises a
-   "model-picked" event carrying its code prefix and next number, so each
+   "model-picked" event carrying its category code and next number, so each
    form can show the codes it will create. Pass the current ModelID in
    ViewData["SelectedModelId"]. *@
 @{
@@ -117,7 +117,7 @@
             var match = exactMatch();
             hidden.value = match ? match.dataset.id : '';
             hint.textContent = match
-                ? 'Codes in this category start with ' + match.dataset.prefix + '-.'
+                ? 'Category code: ' + match.dataset.prefix + '.'
                 : (search.value ? 'No model picked yet — choose one from the list.' : 'Pick from the list, or type part of the name to narrow it.');
             hint.className = 'form-text' + (search.value && !match ? ' text-danger' : '');
 

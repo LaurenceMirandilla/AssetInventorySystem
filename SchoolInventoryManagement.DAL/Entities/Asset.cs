@@ -46,8 +46,10 @@ namespace SchoolInventoryManagement.DAL.Entities
         [MaxLength(500)]
         public string? ImageURL { get; set; }
 
+        // What the barcode label holds (the asset code); null means no
+        // barcode made yet.
         [MaxLength(255)]
-        public string? QRCodeData { get; set; }
+        public string? BarcodeData { get; set; }
 
         [Required]
         public ConditionStatus Condition { get; set; } = ConditionStatus.Good;

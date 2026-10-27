@@ -5,7 +5,7 @@
         public int CategoryID { get; set; }
         public string CategoryName { get; set; } = null!;
 
-        // Start of every asset code in the category: CHAIR -> CHAIR-0001.
+        // Third part of every asset code in the category: CHR -> M-LIB-CHR-0001.
         public string CodePrefix { get; set; } = null!;
 
         // Carried so the Edit screen can round-trip it. Without this the

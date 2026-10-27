@@ -15,12 +15,12 @@
         <partial name="_ModelPicker" model="modelChoices" view-data="ViewData" />
     </div>
 
-    @* The code is not typed: it comes from the model's category prefix and
-       the next free number, and is shown here before saving. *@
+    @* The code is not typed: it comes from the model's category and the
+       next free number, and is shown here before saving. *@
     <div class="mb-3">
         <div class="form-label">Asset code</div>
         <div id="codePreview" class="fw-semibold sab-code">Pick a model to see its code.</div>
-        <div class="form-text">Given automatically when you save.</div>
+        <div class="form-text">Given automatically when you save, and never changes.</div>
     </div>
 
     <div class="mb-3">
@@ -89,8 +89,8 @@
             <option value="">-- Pick a branch first --</option>
             @foreach (var loc in (List<SchoolInventoryManagement.BLL.DTOs.LocationDTO>)ViewBag.LocationsByBranch)
             {
-                <option value="@loc.LocationID" data-branch="@loc.BranchID"
-                        selected="@(loc.LocationID == Model.CurrentLocationID)">@loc.LocationName</option>
+                <option value="@loc.LocationID" data-branch="@loc.BranchID" data-code="@loc.LocationCode"
+                        selected="@(loc.LocationID == Model.CurrentLocationID)">@loc.LocationName (@loc.LocationCode)</option>
             }
         </select>
         <div class="form-text">Only locations in the chosen branch are listed.</div>
@@ -111,10 +111,11 @@
     </div>
 
     <div class="mb-3">
-        <div class="form-label">QR label</div>
-        <input asp-for="CreateQr" type="checkbox" id="createQr" class="btn-check" autocomplete="off" />
-        <label for="createQr" id="createQrLabel" class="btn btn-outline-primary">Add QR</label>
-        <div class="form-text">Click to make a QR code when the asset is saved. Leave it off to save without one; you can still add it later from the asset's page.</div>
+        <div class="form-label">Barcode label</div>
+        <input asp-for="CreateBarcode" type="checkbox" id="createBarcode" class="btn-check" autocomplete="off" />
+        <label for="createBarcode" id="createBarcodeLabel" class="btn btn-outline-primary">Add barcode</label>
+        <div class="form-text">Click to make a barcode when the asset is saved. Leave it off to save without one; you can still add it later from the asset's page.</div>
+        <div id="barcodePreview" class="form-text sab-code"></div>
     </div>
 
     <button type="submit" class="btn btn-primary">Create</button>
@@ -129,47 +130,68 @@
     }
     <script>
         (function () {
+            var branchSelect = document.getElementById('branchSelect');
+            var locationSelect = document.getElementById('locationSelect');
+
             // ---- Code preview and name --------------------------------
-            // When a model is picked: show the code it will get, and start
+            // Shows the asset code a save would give (AssetCodes.Format) and
+            // the barcode it would get (AssetCodes.Barcode: branch letter,
+            // location code or XXX, asset code). Picking a model also starts
             // the name off as the model's name if nothing is typed yet.
             var codePreview = document.getElementById('codePreview');
+            var barcodePreview = document.getElementById('barcodePreview');
             var assetName = document.getElementById('assetName');
+            var branchCodes = @Json.Serialize(ViewBag.BranchCodes);
+            var maxNumber = @SchoolInventoryManagement.BLL.Services.AssetCodes.MaxNumber;
+            var picked = null;
             var autoName = '';
 
             function pad(n) { var s = String(n); while (s.length < 4) s = '0' + s; return s; }
 
-            document.addEventListener('model-picked', function (e) {
-                var m = e.detail;
-                if (!m) {
+            function updateCode() {
+                barcodePreview.textContent = '';
+                if (!picked) {
                     codePreview.textContent = 'Pick a model to see its code.';
                     return;
                 }
-                codePreview.textContent = m.next > @SchoolInventoryManagement.BLL.Services.AssetCodes.MaxNumber
-                    ? m.prefix + ' has no codes left — give the category a new prefix.'
-                    : m.prefix + '-' + pad(m.next);
-
-                if (!assetName.value.trim() || assetName.value === autoName) {
-                    assetName.value = m.name;
-                    autoName = m.name;
+                if (picked.next > maxNumber) {
+                    codePreview.textContent = picked.prefix + ' has no numbers left — give the category a new code.';
+                    return;
                 }
+                var code = picked.prefix + '-' + pad(picked.next);
+                codePreview.textContent = code;
+
+                var branchCode = branchCodes[branchSelect.value];
+                if (!branchCode) return;
+                var option = locationSelect.options[locationSelect.selectedIndex];
+                var locationCode = (option && option.getAttribute('data-code')) || '@SchoolInventoryManagement.BLL.Services.AssetCodes.NoLocation';
+                barcodePreview.textContent = 'Barcode if added: ' + branchCode + '-' + locationCode + '-' + code;
+            }
+
+            document.addEventListener('model-picked', function (e) {
+                picked = e.detail;
+                if (picked && (!assetName.value.trim() || assetName.value === autoName)) {
+                    assetName.value = picked.name;
+                    autoName = picked.name;
+                }
+                updateCode();
             });
 
-            // ---- Add QR toggle ------------------------------------------
+            // ---- Add barcode toggle -------------------------------------
             // The label says what will happen, so "on" isn't just a color.
-            var createQr = document.getElementById('createQr');
-            var createQrLabel = document.getElementById('createQrLabel');
-            function syncQr() {
-                createQrLabel.textContent = createQr.checked ? '✓ QR will be added' : 'Add QR';
+            var createBarcode = document.getElementById('createBarcode');
+            var createBarcodeLabel = document.getElementById('createBarcodeLabel');
+            function syncBarcode() {
+                createBarcodeLabel.textContent = createBarcode.checked ? '✓ Barcode will be added' : 'Add barcode';
             }
-            createQr.addEventListener('change', syncQr);
-            syncQr(); // a failed post keeps the choice
+            createBarcode.addEventListener('change', syncBarcode);
+            syncBarcode(); // a failed post keeps the choice
 
             // ---- Location and department follow branch -----------------
             // Each list only ever holds the chosen branch's entries, and
             // stays locked until a branch is picked. Options are rebuilt
             // rather than hidden, because some browsers ignore "hidden" on
             // <option>.
-            var branchSelect = document.getElementById('branchSelect');
             if (!branchSelect) return;
 
             function followBranch(select, emptyText) {
@@ -178,7 +200,7 @@
                 var all = Array.from(select.options)
                     .filter(function (o) { return o.value; })
                     .map(function (o) {
-                        return { value: o.value, text: o.text, branch: o.getAttribute('data-branch') };
+                        return { value: o.value, text: o.text, branch: o.getAttribute('data-branch'), code: o.getAttribute('data-code') };
                     });
                 var selected = select.value;
 
@@ -197,6 +219,7 @@
                             var opt = document.createElement('option');
                             opt.value = x.value;
                             opt.text = x.text;
+                            if (x.code) opt.setAttribute('data-code', x.code);
                             if (x.value === selected) opt.selected = true;
                             select.appendChild(opt);
                         });
@@ -215,8 +238,13 @@
                 rebuild(); // on load too, so an edit or a failed post shows the right list
             }
 
-            followBranch(document.getElementById('locationSelect'), '-- None --');
+            followBranch(locationSelect, '-- None --');
             followBranch(document.getElementById('departmentSelect'), '-- Select Department --');
+
+            // After followBranch, so the location list is rebuilt first.
+            branchSelect.addEventListener('change', updateCode);
+            locationSelect.addEventListener('change', updateCode);
+            updateCode();
         })();
     </script>
 }

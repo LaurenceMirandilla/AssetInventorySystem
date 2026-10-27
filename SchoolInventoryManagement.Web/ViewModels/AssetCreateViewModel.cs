@@ -4,8 +4,8 @@ using SchoolInventoryManagement.DAL.Entities.Enums;
 
 namespace SchoolInventoryManagement.Web.ViewModels
 {
-    // No asset code here: it is generated from the model's category prefix
-    // (CHAIR-0001, CHAIR-0002, ...) when the asset is saved.
+    // No asset code here: it is generated from the branch, location and
+    // the model's category (M-LIB-CHR-0001, ...) when the asset is saved.
     public class AssetCreateViewModel
     {
         [Required(ErrorMessage = "Pick a model from the list.")]
@@ -35,8 +35,8 @@ namespace SchoolInventoryManagement.Web.ViewModels
         [Display(Name = "Warranty")]
         public string? WarrantyInformation { get; set; }
 
-        [Display(Name = "Add QR")]
-        public bool CreateQr { get; set; }
+        [Display(Name = "Add barcode")]
+        public bool CreateBarcode { get; set; }
 
         public ConditionStatus Condition { get; set; } = ConditionStatus.Good;
 
@@ -60,7 +60,7 @@ namespace SchoolInventoryManagement.Web.ViewModels
     }
 
     // One entry in the register forms' model search: the model, its
-    // category, and the code the next asset of it will get.
+    // category code, and the next number free in that category.
     public class ModelCodeOption
     {
         public int ModelID { get; set; }

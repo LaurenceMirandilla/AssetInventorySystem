@@ -15,7 +15,7 @@ namespace SchoolInventoryManagement.BLL.DTOs
         public string? WarrantyInformation { get; set; }
         public string? WarrantyFileURL { get; set; }
         public string? ImageURL { get; set; }
-        public string? QRCodeData { get; set; }
+        public string? BarcodeData { get; set; }
         public ConditionStatus Condition { get; set; }
         public AssetStatus Status { get; set; }
 

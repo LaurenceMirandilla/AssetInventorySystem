@@ -96,8 +96,8 @@ namespace SchoolInventoryManagement.Web.Controllers
                 !makingCategory && categoryId is null ? "Pick a category, or add a new one." :
                 makingCategory && string.IsNullOrEmpty(newCategoryName) ? "Enter a name for the new category." :
                 makingCategory && newCategoryName!.Length > 100 ? "The category name is longer than 100 characters." :
-                makingCategory && !Regex.IsMatch(newPrefix ?? "", "^[A-Za-z0-9]{2,10}$")
-                    ? "The code prefix must be 2 to 10 letters or digits, no spaces or symbols." :
+                makingCategory && !Regex.IsMatch(newPrefix ?? "", "^[A-Za-z]{3}$")
+                    ? "The category code must be exactly 3 letters, e.g. CHR." :
                 null;
             if (error is not null)
                 return BadRequest(new { error });

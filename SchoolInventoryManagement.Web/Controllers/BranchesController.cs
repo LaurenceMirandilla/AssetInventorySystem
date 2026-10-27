@@ -64,11 +64,13 @@ namespace SchoolInventoryManagement.Web.Controllers
             var dto = new UpdateBranchDTO
             {
                 BranchName = branch.BranchName,
+                BranchCode = branch.BranchCode,
                 Address = branch.Address,
                 ContactInfo = branch.ContactInfo
             };
 
             ViewBag.BranchID = id;
+            ViewBag.CodeLocked = await _branchService.HasAssetsAsync(id);
             await LoadAuditHistoryAsync("Branch", id);
             return View(dto);
         }
@@ -80,6 +82,7 @@ namespace SchoolInventoryManagement.Web.Controllers
             if (!ModelState.IsValid)
             {
                 ViewBag.BranchID = id;
+                ViewBag.CodeLocked = await _branchService.HasAssetsAsync(id);
                 return View(dto);
             }
 
@@ -92,6 +95,7 @@ namespace SchoolInventoryManagement.Web.Controllers
             {
                 HandleServiceException(ex);
                 ViewBag.BranchID = id;
+                ViewBag.CodeLocked = await _branchService.HasAssetsAsync(id);
                 return View(dto);
             }
         }

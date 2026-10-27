@@ -11,5 +11,9 @@ namespace SchoolInventoryManagement.BLL.DTOs
         [Required]
         [DataType(DataType.Password)]
         public string Password { get; set; } = null!;
+
+        // "Keep me signed in": the sign-in cookie survives closing the
+        // browser (still within the cookie's expiry).
+        public bool RememberMe { get; set; }
     }
 }

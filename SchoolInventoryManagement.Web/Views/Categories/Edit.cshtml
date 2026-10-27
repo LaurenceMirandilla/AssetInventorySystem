@@ -17,10 +17,10 @@
 
     <div class="mb-3" style="max-width:320px;">
         <label asp-for="CodePrefix" class="form-label"></label>
-        <input asp-for="CodePrefix" id="codePrefix" class="form-control text-uppercase" maxlength="10" autocomplete="off" />
+        <input asp-for="CodePrefix" id="codePrefix" class="form-control text-uppercase" maxlength="3" autocomplete="off" />
         <span asp-validation-for="CodePrefix" class="text-danger"></span>
         <div class="form-text">
-            New assets get <span class="sab-code" id="codeExample">PREFIX-0001</span> onwards.
+            Exactly 3 letters. New assets get <span class="sab-code" id="codeExample">CHR-0001</span> onwards.
             Changing it does not rename assets already registered — their codes stay as printed on their labels.
         </div>
     </div>

@@ -1,5 +1,7 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using SchoolInventoryManagement.BLL.DTOs;
@@ -38,9 +40,13 @@ namespace SchoolInventoryManagement.BLL.Services
             if (nameExists)
                 throw new InvalidOperationException("A location with this name already exists in this branch.");
 
+            var code = NormalizeCode(dto.LocationCode);
+            await EnsureCodeFreeAsync(code, dto.BranchID, exceptLocationId: null);
+
             var location = new Location
             {
                 LocationName = dto.LocationName,
+                LocationCode = code,
                 Description = dto.Description,
                 BranchID = dto.BranchID
             };
@@ -92,11 +98,48 @@ namespace SchoolInventoryManagement.BLL.Services
             if (nameExists)
                 throw new InvalidOperationException("A location with this name already exists in this branch.");
 
+            // Asset codes already made with the old code stay as printed;
+            // changing it while units sit here would leave them looking
+            // like they belong somewhere else.
+            var code = NormalizeCode(dto.LocationCode);
+            if (code != location.LocationCode && await HasAssetsAsync(locationId))
+                throw new InvalidOperationException(
+                    "The location code cannot be changed while assets are in this location. Move them out first.");
+            await EnsureCodeFreeAsync(code, dto.BranchID, exceptLocationId: locationId);
+
             location.LocationName = dto.LocationName;
+            location.LocationCode = code;
             location.Description = dto.Description;
             location.BranchID = dto.BranchID;
 
             await _context.SaveChangesAsync();
+        }
+
+        public async Task<bool> HasAssetsAsync(int locationId)
+        {
+            return await _context.Assets.AnyAsync(a => a.CurrentLocationID == locationId);
+        }
+
+        // Upper-case, exactly three letters or digits. The DTO checks the
+        // same thing; this is the check a hand-built post cannot skip.
+        private static string NormalizeCode(string? raw)
+        {
+            var code = (raw ?? "").Trim().ToUpperInvariant();
+            if (!Regex.IsMatch(code, "^[A-Z0-9]{3}$"))
+                throw new ArgumentException("The location code must be exactly 3 letters or digits, e.g. LIB or 201.");
+            return code;
+        }
+
+        // Unique within the branch: M-LIB and A-LIB can both exist.
+        private async Task EnsureCodeFreeAsync(string code, int branchId, int? exceptLocationId)
+        {
+            var owner = await _context.Locations
+                .Where(l => l.BranchID == branchId && l.LocationCode == code && l.LocationID != exceptLocationId)
+                .Select(l => l.LocationName)
+                .FirstOrDefaultAsync();
+
+            if (owner is not null)
+                throw new InvalidOperationException($"The code {code} is already used by {owner} in this branch.");
         }
 
         public async Task DeleteLocationAsync(int locationId, int actingUserId)

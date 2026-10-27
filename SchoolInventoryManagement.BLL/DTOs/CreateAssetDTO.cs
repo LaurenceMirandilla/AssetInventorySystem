@@ -35,8 +35,8 @@ namespace SchoolInventoryManagement.BLL.DTOs
         [MaxLength(500)]
         public string? ImageURL { get; set; }
 
-        // "Add QR" on the form. On: the asset is saved with its QR.
-        public bool CreateQr { get; set; }
+        // "Add barcode" on the form. On: the asset is saved with its barcode.
+        public bool CreateBarcode { get; set; }
 
         public ConditionStatus Condition { get; set; } = ConditionStatus.Good;
 

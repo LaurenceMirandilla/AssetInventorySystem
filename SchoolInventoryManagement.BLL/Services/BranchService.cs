@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using SchoolInventoryManagement.BLL.DTOs;
@@ -31,9 +32,13 @@ namespace SchoolInventoryManagement.BLL.Services
             if (nameExists)
                 throw new System.InvalidOperationException("A branch with this name already exists.");
 
+            var code = NormalizeCode(dto.BranchCode);
+            await EnsureCodeFreeAsync(code, exceptBranchId: null);
+
             var branch = new Branch
             {
                 BranchName = dto.BranchName,
+                BranchCode = code,
                 Address = dto.Address,
                 ContactInfo = dto.ContactInfo
             };
@@ -68,11 +73,46 @@ namespace SchoolInventoryManagement.BLL.Services
             if (nameExists)
                 throw new System.InvalidOperationException("A branch with this name already exists.");
 
+            // Same rule as location codes: existing asset codes keep the
+            // old letter, so it is locked once the branch has assets.
+            var code = NormalizeCode(dto.BranchCode);
+            if (code != branch.BranchCode && await HasAssetsAsync(branchId))
+                throw new System.InvalidOperationException(
+                    "The branch code cannot be changed once the branch has assets.");
+            await EnsureCodeFreeAsync(code, exceptBranchId: branchId);
+
             branch.BranchName = dto.BranchName;
+            branch.BranchCode = code;
             branch.Address = dto.Address;
             branch.ContactInfo = dto.ContactInfo;
 
             await _context.SaveChangesAsync();
+        }
+
+        public async Task<bool> HasAssetsAsync(int branchId)
+        {
+            return await _context.Assets.AnyAsync(a => a.BranchID == branchId);
+        }
+
+        // Upper-case, exactly one letter. The DTO checks the same thing;
+        // this is the check a hand-built post cannot skip.
+        private static string NormalizeCode(string? raw)
+        {
+            var code = (raw ?? "").Trim().ToUpperInvariant();
+            if (!Regex.IsMatch(code, "^[A-Z]$"))
+                throw new System.ArgumentException("The branch code must be exactly 1 letter, e.g. M.");
+            return code;
+        }
+
+        private async Task EnsureCodeFreeAsync(string code, int? exceptBranchId)
+        {
+            var owner = await _context.Branches
+                .Where(b => b.BranchCode == code && b.BranchID != exceptBranchId)
+                .Select(b => b.BranchName)
+                .FirstOrDefaultAsync();
+
+            if (owner is not null)
+                throw new System.InvalidOperationException($"The code {code} is already used by {owner}.");
         }
 
         public async Task DeleteBranchAsync(int branchId, int actingUserId)

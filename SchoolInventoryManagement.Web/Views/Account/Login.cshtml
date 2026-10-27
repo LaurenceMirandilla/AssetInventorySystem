@@ -14,209 +14,271 @@
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <style>
-            html, body { height: 100%; }
-            .login-shell {
-                display: flex;
-                min-height: 100vh;
-            }
-            .login-panel {
-                flex: 1 1 50%;
-                background: linear-gradient(160deg, var(--sab-green) 0%, var(--sab-green-darker) 100%);
-                color: #fff;
-                padding: 56px;
-                display: flex;
-                flex-direction: column;
-                position: relative;
-                overflow: hidden;
-            }
-            .login-panel::before {
-                content: "";
-                position: absolute;
-                right: -120px;
-                bottom: -120px;
-                width: 420px;
-                height: 420px;
-                border-radius: 50%;
-                border: 1px solid rgba(255,255,255,0.12);
-            }
-            .login-panel::after {
-                content: "";
-                position: absolute;
-                right: -60px;
-                bottom: -60px;
-                width: 260px;
-                height: 260px;
-                border-radius: 50%;
-                border: 1px solid rgba(255,255,255,0.12);
-            }
-            .login-mark {
-                width: 108px;
-                height: 108px;
-                object-fit: contain;
-                margin-bottom: 34px;
-                position: relative;
-                z-index: 1;
-            }
+        /* Sign-in page: deep green backdrop with the crest as a faint
+           watermark, the school name on top, and a white card with a gold
+           top edge. Falls back to the system font when offline. */
+        :root {
+            --login-gold: #d4b13a;
+            --login-ink: #1f5f2a;
+            --login-bg-center: #2a7a35;
+            --login-bg-edge: #0f3d17;
+        }
 
-            .login-title {
-                font-size: 1.6rem;
-                font-weight: 700;
-                line-height: 1.25;
-                margin-bottom: 8px;
-            }
-            .login-subtitle {
-                font-size: 0.72rem;
-                font-weight: 700;
-                letter-spacing: 0.12em;
-                text-transform: uppercase;
-                color: rgba(255,255,255,0.75);
-                margin-bottom: 20px;
-            }
-            .login-rule {
-                width: 36px;
-                height: 3px;
-                background: rgba(255,255,255,0.5);
-                border-radius: 2px;
-                margin-bottom: 20px;
-            }
-            .login-blurb {
-                font-size: 0.94rem;
-                line-height: 1.55;
-                color: rgba(255,255,255,0.85);
-                max-width: 320px;
-            }
-            .login-footnote {
-                margin-top: auto;
-                font-size: 0.78rem;
-                color: rgba(255,255,255,0.55);
-                position: relative;
-                z-index: 1;
-            }
-            .login-form-side {
-                flex: 1 1 50%;
-                background: var(--sab-surface);
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                padding: 40px;
-            }
-            .login-form-wrap { width: 100%; max-width: 360px; }
-            .login-form-wrap h1 {
-                font-size: 1.3rem;
-                font-weight: 700;
-                margin-bottom: 4px;
-            }
-            .login-form-wrap .lead-text {
-                color: var(--sab-text-muted);
-                font-size: 0.88rem;
-                margin-bottom: 28px;
-            }
-            .password-wrap { position: relative; }
-            .password-wrap .toggle-visibility {
-                position: absolute;
-                right: 12px;
-                top: 50%;
-                transform: translateY(-50%);
-                background: none;
-                border: none;
-                color: var(--sab-text-muted);
-                cursor: pointer;
-            }
-            .login-help {
-                text-align: center;
-                font-size: 0.76rem;
-                color: var(--sab-text-faint);
-                margin: 20px 0 10px;
-                position: relative;
-            }
-            .login-help::before, .login-help::after {
-                content: "";
-                position: absolute;
-                top: 50%;
-                width: 30%;
-                border-top: 1px solid var(--sab-border);
-            }
-            .login-help::before { left: 0; }
-            .login-help::after { right: 0; }
-            .login-note {
-                text-align: center;
-                font-size: 0.82rem;
-                color: var(--sab-text-muted);
-                line-height: 1.5;
-            }
+        html, body { min-height: 100%; }
+        body {
+            margin: 0;
+            background: radial-gradient(ellipse at 50% 40%, var(--login-bg-center) 0%, #1c5e27 45%, var(--login-bg-edge) 100%);
+            background-attachment: fixed;
+            font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            overflow-x: hidden;
+        }
+
+        .login-page {
+            position: relative;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px 16px;
+        }
+
+        /* The crest, huge and faint, behind everything. */
+        .login-watermark {
+            position: fixed;
+            left: 50%;
+            top: 50%;
+            width: min(680px, 92vw);
+            transform: translate(-50%, -50%);
+            opacity: 0.14;
+            pointer-events: none;
+            user-select: none;
+            z-index: 0;
+        }
+
+        .login-brand,
+        .login-card { position: relative; z-index: 1; }
+
+        .login-brand { text-align: center; margin-bottom: 32px; }
+        .login-crest {
+            width: 96px;
+            height: auto;
+            display: block;
+            margin: 0 auto 18px;
+            filter: drop-shadow(0 4px 10px rgba(0,0,0,0.25));
+        }
+        .login-school {
+            color: #fff;
+            font-size: clamp(1.6rem, 4.5vw, 2.5rem);
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            line-height: 1.15;
+            margin: 0 0 14px;
+            text-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+        .login-system {
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            color: var(--login-gold);
+            font-size: 0.82rem;
+            font-weight: 700;
+            letter-spacing: 0.24em;
+            text-transform: uppercase;
+        }
+        .login-system::before,
+        .login-system::after {
+            content: "";
+            width: 32px;
+            height: 2px;
+            background: var(--login-gold);
+            border-radius: 2px;
+        }
+
+        .login-card {
+            width: 100%;
+            max-width: 420px;
+            background: #f7f9f7;
+            border-top: 6px solid var(--login-gold);
+            border-radius: 18px;
+            box-shadow: 0 24px 60px rgba(0,0,0,0.35);
+            padding: 34px 36px 28px;
+        }
+        .login-card h1 {
+            text-align: center;
+            color: var(--login-ink);
+            font-size: 1.65rem;
+            font-weight: 800;
+            margin: 0 0 6px;
+        }
+        .login-lead {
+            text-align: center;
+            color: #5b6660;
+            font-size: 0.9rem;
+            line-height: 1.4;
+            margin: 0 0 24px;
+        }
+
+        .login-card .form-label {
+            font-size: 0.84rem;
+            font-weight: 600;
+            color: #2d3a32;
+            margin-bottom: 6px;
+        }
+        .login-card .form-control {
+            height: 48px;
+            border-radius: 10px;
+            border-color: #d9e1dc;
+            background: #fff;
+            font-size: 0.95rem;
+        }
+        .login-card .form-control:focus {
+            border-color: var(--login-ink);
+            box-shadow: 0 0 0 3px rgba(31,95,42,0.15);
+        }
+
+        .password-wrap { position: relative; }
+        .password-wrap .form-control { padding-right: 48px; }
+        .toggle-visibility {
+            position: absolute;
+            right: 6px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 38px;
+            height: 38px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: none;
+            border: none;
+            border-radius: 8px;
+            color: #5b6660;
+            cursor: pointer;
+        }
+        .toggle-visibility:hover { color: var(--login-ink); background: rgba(31,95,42,0.06); }
+
+        .login-options {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin: 6px 0 22px;
+        }
+        .login-options .form-check { margin: 0; display: flex; align-items: center; gap: 10px; padding-left: 0; }
+        .login-options .form-check-input {
+            float: none;
+            margin: 0;
+            width: 18px;
+            height: 18px;
+        }
+        .login-options .form-check-input:checked { background-color: var(--login-ink); border-color: var(--login-ink); }
+        .login-options .form-check-label { font-size: 0.9rem; color: #2d3a32; }
+        .login-forgot { font-size: 0.85rem; color: #5b6660; text-decoration: none; white-space: nowrap; }
+        .login-forgot:hover { color: var(--login-ink); text-decoration: underline; }
+
+        .login-submit {
+            width: 100%;
+            height: 50px;
+            border: none;
+            border-radius: 10px;
+            background: var(--login-ink);
+            color: #fff;
+            font-weight: 700;
+            font-size: 1rem;
+            transition: background 0.15s;
+        }
+        .login-submit:hover { background: #174a20; }
+        .login-submit:focus-visible { outline: 3px solid var(--login-gold); outline-offset: 2px; }
+
+        .login-note {
+            text-align: center;
+            font-size: 0.78rem;
+            line-height: 1.55;
+            color: #5b6660;
+            margin: 22px 0 0;
+            border-radius: 8px;
+            transition: background 0.3s;
+        }
+        /* "Forgot password?" jumps here and highlights it. */
+        .login-note:target { background: #fff6d6; padding: 8px; }
+
+        @@media (max-width: 480px) {
+            .login-card { padding: 28px 20px 22px; }
+            .login-options { flex-wrap: wrap; }
+        }
     </style>
 </head>
 <body>
-    <div class="login-shell">
-        <div class="login-panel">
-            <img src="~/images/logo-mark.png" alt="Ste. Anne De Beaupré School crest" class="login-mark" />
-            <div class="login-title">Ste. Anne De<br />Beaupre School</div>
-            <div class="login-subtitle">Inventory System</div>
-            <div class="login-rule"></div>
-            <p class="login-blurb">
-                Every projector, laptop and desk on campus — who holds it,
-                where it sits, and what condition it came back in.
+    <img src="~/images/logo.png" alt="" aria-hidden="true" class="login-watermark" />
+
+    <main class="login-page">
+        <div class="login-brand">
+            <img src="~/images/logo.png" alt="Ste. Anne De Beaupré School crest" class="login-crest" />
+            <h2 class="login-school">Ste. Anne De Beaupre School</h2>
+            <div class="login-system">Inventory System</div>
+        </div>
+
+        <div class="login-card">
+            <h1>Welcome back</h1>
+            <p class="login-lead">Sign in with the school email your account was created with.</p>
+
+            <form asp-controller="Account" asp-action="Login" method="post">
+                @Html.AntiForgeryToken()
+                <div asp-validation-summary="ModelOnly" class="text-danger small mb-3"></div>
+
+                <div class="mb-3">
+                    <label asp-for="Email" class="form-label">Email address</label>
+                    <input asp-for="Email" class="form-control" autocomplete="username"
+                           placeholder="name@steannedebeaupre.edu.ph" />
+                    <span asp-validation-for="Email" class="text-danger small"></span>
+                </div>
+
+                <div class="mb-3">
+                    <label asp-for="Password" class="form-label">Password</label>
+                    <div class="password-wrap">
+                        <input asp-for="Password" id="passwordInput" class="form-control"
+                               autocomplete="current-password" />
+                        <button type="button" class="toggle-visibility" id="togglePassword"
+                                aria-label="Show password" aria-pressed="false">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
+                                <circle cx="12" cy="12" r="3" />
+                            </svg>
+                        </button>
+                    </div>
+                    <span asp-validation-for="Password" class="text-danger small"></span>
+                </div>
+
+                <div class="login-options">
+                    <div class="form-check">
+                        <input asp-for="RememberMe" type="checkbox" class="form-check-input" />
+                        <label asp-for="RememberMe" class="form-check-label">Keep me signed in</label>
+                    </div>
+                    <a href="#loginHelp" class="login-forgot">Forgot password?</a>
+                </div>
+
+                <button type="submit" class="login-submit">Sign in</button>
+            </form>
+
+            <p class="login-note" id="loginHelp">
+                Forgotten passwords are reset by an Administrator or the Principal.
+                Contact the IT office rather than creating a second account.
             </p>
-            <div class="login-footnote">Authorized access only. Accounts are issued by the IT office.</div>
         </div>
-
-        <div class="login-form-side">
-            <div class="login-form-wrap">
-                <h1>Sign in</h1>
-                <p class="lead-text">Use the school email address your account was created with.</p>
-
-                <form asp-controller="Account" asp-action="Login" method="post">
-                    @Html.AntiForgeryToken()
-                    <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
-
-                    <div class="mb-3">
-                        <label asp-for="Email" class="form-label">Email address</label>
-                        <input asp-for="Email" class="form-control" autocomplete="username"
-                               placeholder="name@steannedebeaupre.edu.ph" />
-                        <span asp-validation-for="Email" class="text-danger"></span>
-                    </div>
-
-                    <div class="mb-3">
-                        <label asp-for="Password" class="form-label">Password</label>
-                        <div class="password-wrap">
-                            <input asp-for="Password" id="passwordInput" class="form-control"
-                                   autocomplete="current-password" />
-                            <button type="button" class="toggle-visibility" onclick="togglePassword()" aria-label="Show password">
-                                &#128065;
-                            </button>
-                        </div>
-                        <span asp-validation-for="Password" class="text-danger"></span>
-                    </div>
-
-                    <div class="d-flex justify-content-between align-items-center mb-3">
-                        <div class="form-check">
-                            <input type="checkbox" class="form-check-input" id="keepSignedIn" />
-                            <label class="form-check-label" for="keepSignedIn" style="font-size:0.85rem;">
-                                Keep me signed in
-                            </label>
-                        </div>
-                        <span class="text-muted" style="font-size:0.85rem;">Forgot password?</span>
-                    </div>
-
-                    <button type="submit" class="btn btn-primary w-100 d-flex align-items-center justify-content-center gap-2">
-                        Sign in <span>&rarr;</span>
-                    </button>
-                </form>
-
-                <div class="login-help">NEED HELP</div>
-                <p class="login-note">
-                    Forgotten passwords are reset by an Administrator or the Principal
-                    — contact the IT office rather than creating a second account.
-                </p>
-            </div>
-        </div>
-    </div>
+    </main>
 
     <script>
-            function togglePassword() {
-                const input = document.getElementById('passwordInput');
-                input.type = input.type === 'password' ? 'text' : 'password';
-            }
+        (function () {
+            var input = document.getElementById('passwordInput');
+            var button = document.getElementById('togglePassword');
+            button.addEventListener('click', function () {
+                var show = input.type === 'password';
+                input.type = show ? 'text' : 'password';
+                button.setAttribute('aria-pressed', show ? 'true' : 'false');
+                button.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+            });
+        })();
     </script>
 </body>
 </html>

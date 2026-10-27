@@ -58,7 +58,7 @@ namespace SchoolInventoryManagement.Web.ViewModels
         [Display(Name = "Branch")]
         public int? BranchID { get; set; }
 
-        [Display(Name = "Add QR")]
-        public bool CreateQr { get; set; }
+        [Display(Name = "Add barcode")]
+        public bool CreateBarcode { get; set; }
     }
 }

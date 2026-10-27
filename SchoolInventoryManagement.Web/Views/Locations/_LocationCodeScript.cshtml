@@ -1,0 +1,19 @@
+@* Shared by Location Create and Edit: keeps the code upper-case, three
+   letters or digits only, and shows it in an example asset code. The
+   service checks the same rules. *@
+<script>
+    (function () {
+        var input = document.getElementById('locationCode');
+        var example = document.getElementById('codeExample');
+        if (!input || !example) return; // locked: nothing to edit
+
+        function sync() {
+            var clean = input.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 3);
+            if (clean !== input.value) input.value = clean;
+            example.textContent = clean || 'LIB';
+        }
+
+        input.addEventListener('input', sync);
+        sync();
+    })();
+</script>

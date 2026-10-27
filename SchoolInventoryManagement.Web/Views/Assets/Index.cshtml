@@ -33,6 +33,14 @@
         }
     </div>
     <div class="sab-page-actions">
+        @* A USB barcode scanner types the code and presses Enter, which
+           submits this and opens the asset. *@
+        <form asp-action="Scan" method="get" class="d-flex" style="gap:6px;" role="search">
+            <input name="code" class="form-control" style="max-width:200px;" autocomplete="off"
+                   placeholder="Scan barcode…" aria-label="Scan a barcode or type an asset code" />
+            <button type="submit" class="btn btn-outline-secondary">Open</button>
+        </form>
+
         <a asp-action="ExportAssets"
            asp-route-keyword="@Model.Keyword"
            asp-route-categoryId="@Model.CategoryId"

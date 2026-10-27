@@ -12,6 +12,13 @@ namespace SchoolInventoryManagement.DAL.Entities
         [MaxLength(100)]
         public string BranchName { get; set; } = null!;
 
+        // One letter that starts every asset code registered here:
+        // M-LIB-CHR-0001. Stored upper-case, unique across branches
+        // (UX_Branches_BranchCode).
+        [Required]
+        [MaxLength(1)]
+        public string BranchCode { get; set; } = null!;
+
         [MaxLength(255)]
         public string? Address { get; set; }
 

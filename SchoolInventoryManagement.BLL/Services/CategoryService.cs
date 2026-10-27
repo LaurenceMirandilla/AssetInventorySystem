@@ -88,7 +88,7 @@ namespace SchoolInventoryManagement.BLL.Services
             var prefix = NormalizePrefix(dto.CodePrefix);
             await EnsurePrefixFreeAsync(prefix, exceptCategoryId: categoryId);
 
-            // A new prefix only affects assets registered from now on --
+            // A new code only affects assets registered from now on --
             // existing codes stay exactly as printed on their labels.
             category.CategoryName = dto.CategoryName;
             category.CodePrefix = prefix;
@@ -114,13 +114,13 @@ namespace SchoolInventoryManagement.BLL.Services
             await _context.SaveChangesAsync();
         }
 
-        // Upper-case, letters and digits only, 2-10 long. The DTO checks the
-        // same thing; this is the check a hand-built post cannot skip.
+        // Upper-case, exactly three letters. The DTO checks the same thing;
+        // this is the check a hand-built post cannot skip.
         private static string NormalizePrefix(string? raw)
         {
             var prefix = (raw ?? "").Trim().ToUpperInvariant();
-            if (!Regex.IsMatch(prefix, "^[A-Z0-9]{2,10}$"))
-                throw new ArgumentException("The code prefix must be 2 to 10 letters or digits, with no spaces or symbols.");
+            if (!Regex.IsMatch(prefix, "^[A-Z]{3}$"))
+                throw new ArgumentException("The category code must be exactly 3 letters, e.g. CHR.");
             return prefix;
         }
 
@@ -132,7 +132,7 @@ namespace SchoolInventoryManagement.BLL.Services
                 .FirstOrDefaultAsync();
 
             if (owner is not null)
-                throw new InvalidOperationException($"The prefix {prefix} is already used by {owner}.");
+                throw new InvalidOperationException($"The code {prefix} is already used by {owner}.");
         }
     }
 }

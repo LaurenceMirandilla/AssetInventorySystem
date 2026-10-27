@@ -197,22 +197,33 @@
                     </div>
                 }
 
-                @if (!string.IsNullOrEmpty(Model.QRCodeData))
+                @if (!string.IsNullOrEmpty(Model.BarcodeData))
                 {
-                    <img src="@Url.Action("QrCode", new { id = Model.AssetID })" alt="QR code" width="120" height="120" class="d-block mb-2" />
-                    <a href="@Url.Action("QrCode", new { id = Model.AssetID })" download="@($"{Model.AssetCode}-qr.png")"
-                       class="btn btn-outline-primary btn-sm w-100">Download QR</a>
+                    <img src="@Url.Action("Barcode", new { id = Model.AssetID })" alt="Barcode @Model.AssetCode"
+                         class="d-block mb-2" style="width:100%; height:auto;" />
+                    <a href="@Url.Action("Barcode", new { id = Model.AssetID, download = true })"
+                       class="btn btn-outline-primary btn-sm w-100">Download barcode</a>
+
+                    @if (User.IsInRole(RoleNames.AssetOfficer) || User.IsInRole(RoleNames.Administrator))
+                    {
+                        <form asp-action="DeleteBarcode" asp-route-id="@Model.AssetID" method="post" class="mt-2"
+                              onsubmit="return confirm('Delete barcode @Model.BarcodeData?\n\nThe printed label will stop opening this asset. Create barcode later makes a new one from where the asset is then.');">
+                            @Html.AntiForgeryToken()
+                            <button type="submit" class="btn btn-outline-danger btn-sm w-100">Delete barcode</button>
+                        </form>
+                    }
                 }
                 else if (User.IsInRole(RoleNames.AssetOfficer) || User.IsInRole(RoleNames.Administrator))
                 {
-                    <form asp-action="CreateQr" asp-route-id="@Model.AssetID" method="post">
+                    <form asp-action="CreateBarcode" asp-route-id="@Model.AssetID" method="post">
                         @Html.AntiForgeryToken()
-                        <button type="submit" class="btn btn-outline-primary btn-sm w-100">Create QR</button>
+                        <button type="submit" class="btn btn-outline-primary btn-sm w-100">Create barcode</button>
                     </form>
+                    <div class="form-text">Built from where the asset is now, e.g. M-LIB-@Model.AssetCode, and stays as printed.</div>
                 }
                 else
                 {
-                    <div class="text-muted small">No QR code yet.</div>
+                    <div class="text-muted small">No barcode yet.</div>
                 }
             </div>
         </div>

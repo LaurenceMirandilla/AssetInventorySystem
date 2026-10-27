@@ -11,6 +11,7 @@ namespace SchoolInventoryManagement.BLL.Mappings
             {
                 BranchID = branch.BranchID,
                 BranchName = branch.BranchName,
+                BranchCode = branch.BranchCode,
                 Address = branch.Address,
                 ContactInfo = branch.ContactInfo
             };

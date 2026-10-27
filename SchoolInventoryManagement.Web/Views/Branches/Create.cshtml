@@ -15,6 +15,13 @@
         <span asp-validation-for="BranchName" class="text-danger"></span>
     </div>
 
+    <div class="mb-3" style="max-width:320px;">
+        <label asp-for="BranchCode" class="form-label"></label>
+        <input asp-for="BranchCode" class="form-control text-uppercase" maxlength="1" placeholder="e.g. M" autocomplete="off" />
+        <span asp-validation-for="BranchCode" class="text-danger"></span>
+        <div class="form-text">One letter, unique. Starts every barcode made in this branch: <span class="sab-code">M-LIB-CHR-0001</span>.</div>
+    </div>
+
     <div class="mb-3">
         <label asp-for="Address" class="form-label">Address <span class="text-muted">(optional)</span></label>
         <textarea asp-for="Address" class="form-control"></textarea>

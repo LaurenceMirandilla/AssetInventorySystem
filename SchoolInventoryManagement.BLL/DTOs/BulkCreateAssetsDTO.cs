@@ -35,7 +35,7 @@ namespace SchoolInventoryManagement.BLL.DTOs
         // Must belong to BranchID.
         public int DepartmentID { get; set; }
 
-        // "Add QR" on the form. On: every unit is saved with its QR.
-        public bool CreateQr { get; set; }
+        // "Add barcode" on the form. On: every unit is saved with its barcode.
+        public bool CreateBarcode { get; set; }
     }
 }

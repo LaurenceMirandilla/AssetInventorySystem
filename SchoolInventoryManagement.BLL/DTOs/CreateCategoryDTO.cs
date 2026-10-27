@@ -9,12 +9,12 @@ namespace SchoolInventoryManagement.BLL.DTOs
         [Display(Name = "Category name")]
         public string CategoryName { get; set; } = null!;
 
-        // Letters and digits only; stored upper-case. Asset codes in this
-        // category become {CodePrefix}-0001, -0002, ...
-        [Required(ErrorMessage = "Enter a code prefix, e.g. CHAIR.")]
-        [RegularExpression("^[A-Za-z0-9]{2,10}$",
-            ErrorMessage = "Use 2 to 10 letters or digits, no spaces or symbols.")]
-        [Display(Name = "Code prefix")]
+        // Exactly three letters; stored upper-case. Third part of every
+        // asset code in this category: M-LIB-CHR-0001.
+        [Required(ErrorMessage = "Enter a category code, e.g. CHR.")]
+        [RegularExpression("^[A-Za-z]{3}$",
+            ErrorMessage = "Use exactly 3 letters, e.g. CHR.")]
+        [Display(Name = "Category code")]
         public string CodePrefix { get; set; } = null!;
 
         [MaxLength(255)]

@@ -43,6 +43,7 @@ namespace SchoolInventoryManagement.DAL.Seed
                 context.Branches.Add(new Branch
                 {
                     BranchName = "Main Campus",
+                    BranchCode = "M",
                     Address = "Default Address",
                     ContactInfo = "N/A"
                 });

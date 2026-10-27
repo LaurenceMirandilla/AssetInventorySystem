@@ -11,6 +11,7 @@ namespace SchoolInventoryManagement.BLL.Mappings
             {
                 LocationID = location.LocationID,
                 LocationName = location.LocationName,
+                LocationCode = location.LocationCode,
                 Description = location.Description,
                 BranchID = location.BranchID,
                 BranchName = location.Branch?.BranchName ?? string.Empty
