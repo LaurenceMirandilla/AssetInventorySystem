@@ -711,6 +711,8 @@ namespace SchoolInventoryManagement.Web.Controllers
                 Movements = await _movementService.GetMovementHistoryForAssetAsync(id),
                 Disposals = await _disposalService.GetDisposalHistoryForAssetAsync(id),
                 AuditEntries = await _context.AuditLogs
+                    .Include(a => a.User)
+                        .ThenInclude(u => u.Role)
                     .Where(a => a.TargetAssetID == id)
                     .OrderByDescending(a => a.LogDateTime)
                     .ToListAsync()

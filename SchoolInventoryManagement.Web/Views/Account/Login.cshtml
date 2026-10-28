@@ -188,6 +188,7 @@
             transition: background 0.15s;
         }
         .login-submit:hover { background: #174a20; }
+        .login-submit:disabled { background: #7d9a83; cursor: not-allowed; }
         .login-submit:focus-visible { outline: 3px solid var(--login-gold); outline-offset: 2px; }
 
         .login-note {
@@ -258,7 +259,8 @@
                     <a href="#loginHelp" class="login-forgot">Forgot password?</a>
                 </div>
 
-                <button type="submit" class="login-submit">Sign in</button>
+                <button type="submit" class="login-submit" id="signInButton"
+                        data-lockout="@(ViewBag.LockoutSeconds ?? 0)">Sign in</button>
             </form>
 
             <p class="login-note" id="loginHelp">
@@ -278,6 +280,25 @@
                 button.setAttribute('aria-pressed', show ? 'true' : 'false');
                 button.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
             });
+
+            // Locked out after too many wrong passwords: hold the button
+            // and count down. The server refuses early tries anyway.
+            var signIn = document.getElementById('signInButton');
+            var left = parseInt(signIn.getAttribute('data-lockout'), 10) || 0;
+            if (left > 0) {
+                signIn.disabled = true;
+                var tick = function () {
+                    if (left <= 0) {
+                        signIn.disabled = false;
+                        signIn.textContent = 'Sign in';
+                        return;
+                    }
+                    signIn.textContent = 'Try again in ' + left + 's';
+                    left--;
+                    setTimeout(tick, 1000);
+                };
+                tick();
+            }
         })();
     </script>
 </body>

@@ -41,6 +41,9 @@ builder.Services.AddControllersWithViews();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<AuditSaveChangesInterceptor>();
 builder.Services.AddScoped<INewItemRequestService, NewItemRequestService>();
+// Wrong-password lockouts (Helpers/LoginThrottle), kept in memory.
+builder.Services.AddMemoryCache();
+builder.Services.AddSingleton<SchoolInventoryManagement.Web.Helpers.LoginThrottle>();
 
 
 var app = builder.Build();

@@ -1,0 +1,6 @@
+@model int
+@* Just the number, for a button that already says "Notifications". *@
+@if (Model > 0)
+{
+    <span class="dash-hero-btn-count">@(Model > 99 ? "99+" : Model.ToString())</span>
+}

@@ -85,12 +85,16 @@ else
 @if (Model.AuditEntries.Any())
 {
     <table class="table table-sm">
-        <thead><tr><th>Action</th><th>Date</th><th>Details</th></tr></thead>
+        <thead><tr><th>Action</th><th>By</th><th>Date</th><th>Details</th></tr></thead>
         <tbody>
             @foreach (var log in Model.AuditEntries)
             {
                 <tr>
                     <td>@log.ActionPerformed</td>
+                    <td>
+                        <div>@log.User.FirstName @log.User.LastName</div>
+                        <div class="text-muted small">@log.User.Role.RoleName</div>
+                    </td>
                     <td>@log.LogDateTime.ToString("MMM d, yyyy h:mm tt")</td>
                     <td>@(log.Description ?? "—")</td>
                 </tr>

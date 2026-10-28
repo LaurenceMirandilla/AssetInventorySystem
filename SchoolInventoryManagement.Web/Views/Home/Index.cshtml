@@ -1,202 +1,320 @@
 ﻿@model SchoolInventoryManagement.Web.ViewModels.HomeDashboardViewModel
 @{
-    ViewData["Title"] = "Home";
+    ViewData["Title"] = Model.IsReportsViewer ? "Dashboard" : "Home";
+
+    var now = DateTime.Now;
+    var greeting = now.Hour < 12 ? "Good morning" : now.Hour < 18 ? "Good afternoon" : "Good evening";
+    var today = now.ToString("dddd, d MMMM yyyy");
+
+    // 18px line icons for the tiles and card headings.
+    Func<string, string> icon = name =>
+    {
+        const string open = "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\">";
+        var body = name switch
+        {
+            "box"     => "<path d='M12 2 3 7v10l9 5 9-5V7z'/><path d='M3 7l9 5 9-5'/><path d='M12 12v10'/>",
+            "arrow"   => "<path d='M5 12h14'/><path d='M13 6l6 6-6 6'/>",
+            "wrench"  => "<path d='M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z'/>",
+            "peso"    => "<path d='M7 21V3h6a4 4 0 0 1 0 8H7'/><path d='M4 7h16M4 11h16'/>",
+            "bell"    => "<path d='M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9'/><path d='M13.7 21a2 2 0 0 1-3.4 0'/>",
+            "bars"    => "<path d='M4 6h10M4 12h16M4 18h7'/>",
+            "clock"   => "<circle cx='12' cy='12' r='9'/><path d='M12 7v5l3 2'/>",
+            "doc"     => "<path d='M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z'/><path d='M14 2v6h6'/>",
+            "hand"    => "<path d='M12 5v14M5 12h14'/>",
+            "eye"     => "<path d='M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z'/><circle cx='12' cy='12' r='3'/>",
+            "download"=> "<path d='M12 3v12'/><path d='M7 10l5 5 5-5'/><path d='M5 21h14'/>",
+            "plus"    => "<path d='M12 5v14M5 12h14'/>",
+            "pencil"  => "<path d='M12 20h9'/><path d='M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z'/>",
+            "trash"   => "<path d='M3 6h18'/><path d='M8 6V4h8v2'/><path d='M19 6l-1 14H6L5 6'/>",
+            "key"     => "<circle cx='7.5' cy='15.5' r='4.5'/><path d='M10.7 12.3 20 3'/><path d='M16 7l3 3'/>",
+            "check"   => "<path d='M20 6 9 17l-5-5'/>",
+            "x"       => "<path d='M6 6l12 12M18 6 6 18'/>",
+            _         => "<circle cx='12' cy='12' r='3'/>"
+        };
+        return open + body.Replace('\'', '"') + "</svg>";
+    };
+
+    // Picks the activity pill's icon from the logged action's wording.
+    Func<string, string> actionIcon = action =>
+    {
+        var a = action.ToLowerInvariant();
+        return a.Contains("view") ? "eye"
+            : a.Contains("export") ? "download"
+            : a.Contains("creat") || a.Contains("regist") || a.Contains("add") ? "plus"
+            : a.Contains("delet") || a.Contains("dispos") ? "trash"
+            : a.Contains("login") || a.Contains("password") ? "key"
+            : a.Contains("approv") || a.Contains("return") ? "check"
+            : a.Contains("reject") || a.Contains("cancel") ? "x"
+            : a.Contains("updat") || a.Contains("edit") || a.Contains("chang") ? "pencil"
+            : "dot";
+    };
+
+    // "Report Viewed" -> "Report viewed", to read like a sentence.
+    Func<string, string> sentence = text =>
+        string.IsNullOrEmpty(text) ? text : char.ToUpper(text[0]) + text[1..].ToLowerInvariant();
+
+    Func<string, string> initialsOf = name =>
+    {
+        var i = string.Concat(name.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(p => p[0])).ToUpperInvariant();
+        return i.Length > 2 ? i[..2] : i;
+    };
 }
 
 @if (!Model.IsReportsViewer)
 {
-    @* The personal half of the dashboard. Same tiles, cards and type scale
-       as the inventory half below -- only the figures differ, because these
-       roles are scoped to their own records. *@
-    <h2 class="mb-0">Good morning, @Model.DisplayName</h2>
-    <p class="text-muted mb-3">@DateTime.Now.ToString("dddd, d MMMM yyyy")</p>
+    @* The personal dashboard, for roles scoped to their own records. Same
+       hero and cards as the inventory one, only the figures differ. *@
+    <section class="dash-hero">
+        <div class="dash-hero-top">
+            <div>
+                <div class="dash-eyebrow">Home</div>
+                <h1>@greeting, @Model.DisplayName</h1>
+                <p class="dash-hero-sub">@today &middot; here is what you are holding and asking for.</p>
+            </div>
+            <a class="dash-hero-btn" asp-controller="Notifications" asp-action="Index">
+                @Html.Raw(icon("bell")) Notifications
+                @await Component.InvokeAsync("NotificationBell", new { style = "count" })
+            </a>
+        </div>
 
-    <div class="report-tiles">
-        <a asp-controller="Assets" asp-action="MyAssets" class="report-tile text-decoration-none">
-            <span class="report-tile-value">@Model.AssetsInMyCare</span>
-            <span class="report-tile-label">Assets in my care</span>
-            <span class="report-tile-note">signed out to you right now</span>
-        </a>
-        <a asp-controller="AssetRequests" asp-action="MyRequests" class="report-tile text-decoration-none">
-            <span class="report-tile-value">@Model.MyOpenRequestCount</span>
-            <span class="report-tile-label">Open requests</span>
-            <span class="report-tile-note">pending or approved</span>
-        </a>
-    </div>
+        <div class="dash-kpis">
+            <a class="dash-kpi" asp-controller="Assets" asp-action="MyAssets">
+                <span class="dash-kpi-icon">@Html.Raw(icon("box"))</span>
+                <span class="dash-kpi-value">@Model.AssetsInMyCare</span>
+                <span class="dash-kpi-label">Assets in my care</span>
+                <span class="dash-kpi-note">Signed out to you right now</span>
+            </a>
+            <a class="dash-kpi" asp-controller="AssetRequests" asp-action="MyRequests">
+                <span class="dash-kpi-icon">@Html.Raw(icon("doc"))</span>
+                <span class="dash-kpi-value">@Model.MyOpenRequestCount</span>
+                <span class="dash-kpi-label">Open requests</span>
+                <span class="dash-kpi-note">Pending or in progress</span>
+            </a>
+        </div>
+    </section>
 
-    <div class="row g-3">
-        <div class="col-lg-8">
-            <div class="card">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <h5 class="mb-0">My recent requests</h5>
-                        <a asp-controller="AssetRequests" asp-action="MyRequests" class="small">View all</a>
-                    </div>
+    <div class="dash-grid">
+        <div class="dash-col">
+            <div class="dash-card">
+                <div class="dash-card-head">
+                    <h2 class="dash-card-title"><span class="dash-card-icon">@Html.Raw(icon("doc"))</span>My recent requests</h2>
+                    <a asp-controller="AssetRequests" asp-action="MyRequests" class="small fw-semibold">View all</a>
+                </div>
 
-                    @if (Model.MyRecentRequests.Any())
-                    {
+                @if (Model.MyRecentRequests.Any())
+                {
+                    <ul class="dash-list">
                         @foreach (var request in Model.MyRecentRequests)
                         {
-                            <div class="d-flex justify-content-between align-items-center py-2 border-bottom">
-                                <div>
-                                    <div class="fw-semibold">
+                            <li>
+                                <div style="min-width:0;">
+                                    <div class="dash-list-title">
                                         @request.ItemsSummary
                                         @if (request.RequestType == SchoolInventoryManagement.DAL.Entities.Enums.RequestType.Transfer)
                                         {
                                             <text> &rarr; @request.RequestedLocationName</text>
                                         }
                                     </div>
-                                    <div class="text-muted small">
+                                    <div class="dash-list-sub">
                                         <span class="status-pill status-@request.RequestType.ToString().ToLowerInvariant()">@request.RequestType</span>
                                         <span class="ms-1">@request.RequestDate.ToString("MMM d, yyyy")</span>
                                     </div>
                                 </div>
-                                <div class="d-flex align-items-center" style="gap:12px;">
+                                <div class="dash-list-end">
                                     <span class="status-pill status-@request.RequestStatus.ToString().ToLowerInvariant()">@DisplayText.Humanize(request.RequestStatus.ToString())</span>
                                     <a asp-controller="AssetRequests" asp-action="Details" asp-route-id="@request.RequestID" class="small">View</a>
                                 </div>
-                            </div>
+                            </li>
                         }
-                    }
-                    else
-                    {
-                        <p class="text-muted mb-0">You haven't submitted any requests yet.</p>
-                    }
-                </div>
+                    </ul>
+                }
+                else
+                {
+                    <p class="dash-empty">You haven't submitted any requests yet.</p>
+                }
             </div>
         </div>
 
-        <div class="col-lg-4">
-            <div class="card">
-                <div class="card-body">
-                    <h5 class="mb-1">Need something?</h5>
-                    <p class="text-muted small">
-                        <strong>Borrow</strong> asks for models and how many of each;
-                        staff pick the units. <strong>Transfer</strong> asks for them to
-                        be moved to another location. Either way an approver decides.
-                    </p>
-                    <a asp-controller="AssetRequests" asp-action="Create" class="btn btn-primary w-100">+ New Request</a>
-                    <a asp-controller="Assets" asp-action="MyAssets" class="btn btn-outline-secondary w-100 mt-2">See what I'm holding</a>
+        <div class="dash-col">
+            <div class="dash-card">
+                <div class="dash-card-head">
+                    <h2 class="dash-card-title"><span class="dash-card-icon">@Html.Raw(icon("hand"))</span>Need something?</h2>
                 </div>
+                <p class="text-muted small">
+                    <strong>Borrow</strong> asks for models and how many of each;
+                    staff pick the units. <strong>Transfer</strong> asks for them to
+                    be moved to another location. Either way an approver decides.
+                </p>
+                <a asp-controller="AssetRequests" asp-action="Create" class="dash-btn w-100 justify-content-center">+ New request</a>
+                <a asp-controller="Assets" asp-action="MyAssets" class="dash-btn is-outline w-100 justify-content-center mt-2">See what I'm holding</a>
             </div>
         </div>
     </div>
 }
 else
 {
-    <h2 class="mb-0">Good morning, @Model.DisplayName</h2>
-    <p class="text-muted mb-3">@DateTime.Now.ToString("dddd, d MMMM yyyy")</p>
+    <section class="dash-hero">
+        <div class="dash-hero-top">
+            <div>
+                <div class="dash-eyebrow">Dashboard</div>
+                <h1>@greeting, @Model.DisplayName</h1>
+                <p class="dash-hero-sub">@today &middot; here is where the school's inventory stands today.</p>
+            </div>
+            <a class="dash-hero-btn" asp-controller="Notifications" asp-action="Index">
+                @Html.Raw(icon("bell")) Notifications
+                @await Component.InvokeAsync("NotificationBell", new { style = "count" })
+            </a>
+        </div>
 
-    <div class="report-tiles">
-        <div class="report-tile">
-            <span class="report-tile-value">@Model.TotalAssets</span>
-            <span class="report-tile-label">Assets in service</span>
+        <div class="dash-kpis">
+            <a class="dash-kpi" asp-controller="Assets" asp-action="Index">
+                <span class="dash-kpi-icon">@Html.Raw(icon("box"))</span>
+                <span class="dash-kpi-value">@Model.TotalAssets</span>
+                <span class="dash-kpi-label">Assets in service</span>
+                <span class="dash-kpi-note">Registered units, not disposed</span>
+            </a>
+            <a class="dash-kpi" asp-controller="Reports" asp-action="Assignments">
+                <span class="dash-kpi-icon">@Html.Raw(icon("arrow"))</span>
+                <span class="dash-kpi-value">@Model.CurrentlyIssued</span>
+                <span class="dash-kpi-label">Currently issued</span>
+                <span class="dash-kpi-note">Borrowed or transferred out</span>
+            </a>
+            <a class="dash-kpi" asp-controller="Assets" asp-action="Index" asp-route-status="UnderMaintenance">
+                <span class="dash-kpi-icon">@Html.Raw(icon("wrench"))</span>
+                <span class="dash-kpi-value">@Model.UnderMaintenanceCount</span>
+                <span class="dash-kpi-label">Under maintenance</span>
+                <span class="dash-kpi-note">@(Model.UnderMaintenanceCount == 0 ? "Nothing in for repair" : "In for repair")</span>
+            </a>
+            <a class="dash-kpi" asp-controller="Reports" asp-action="Index">
+                <span class="dash-kpi-icon">@Html.Raw(icon("peso"))</span>
+                <span class="dash-kpi-value">@DisplayText.Peso(Model.ValueInService)</span>
+                <span class="dash-kpi-label">Value in service</span>
+                <span class="dash-kpi-note">Excludes disposed units</span>
+            </a>
         </div>
-        <div class="report-tile">
-            <span class="report-tile-value">@Model.CurrentlyIssued</span>
-            <span class="report-tile-label">Currently issued</span>
-        </div>
-        <div class="report-tile">
-            <span class="report-tile-value">@Model.UnderMaintenanceCount</span>
-            <span class="report-tile-label">Under maintenance</span>
-        </div>
-        <div class="report-tile">
-            <span class="report-tile-value">@DisplayText.Peso(Model.ValueInService)</span>
-            <span class="report-tile-label">Value in service</span>
-            <span class="report-tile-note">excludes disposed units</span>
-        </div>
-    </div>
+    </section>
 
-    <div class="row g-3">
-        <div class="col-lg-8">
-            <div class="card mb-3">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <h5 class="mb-0">Needs your attention</h5>
-                        <a asp-controller="AssetRequests" asp-action="Pending" class="small">View all</a>
+    <div class="dash-grid">
+        <div class="dash-col">
+            @* Needs your attention: requests waiting for a decision. *@
+            <div class="dash-card dash-attention">
+                @if (Model.PendingRequestCount > 0)
+                {
+                    <div class="dash-attention-body">
+                        <div class="dash-attention-eyebrow">Needs your attention</div>
+                        <div class="dash-attention-title">Requests awaiting your decision</div>
+                        <div class="dash-attention-sub">
+                            @Model.PendingRequestCount pending &middot;
+                            <a asp-controller="AssetRequests" asp-action="Pending" class="fw-semibold">View all</a>
+                        </div>
                     </div>
-
-                    @if (Model.PendingRequestCount > 0)
-                    {
-                        <div class="d-flex justify-content-between align-items-center py-2 border-bottom">
-                            <div>
-                                <div class="fw-semibold">Requests awaiting your decision</div>
-                                <div class="text-muted small">@Model.PendingRequestCount pending</div>
-                            </div>
-                            <a asp-controller="AssetRequests" asp-action="Pending" class="btn btn-sm btn-outline-secondary">Review</a>
-                        </div>
-                    }
-                    else
-                    {
-                        <p class="text-muted mb-0">Nothing is waiting on you right now.</p>
-                    }
-
-                    @* The mockup also shows "assets out 90+ days", "in maintenance
-                       since <date>" and "missing serial number" rows. Those
-                       aren't computed anywhere in IReportService yet — happy to
-                       add the queries for them next rather than show fake counts. *@
-                </div>
+                    <a asp-controller="AssetRequests" asp-action="Pending" class="dash-btn">Review now &rarr;</a>
+                }
+                else
+                {
+                    <div class="dash-attention-body">
+                        <div class="dash-attention-eyebrow">Needs your attention</div>
+                        <div class="dash-attention-title">All caught up</div>
+                        <div class="dash-attention-sub">Nothing is waiting on you right now.</div>
+                    </div>
+                }
             </div>
 
-            <div class="card">
-                <div class="card-body">
-                    <h5 class="mb-3">Assets by category</h5>
-
-                    @{
-                        var maxCount = Model.ByCategory.Any() ? Model.ByCategory.Max(c => c.Count) : 1;
-                    }
-
-                    @foreach (var row in Model.ByCategory)
-                    {
-                        var pct = maxCount == 0 ? 0 : (int)Math.Round(100.0 * row.Count / maxCount);
-                        <div class="d-flex align-items-center mb-2" style="gap:10px;">
-                            <span class="text-muted small" style="width:110px; flex-shrink:0;">@row.Label</span>
-                            <div style="flex:1 1 auto; background:var(--sab-bg); border-radius:4px; height:10px;">
-                                <div style="width:@(pct)%; background:var(--sab-green); height:10px; border-radius:4px;"></div>
-                            </div>
-                            <span class="fw-semibold small" style="width:32px; text-align:right;">@row.Count</span>
-                        </div>
-                    }
-
-                    @if (!Model.ByCategory.Any())
-                    {
-                        <p class="text-muted mb-0">No assets registered yet.</p>
-                    }
+            <div class="dash-card">
+                <div class="dash-card-head">
+                    <h2 class="dash-card-title"><span class="dash-card-icon">@Html.Raw(icon("bars"))</span>Assets by category</h2>
+                    <span class="dash-card-meta">Units in service</span>
                 </div>
+
+                @if (Model.ByCategory.Any())
+                {
+                    var total = Model.ByCategory.Sum(c => c.Count);
+                    var max = Math.Max(1, Model.ByCategory.Max(c => c.Count));
+                    var palette = new[] { "#1f5f2a", "#2e8b45", "#6cc183", "#b9e2c4", "#8aa597", "#cfd8d2" };
+                    var offset = 0.0;
+
+                    <div class="dash-category">
+                        @* A ring of stroked arcs on a circle whose circumference
+                           is 100, so each arc's length is simply its percent. *@
+                        <div class="dash-donut" role="img" aria-label="@total units in service by category">
+                            <svg viewBox="0 0 42 42" aria-hidden="true">
+                                <circle cx="21" cy="21" r="15.915" fill="none" stroke="#eef2ef" stroke-width="6" />
+                                @for (var i = 0; i < Model.ByCategory.Count; i++)
+                                {
+                                    var share = total == 0 ? 0 : 100.0 * Model.ByCategory[i].Count / total;
+                                    <circle cx="21" cy="21" r="15.915" fill="none"
+                                            stroke="@palette[i % palette.Length]" stroke-width="6"
+                                            stroke-dasharray="@share.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) @((100 - share).ToString("0.###", System.Globalization.CultureInfo.InvariantCulture))"
+                                            stroke-dashoffset="@((-offset).ToString("0.###", System.Globalization.CultureInfo.InvariantCulture))" />
+                                    offset += share;
+                                }
+                            </svg>
+                            <div class="dash-donut-center">
+                                <strong>@total</strong>
+                                <span>units</span>
+                            </div>
+                        </div>
+
+                        <ul class="dash-bars">
+                            @for (var i = 0; i < Model.ByCategory.Count; i++)
+                            {
+                                var row = Model.ByCategory[i];
+                                var width = (int)Math.Round(100.0 * row.Count / max);
+                                var pct = total == 0 ? 0 : (int)Math.Round(100.0 * row.Count / total);
+                                var color = palette[i % palette.Length];
+                                <li>
+                                    <span class="dash-bar-label"><span class="dash-swatch" style="background:@color"></span><span>@row.Label</span></span>
+                                    <span class="dash-bar-track"><span class="dash-bar-fill d-block" style="width:@(Math.Max(width, 2))%; background:@color"></span></span>
+                                    <span class="dash-bar-count">@row.Count</span>
+                                    <span class="dash-bar-pct">@pct%</span>
+                                </li>
+                            }
+                        </ul>
+                    </div>
+                }
+                else
+                {
+                    <p class="dash-empty">No assets registered yet.</p>
+                }
             </div>
         </div>
 
-        <div class="col-lg-4">
-            <div class="card">
-                <div class="card-body">
-                    <h5 class="mb-3">Recent activity</h5>
-
+        <div class="dash-col">
+            <div class="dash-card">
+                <div class="dash-card-head">
+                    <h2 class="dash-card-title"><span class="dash-card-icon">@Html.Raw(icon("clock"))</span>Recent activity</h2>
                     @if (Model.RecentActivity.Any())
                     {
-                        @foreach (var entry in Model.RecentActivity)
-                        {
-                            <div class="d-flex mb-3" style="gap:10px;">
-                                <span class="sab-avatar" style="width:28px;height:28px;font-size:0.68rem;">
-                                    @string.Concat(entry.UserName.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(p => p[0])).ToUpperInvariant()
-                                </span>
-                                <div>
-                                    <div class="small">
-                                        <strong>@entry.UserName</strong> — @entry.ActionPerformed
-                                        @if (!string.IsNullOrWhiteSpace(entry.TargetAssetCode))
-                                        {
-                                            <code>@entry.TargetAssetCode</code>
-                                        }
-                                    </div>
-                                    <div class="text-muted small">@entry.LogDateTime.ToString("MMM d, h:mm tt")</div>
-                                </div>
-                            </div>
-                        }
-                    }
-                    else
-                    {
-                        <p class="text-muted mb-0">No recent activity.</p>
+                        <span class="dash-card-meta is-caps">@(Model.RecentActivity[0].LogDateTime.Date == now.Date ? "Today" : "Latest")</span>
                     }
                 </div>
+
+                @if (Model.RecentActivity.Any())
+                {
+                    <ul class="dash-activity">
+                        @foreach (var entry in Model.RecentActivity)
+                        {
+                            <li>
+                                <span class="sab-avatar">@initialsOf(entry.UserName)</span>
+                                <div class="dash-activity-main">
+                                    <div class="dash-activity-line">
+                                        <span class="dash-activity-name">@entry.UserName</span>
+                                        <span class="dash-activity-pill">@Html.Raw(icon(actionIcon(entry.ActionPerformed)))@sentence(entry.ActionPerformed)</span>
+                                        @if (!string.IsNullOrWhiteSpace(entry.TargetAssetCode))
+                                        {
+                                            <span class="dash-activity-code">@entry.TargetAssetCode</span>
+                                        }
+                                    </div>
+                                    <div class="dash-activity-time">@entry.LogDateTime.ToString("MMM d · h:mm ")@entry.LogDateTime.ToString("tt").ToLowerInvariant()</div>
+                                </div>
+                            </li>
+                        }
+                    </ul>
+                }
+                else
+                {
+                    <p class="dash-empty">No recent activity.</p>
+                }
             </div>
         </div>
     </div>

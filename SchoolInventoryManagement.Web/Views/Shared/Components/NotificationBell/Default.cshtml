@@ -1,9 +1,14 @@
 @model int
-
-<a class="nav-link text-dark position-relative" asp-controller="Notifications" asp-action="Index">
-    Notifications
+@* The bell button in the sidebar's brand row, with a red dot when there
+   is anything unread. *@
+<a class="sab-bell-btn" asp-controller="Notifications" asp-action="Index"
+   title="@(Model > 0 ? $"{Model} unread notification{(Model == 1 ? "" : "s")}" : "Notifications")"
+   aria-label="Notifications@(Model > 0 ? $", {Model} unread" : "")">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.7 21a2 2 0 0 1-3.4 0" />
+    </svg>
     @if (Model > 0)
     {
-        <span class="badge rounded-pill bg-danger ms-1">@(Model > 99 ? "99+" : Model.ToString())</span>
+        <span class="sab-bell-dot"></span>
     }
 </a>
