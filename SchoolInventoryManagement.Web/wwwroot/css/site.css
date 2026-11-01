@@ -3530,3 +3530,72 @@ a.dash-kpi:hover { background: rgba(255, 255, 255, 0.14); color: #fff; text-deco
   .page-tabs { flex-wrap: wrap; overflow-x: visible; gap: 0 4px; }
   .page-tabs .page-tab, .page-tabs button { padding: 8px 10px; }
 }
+
+/* ---- New-item tickets (Views/Shared/_NewItemTicketItems, New-Item Approvals) ---- */
+.md-tag.is-newitem { background: var(--sab-amber-bg); color: var(--sab-amber-text); }
+.md-section-title small { color: var(--sab-text-muted); font-weight: 400; font-size: 0.82rem; }
+
+.ni-stagechips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; list-style: none; margin: 14px 0 0; padding: 0; }
+.ni-stagechips li {
+  padding: 4px 10px; border-radius: 999px; background: var(--sab-gray-bg); color: var(--sab-text-muted);
+  font-size: 0.78rem; font-weight: 600; white-space: nowrap;
+}
+.ni-stagechips li + li::before { content: "→"; margin: 0 8px 0 -2px; color: var(--sab-text-faint); font-weight: 400; display: none; }
+.ni-stagechips li.is-done { background: var(--sab-green-light); color: var(--sab-green-dark); }
+.ni-stagechips li.is-current { background: var(--sab-green-dark); color: #fff; }
+
+.ni-ticket { border: 1px solid var(--sab-border); border-radius: var(--sab-radius); overflow: hidden; background: #fff; }
+.ni-ticket-table { width: 100%; border-collapse: collapse; }
+.ni-ticket-table th {
+  padding: 10px 16px; border-bottom: 1px solid var(--sab-border); background: #fafbfa;
+  color: var(--sab-text-muted); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; text-align: left;
+}
+.ni-ticket-table td { padding: 12px 16px; border-bottom: 1px solid #f0f2f4; vertical-align: middle; }
+.ni-ticket-table tr:last-child td { border-bottom: 0; }
+.ni-ticket-table .num { text-align: right; white-space: nowrap; }
+.ni-ticket-icon { width: 48px; padding-right: 0 !important; }
+.ni-ticket-icon svg {
+  box-sizing: content-box; padding: 7px; border-radius: 8px; background: var(--sab-green-light); color: var(--sab-green-dark);
+}
+.ni-ticket-name { font-weight: 600; overflow-wrap: anywhere; }
+.ni-ticket-qty { color: var(--sab-green-dark); font-weight: 700; }
+.ni-ticket-each { color: var(--sab-text-muted); }
+.ni-ticket-line { font-weight: 800; }
+.ni-ticket-total {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px;
+  border-top: 1px solid #dfe9e0; background: #f3f8f3;
+}
+.ni-ticket-total small { margin-left: 6px; color: var(--sab-text-muted); }
+.ni-ticket-sum { color: var(--sab-green-dark); font-size: 1.3rem; font-weight: 800; white-space: nowrap; }
+
+.ni-decision {
+  margin-top: 16px; padding: 16px; border: 1px solid #dfe9e0; border-radius: var(--sab-radius);
+  background: linear-gradient(135deg, #f6faf6, #ffffff);
+}
+.ni-decision-title { margin-bottom: 10px; font-weight: 700; }
+.ni-decision-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+.ni-waiting {
+  display: flex; flex-direction: column; gap: 2px; margin-top: 16px; padding: 14px 16px;
+  border: 1px solid var(--sab-border); border-radius: var(--sab-radius); background: #fafbfa; font-size: 0.88rem;
+}
+.ni-waiting span { color: var(--sab-text-muted); }
+
+@media (max-width: 767.98px) {
+  .ni-ticket-table thead { display: none; }
+  .ni-ticket-table, .ni-ticket-table tbody { display: block; }
+  .ni-ticket-table tr {
+    display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; grid-template-areas: "icon name line" "icon meta meta";
+    column-gap: 10px; padding: 12px 14px; border-bottom: 1px solid #f0f2f4;
+  }
+  .ni-ticket-table tr:last-child { border-bottom: 0; }
+  .ni-ticket-table td { display: block; padding: 0; border: 0; }
+  .ni-ticket-icon { grid-area: icon; width: auto; }
+  .ni-ticket-name { grid-area: name; }
+  .ni-ticket-line { grid-area: line; }
+  .ni-ticket-qty { grid-area: meta; text-align: left !important; font-size: 0.82rem; }
+  .ni-ticket-each { grid-area: meta; text-align: left !important; font-size: 0.82rem; padding-left: 44px !important; }
+  .ni-ticket-total { flex-wrap: wrap; }
+  .ni-ticket-total small { display: block; margin: 0; }
+  .ni-ticket-sum { font-size: 1.1rem; }
+  .ni-decision-row .req-action-note { width: 100%; }
+}

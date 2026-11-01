@@ -51,6 +51,7 @@ namespace SchoolInventoryManagement.BLL.Services
                     .ThenInclude(u => u.Role)
                 .Include(n => n.Department)
                 .Include(n => n.ReviewedByUser)
+                .Include(n => n.Items)
                 .Include(n => n.Steps)
                     .ThenInclude(s => s.ActedByUser)
                         .ThenInclude(u => u.Role);
@@ -101,8 +102,21 @@ namespace SchoolInventoryManagement.BLL.Services
             };
         }
 
+        // "2 × Document camera" for a one-item ticket; "5 items (Document
+        // camera, HDMI cable +3)" for more. Needs Items loaded.
         private static string ItemText(NewItemRequest r) =>
-            r.Quantity == 1 ? r.ItemName : $"{r.Quantity} × {r.ItemName}";
+            r.Items.Count > 1 ? $"{r.Items.Count} items ({r.ItemName})"
+            : r.Quantity == 1 ? r.ItemName : $"{r.Quantity} × {r.ItemName}";
+
+        // The ticket's summary line: "Document camera" or "Document camera,
+        // HDMI cable +3". Fits the 150-character column.
+        private static string Summary(IReadOnlyList<string> names)
+        {
+            var text = names.Count <= 2
+                ? string.Join(", ", names)
+                : $"{names[0]}, {names[1]} +{names.Count - 2}";
+            return text.Length <= 150 ? text : text[..147] + "...";
+        }
 
         private static string DetailsUrl(int id) => $"/NewItemRequests/Details/{id}";
 
@@ -148,18 +162,11 @@ namespace SchoolInventoryManagement.BLL.Services
                 : await ActiveUserIdsAsync(_context.Users.Where(u => u.Role.RoleName == RoleNames.Administrator));
         }
 
+        // One ticket: every item on it shares the reason and the date, and
+        // the ticket is approved or rejected as a whole. Everything is
+        // checked before anything is saved.
         public async Task<NewItemRequestResponseDTO> CreateRequestAsync(
             CreateNewItemRequestDTO dto, int actingUserId)
-        {
-            var created = await CreateRequestsAsync(new List<CreateNewItemRequestDTO> { dto }, actingUserId);
-            return created[0];
-        }
-
-        // Several items in one go (the form's "+ Add another item"). Each is
-        // its own request, so each can be approved or rejected on its own.
-        // All are checked before any is saved, and they are saved together.
-        public async Task<List<NewItemRequestResponseDTO>> CreateRequestsAsync(
-            List<CreateNewItemRequestDTO> dtos, int actingUserId)
         {
             var requester = await PermissionHelper.GetUserOrThrowAsync(_context, actingUserId);
 
@@ -168,36 +175,37 @@ namespace SchoolInventoryManagement.BLL.Services
             // Ensure* helpers apply to approvers.
             PermissionHelper.EnsureIsActive(requester);
 
-            if (dtos.Count == 0)
+            var lines = dto.Items ?? new List<CreateNewItemRequestItemDTO>();
+            if (lines.Count == 0)
                 throw new ArgumentException("Add at least one item.");
-            if (dtos.Count > MaxItemsPerSubmission)
+            if (lines.Count > MaxItemsPerSubmission)
                 throw new ArgumentException($"You can ask for at most {MaxItemsPerSubmission} items at once.");
 
-            foreach (var dto in dtos)
+            foreach (var line in lines)
             {
-                if (string.IsNullOrWhiteSpace(dto.ItemName))
+                if (string.IsNullOrWhiteSpace(line.ItemName))
                     throw new ArgumentException("Tell us what the item is.");
-                if (dto.ItemName.Trim().Length > 150)
+                if (line.ItemName.Trim().Length > 150)
                     throw new ArgumentException("An item name can be at most 150 characters.");
 
-                if (dto.Quantity < 1 || dto.Quantity > MaxQuantity)
-                    throw new ArgumentException($"The quantity for {dto.ItemName.Trim()} must be from 1 to {MaxQuantity}.");
+                if (line.Quantity < 1 || line.Quantity > MaxQuantity)
+                    throw new ArgumentException($"The quantity for {line.ItemName.Trim()} must be from 1 to {MaxQuantity}.");
 
-                if (dto.EstimatedUnitPrice is null or <= 0)
-                    throw new ArgumentException($"Give an estimated price for {dto.ItemName.Trim()}.");
-                if (dto.EstimatedUnitPrice > MaxUnitPrice)
-                    throw new ArgumentException($"The estimated price for {dto.ItemName.Trim()} is too large.");
-
-                if (string.IsNullOrWhiteSpace(dto.Reason))
-                    throw new ArgumentException("Tell us why it is needed.");
-
-                if (dto.NeededBy is null)
-                    throw new ArgumentException("Say when you need the item.");
-
-                // Today is fine -- a same-day request is urgent, not invalid.
-                if (dto.NeededBy.Value.Date < DateTime.Today)
-                    throw new ArgumentException("The date you need the item cannot be in the past.");
+                if (line.EstimatedUnitPrice is null or <= 0)
+                    throw new ArgumentException($"Give an estimated price for {line.ItemName.Trim()}.");
+                if (line.EstimatedUnitPrice > MaxUnitPrice)
+                    throw new ArgumentException($"The estimated price for {line.ItemName.Trim()} is too large.");
             }
+
+            if (string.IsNullOrWhiteSpace(dto.Reason))
+                throw new ArgumentException("Tell us why it is needed.");
+
+            if (dto.NeededBy is null)
+                throw new ArgumentException("Say when you need the item.");
+
+            // Today is fine -- a same-day request is urgent, not invalid.
+            if (dto.NeededBy.Value.Date < DateTime.Today)
+                throw new ArgumentException("The date you need the item cannot be in the past.");
 
             // A department head's own request has nobody above it at the
             // first stage, so it starts at the budget check -- recorded as a
@@ -205,38 +213,40 @@ namespace SchoolInventoryManagement.BLL.Services
             var isDeptHead = requester.Role.RoleName == RoleNames.DepartmentHead;
             var now = DateTime.Now;
 
-            var requests = dtos.Select(dto =>
+            var items = lines.Select(line => new NewItemRequestItem
             {
-                var request = new NewItemRequest
-                {
-                    RequestedByUserID = actingUserId,
-                    DepartmentID = requester.DepartmentID,
-                    ItemName = dto.ItemName.Trim(),
-                    Quantity = dto.Quantity,
-                    EstimatedUnitPrice = decimal.Round(dto.EstimatedUnitPrice!.Value, 2),
-                    Reason = dto.Reason.Trim(),
-                    NeededBy = dto.NeededBy!.Value.Date,
-                    RequestDate = now,
-                    RequestStatus = isDeptHead ? NewItemStatus.AwaitingBudget : NewItemStatus.AwaitingDeptHead
-                };
-
-                AddStep(request, NewItemStatus.AwaitingDeptHead, actingUserId, null, now);
-                if (isDeptHead)
-                    AddStep(request, NewItemStatus.AwaitingBudget, actingUserId,
-                        "Submitted by the department head, so no separate department approval was needed.", now);
-
-                return request;
+                ItemName = line.ItemName.Trim(),
+                Quantity = line.Quantity,
+                EstimatedUnitPrice = decimal.Round(line.EstimatedUnitPrice!.Value, 2)
             }).ToList();
 
-            _context.NewItemRequests.AddRange(requests);
+            var request = new NewItemRequest
+            {
+                RequestedByUserID = actingUserId,
+                DepartmentID = requester.DepartmentID,
+                // The summary columns: the list pages and old reports read
+                // them. A one-item ticket keeps its price there too.
+                ItemName = Summary(items.Select(i => i.ItemName).ToList()),
+                Quantity = items.Sum(i => i.Quantity),
+                EstimatedUnitPrice = items.Count == 1 ? items[0].EstimatedUnitPrice : null,
+                Reason = dto.Reason.Trim(),
+                NeededBy = dto.NeededBy.Value.Date,
+                RequestDate = now,
+                RequestStatus = isDeptHead ? NewItemStatus.AwaitingBudget : NewItemStatus.AwaitingDeptHead,
+                Items = items
+            };
+
+            AddStep(request, NewItemStatus.AwaitingDeptHead, actingUserId, null, now);
+            if (isDeptHead)
+                AddStep(request, NewItemStatus.AwaitingBudget, actingUserId,
+                    "Submitted by the department head, so no separate department approval was needed.", now);
+
+            _context.NewItemRequests.Add(request);
             await _context.SaveChangesAsync();
 
-            // One message per submission, not one per item.
             var requesterName = $"{requester.FirstName} {requester.LastName}";
-            var what = requests.Count == 1
-                ? $"{ItemText(requests[0])}, needed by {requests[0].NeededBy:MMM d, yyyy}"
-                : $"{requests.Count} items: " + string.Join(", ", requests.Select(ItemText));
-            var url = requests.Count == 1 ? DetailsUrl(requests[0].NewItemRequestID) : "/NewItemRequests/Pending";
+            var what = $"{ItemText(request)}, needed by {request.NeededBy:MMM d, yyyy}";
+            var url = DetailsUrl(request.NewItemRequestID);
 
             var recipients = isDeptHead
                 ? await BudgetCheckerIdsAsync()
@@ -251,13 +261,10 @@ namespace SchoolInventoryManagement.BLL.Services
 
             await _context.SaveChangesAsync();
 
-            var ids = requests.Select(r => r.NewItemRequestID).ToList();
             var created = await QueryWithIncludes()
-                .Where(n => ids.Contains(n.NewItemRequestID))
-                .OrderBy(n => n.NewItemRequestID)
-                .ToListAsync();
-
-            return created.Select(n => n.ToResponseDTO()).ToList();
+                .AsSplitQuery()
+                .FirstAsync(n => n.NewItemRequestID == request.NewItemRequestID);
+            return created.ToResponseDTO();
         }
 
         public async Task<List<NewItemRequestResponseDTO>> GetMyRequestsAsync(int actingUserId)
@@ -288,6 +295,7 @@ namespace SchoolInventoryManagement.BLL.Services
 
                 query = query.Where(n =>
                     n.ItemName.Contains(term) ||
+                    n.Items.Any(i => i.ItemName.Contains(term)) ||
                     (n.Reason != null && n.Reason.Contains(term)) ||
                     (n.RequestedByUser.FirstName + " " + n.RequestedByUser.LastName).Contains(term) ||
                     n.Department.DepartmentName.Contains(term) ||
@@ -344,6 +352,38 @@ namespace SchoolInventoryManagement.BLL.Services
                 .ToList();
         }
 
+        // Open tickets the acting user can see that are not waiting on them:
+        // further along, or still on an earlier step. A department head sees
+        // their own department's; the other acting roles see everyone's.
+        public async Task<List<NewItemRequestResponseDTO>> GetInProgressRequestsAsync(int actingUserId)
+        {
+            var actor = await PermissionHelper.GetUserOrThrowAsync(_context, actingUserId);
+            PermissionHelper.EnsureIsActive(actor);
+
+            var role = actor.Role.RoleName;
+            var query = QueryWithIncludes().Where(n =>
+                n.RequestStatus == NewItemStatus.AwaitingDeptHead ||
+                n.RequestStatus == NewItemStatus.AwaitingBudget ||
+                n.RequestStatus == NewItemStatus.Procuring ||
+                n.RequestStatus == NewItemStatus.AwaitingArrival);
+
+            if (role == RoleNames.DepartmentHead)
+                query = query.Where(n => n.DepartmentID == actor.DepartmentID);
+            else if (!PermissionHelper.ApproverRoles.Contains(role))
+                throw new UnauthorizedAccessException(
+                    "Only department heads, the Principal, Asset Officers and Administrators act on new item requests.");
+
+            var requests = await query.AsSplitQuery().ToListAsync();
+
+            return requests
+                .Where(n => !CanActOn(n, actor))
+                .OrderBy(n => Array.IndexOf(StageOrder, n.RequestStatus))
+                .ThenBy(n => n.NeededBy ?? DateTime.MaxValue)
+                .ThenBy(n => n.RequestDate)
+                .Select(n => n.ToResponseDTO())
+                .ToList();
+        }
+
         public async Task<NewItemRequestResponseDTO> GetRequestAsync(int requestId, int actingUserId)
         {
             var actor = await PermissionHelper.GetUserOrThrowAsync(_context, actingUserId);
@@ -378,6 +418,7 @@ namespace SchoolInventoryManagement.BLL.Services
             PermissionHelper.EnsureIsActive(actor);
 
             var request = await _context.NewItemRequests
+                .Include(n => n.Items)
                 .FirstOrDefaultAsync(n => n.NewItemRequestID == requestId);
 
             if (request is null)

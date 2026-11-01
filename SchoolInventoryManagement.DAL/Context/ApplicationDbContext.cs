@@ -32,6 +32,7 @@ namespace SchoolInventoryManagement.DAL.Context
         public DbSet<Model> Models { get; set; } = null!;
         public DbSet<NewItemRequest> NewItemRequests { get; set; } = null!;
         public DbSet<NewItemRequestStep> NewItemRequestSteps { get; set; } = null!;
+        public DbSet<NewItemRequestItem> NewItemRequestItems { get; set; } = null!;
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -355,6 +356,13 @@ namespace SchoolInventoryManagement.DAL.Context
             modelBuilder.Entity<NewItemRequestStep>()
                 .Property(s => s.ActedAt)
                 .HasDefaultValueSql("GETDATE()");
+
+            // A ticket's lines go with it.
+            modelBuilder.Entity<NewItemRequestItem>()
+                .HasOne(i => i.Request)
+                .WithMany(n => n.Items)
+                .HasForeignKey(i => i.NewItemRequestID)
+                .OnDelete(DeleteBehavior.Cascade);
 
             modelBuilder.Entity<NewItemRequestStep>()
                 .HasOne(s => s.Request)

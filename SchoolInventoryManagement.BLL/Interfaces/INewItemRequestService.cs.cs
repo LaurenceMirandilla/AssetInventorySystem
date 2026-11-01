@@ -7,12 +7,8 @@ namespace SchoolInventoryManagement.BLL.Interfaces
 {
     public interface INewItemRequestService
     {
+        // One ticket with one or more items, approved or rejected together.
         Task<NewItemRequestResponseDTO> CreateRequestAsync(CreateNewItemRequestDTO dto, int actingUserId);
-
-        // Several items in one submission: one request each, all saved
-        // together or not at all.
-        Task<List<NewItemRequestResponseDTO>> CreateRequestsAsync(
-            List<CreateNewItemRequestDTO> dtos, int actingUserId);
 
         Task<List<NewItemRequestResponseDTO>> GetMyRequestsAsync(int actingUserId);
 
@@ -21,6 +17,10 @@ namespace SchoolInventoryManagement.BLL.Interfaces
         // checks for the Principal; procurement for Asset Officers; all of
         // these for Administrators.
         Task<List<NewItemRequestResponseDTO>> GetPendingRequestsAsync(int actingUserId);
+
+        // Open tickets the acting user can see that are not waiting on
+        // them (New-Item Approvals' "In progress" tab).
+        Task<List<NewItemRequestResponseDTO>> GetInProgressRequestsAsync(int actingUserId);
 
         // Every request from everyone, optionally one stage only, and/or
         // matching search (item, reason, requester or department). Ordered

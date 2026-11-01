@@ -37,7 +37,7 @@
 
 <div class="sab-page-head">
     <div>
-        <h2>@Model.ItemName <span class="text-muted fw-normal">× @Model.Quantity</span></h2>
+        <h2>@Model.ItemName @if (Model.Items.Count == 1 && Model.Quantity > 1) {<span class="text-muted fw-normal">× @Model.Quantity</span>}</h2>
         <p class="sab-page-sub">
             <span class="status-pill status-@Model.RequestStatus.ToString().ToLowerInvariant()">@DisplayText.Stage(Model.RequestStatus)</span>
             <span class="ms-2">Request #@Model.NewItemRequestID from @Model.RequestedByUserName, @Model.DepartmentName</span>
@@ -63,18 +63,18 @@
     }
 </ol>
 
+@* What the ticket asks for, decided as one request. *@
+<h4 class="md-section-title mt-0">What @(Model.Items.Count == 1 ? "is" : "are") being asked for <small>· one request, decided together</small></h4>
+<div class="mb-4"><partial name="_NewItemTicketItems" model="Model" /></div>
+
 <div class="row g-3">
     <div class="col-lg-5">
         <div class="card mb-3">
             <div class="card-body">
                 <h5 class="card-title">Request</h5>
                 <dl class="row mb-0 small">
-                    <dt class="col-5">Item</dt>
-                    <dd class="col-7">@Model.ItemName</dd>
-                    <dt class="col-5">Quantity</dt>
-                    <dd class="col-7">@Model.Quantity</dd>
-                    <dt class="col-5">Estimated price (each)</dt>
-                    <dd class="col-7">@DisplayText.Peso(Model.EstimatedUnitPrice)</dd>
+                    <dt class="col-5">Items</dt>
+                    <dd class="col-7">@Model.Items.Count · @Model.Quantity unit@(Model.Quantity == 1 ? "" : "s")</dd>
                     <dt class="col-5">Estimated total</dt>
                     <dd class="col-7 fw-semibold">@DisplayText.Peso(Model.EstimatedTotal)</dd>
                     <dt class="col-5">Requested by</dt>
@@ -116,7 +116,7 @@
                         {
                             <button type="submit" class="btn btn-outline-danger"
                                     formaction="@Url.Action("Reject", new { id = Model.NewItemRequestID, returnTo = "details" })"
-                                    onclick="return confirm('Reject this request?');">
+                                    onclick="return confirm('Reject this request and every item on it?');">
                                 Reject
                             </button>
                         }

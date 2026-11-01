@@ -96,6 +96,7 @@ namespace SchoolInventoryManagement.Web.Controllers
         public async Task<IActionResult> Pending()
         {
             var requests = await _requestService.GetPendingRequestsAsync(CurrentUserId);
+            ViewBag.InProgress = await _requestService.GetInProgressRequestsAsync(CurrentUserId);
             await LoadDepartmentBranchesAsync();
             return View(requests);
         }
@@ -172,20 +173,22 @@ namespace SchoolInventoryManagement.Web.Controllers
 
             try
             {
-                var dtos = items.Select(item => new CreateNewItemRequestDTO
+                // One ticket for every item on the form.
+                var dto = new CreateNewItemRequestDTO
                 {
-                    ItemName = item.Name,
-                    Quantity = item.Quantity!.Value,
-                    EstimatedUnitPrice = item.Price,
+                    Items = items.Select(item => new CreateNewItemRequestItemDTO
+                    {
+                        ItemName = item.Name,
+                        Quantity = item.Quantity!.Value,
+                        EstimatedUnitPrice = item.Price
+                    }).ToList(),
                     Reason = model.Reason,
                     NeededBy = model.NeededBy
-                }).ToList();
+                };
 
-                var created = await _requestService.CreateRequestsAsync(dtos, CurrentUserId);
+                var created = await _requestService.CreateRequestAsync(dto, CurrentUserId);
 
-                TempData["StatusMessage"] = created.Count == 1
-                    ? "Your request has been sent for review."
-                    : $"Your {created.Count} requests have been sent for review.";
+                TempData["StatusMessage"] = $"Request #{created.NewItemRequestID} has been sent for review.";
                 return RedirectToAction(nameof(MyRequests));
             }
             catch (Exception ex)

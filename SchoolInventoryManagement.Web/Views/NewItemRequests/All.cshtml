@@ -105,10 +105,10 @@ else
                         <button type="button" class="myassets-item" data-entry="n-@r.NewItemRequestID"
                                 data-stage="@r.RequestStatus.ToString().ToLowerInvariant()"
                                 data-dept="@r.DepartmentName.ToLowerInvariant()" data-branch="@BranchOf(r).ToLowerInvariant()"
-                                data-search="@($"#{r.NewItemRequestID} {r.NewItemRequestID} {r.ItemName} {r.Reason} {r.RequestedByUserName} {r.DepartmentName}".ToLowerInvariant())">
+                                data-search="@($"#{r.NewItemRequestID} {r.NewItemRequestID} {string.Join(' ', r.Items.Select(i => i.ItemName))} {r.Reason} {r.RequestedByUserName} {r.DepartmentName}".ToLowerInvariant())">
                             <span class="md-avatar @(stopped ? "is-dark" : "")">@NewItemProgress.Initials(r.RequestedByUserName)</span>
                             <span class="myassets-item-main">
-                                <span class="myassets-item-title">@r.ItemName@(r.Quantity > 1 ? $" ×{r.Quantity}" : "")</span>
+                                <span class="myassets-item-title">@r.ItemName@(r.Items.Count == 1 && r.Quantity > 1 ? $" ×{r.Quantity}" : "")</span>
                                 <span class="myassets-item-sub">@r.RequestedByUserName · @r.DepartmentName</span>
                                 <span class="myassets-item-sub">@DisplayText.Peso(r.EstimatedTotal) · @r.RequestDate.ToString("MMM d")</span>
                             </span>
@@ -140,7 +140,7 @@ else
                                 <span class="md-avatar md-avatar-lg">@NewItemProgress.Initials(r.RequestedByUserName)</span>
                                 <div class="min-w-0">
                                     <div class="myassets-panel-meta"><span>New-item request #@r.NewItemRequestID · submitted @r.RequestDate.ToString("MMM d, yyyy")</span></div>
-                                    <h3 class="md-person-name">@r.ItemName@(r.Quantity > 1 ? $" ×{r.Quantity}" : "")</h3>
+                                    <h3 class="md-person-name">@r.ItemName@(r.Items.Count == 1 && r.Quantity > 1 ? $" ×{r.Quantity}" : "")</h3>
                                     <div class="myassets-panel-meta">@r.RequestedByUserName@(r.RequestedByRoleName != null ? " · " + r.RequestedByRoleName : "") · @r.DepartmentName</div>
                                 </div>
                             </div>
@@ -153,11 +153,14 @@ else
                         <partial name="_RequestSteps" model="steps" />
 
                         <div class="myassets-stats">
-                            <div><span>Quantity</span><strong>@r.Quantity</strong></div>
+                            <div><span>Items</span><strong>@r.Items.Count · @r.Quantity unit@(r.Quantity == 1 ? "" : "s")</strong></div>
                             <div><span>Est. total</span><strong>@DisplayText.Peso(r.EstimatedTotal)</strong></div>
                             <div><span>Needed by</span><strong>@(r.NeededBy?.ToString("MMM d, yyyy") ?? "—")</strong></div>
                             <div><span>Last action</span><strong>@lastText</strong></div>
                         </div>
+
+                        <h4 class="md-section-title">What they asked for</h4>
+                        <partial name="_NewItemTicketItems" model="r" />
 
                         @if (!string.IsNullOrWhiteSpace(r.Reason))
                         {

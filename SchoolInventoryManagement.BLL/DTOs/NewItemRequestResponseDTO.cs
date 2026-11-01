@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using SchoolInventoryManagement.DAL.Entities.Enums;
 
 namespace SchoolInventoryManagement.BLL.DTOs
@@ -15,13 +16,23 @@ namespace SchoolInventoryManagement.BLL.DTOs
 
         public int DepartmentID { get; set; }
 
+        // A summary of the ticket ("Document camera, HDMI cable +3") and
+        // its total units; the lines are in Items.
         public string ItemName { get; set; } = null!;
         public int Quantity { get; set; }
 
-        // Estimated price of one, and of the whole request (Quantity x
-        // price). Null on requests made before prices were asked for.
+        // Price of one: only meaningful on a one-item ticket.
         public decimal? EstimatedUnitPrice { get; set; }
-        public decimal? EstimatedTotal => EstimatedUnitPrice * Quantity;
+
+        // What the ticket asks for, one line per item (always at least one).
+        public List<NewItemRequestItemDTO> Items { get; set; } = new();
+
+        // Every priced line added up; null when nothing is priced.
+        public decimal? EstimatedTotal =>
+            Items.Any(i => i.LineTotal != null) ? Items.Sum(i => i.LineTotal ?? 0) : null;
+
+        // How many lines have a price ("2 of 3 items priced").
+        public int PricedCount => Items.Count(i => i.EstimatedUnitPrice != null);
         public string? Reason { get; set; }
 
         // Null only on requests made before this was asked for.
@@ -53,5 +64,13 @@ namespace SchoolInventoryManagement.BLL.DTOs
         public string ActedByRole { get; set; } = null!;
         public DateTime ActedAt { get; set; }
         public string? Remarks { get; set; }
+    }
+
+    public class NewItemRequestItemDTO
+    {
+        public string ItemName { get; set; } = null!;
+        public int Quantity { get; set; }
+        public decimal? EstimatedUnitPrice { get; set; }
+        public decimal? LineTotal => EstimatedUnitPrice * Quantity;
     }
 }

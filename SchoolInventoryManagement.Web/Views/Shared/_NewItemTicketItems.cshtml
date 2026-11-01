@@ -1,0 +1,37 @@
+@model SchoolInventoryManagement.BLL.DTOs.NewItemRequestResponseDTO
+@* What a new-item ticket asks for: one row per item with quantity, the
+   estimate for one and the line total, then the estimated total. Used by
+   New-Item Approvals, My New-Item Requests, All New-Item Requests and the
+   request page. On a phone each row becomes a small card. *@
+@{
+    var units = Model.Items.Sum(i => i.Quantity);
+    var priced = Model.PricedCount;
+}
+<div class="ni-ticket">
+    <table class="ni-ticket-table">
+        <thead>
+            <tr><th colspan="2">Item</th><th class="num">Qty</th><th class="num">Est. each</th><th class="num">Line total</th></tr>
+        </thead>
+        <tbody>
+            @foreach (var item in Model.Items)
+            {
+                <tr>
+                    <td class="ni-ticket-icon" aria-hidden="true">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M21 8 12 3 3 8v8l9 5 9-5z" /><path d="M3 8l9 5 9-5M12 13v8" /></svg>
+                    </td>
+                    <td class="ni-ticket-name">@item.ItemName</td>
+                    <td class="num ni-ticket-qty" data-label="Qty">×@item.Quantity</td>
+                    <td class="num ni-ticket-each" data-label="Each">@(item.EstimatedUnitPrice is null ? "not priced" : DisplayText.Peso(item.EstimatedUnitPrice))</td>
+                    <td class="num ni-ticket-line" data-label="Total">@(item.LineTotal is null ? "—" : DisplayText.Peso(item.LineTotal))</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+    <div class="ni-ticket-total">
+        <span>
+            <strong>Estimated total</strong>
+            <small>@Model.Items.Count item@(Model.Items.Count == 1 ? "" : "s") · @units unit@(units == 1 ? "" : "s")@(priced < Model.Items.Count ? $" · {priced} of {Model.Items.Count} priced" : "")</small>
+        </span>
+        <strong class="ni-ticket-sum">@(Model.EstimatedTotal is null ? "not priced" : DisplayText.Peso(Model.EstimatedTotal))</strong>
+    </div>
+</div>

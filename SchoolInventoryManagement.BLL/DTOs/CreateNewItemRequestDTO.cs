@@ -1,13 +1,14 @@
-﻿using System;
+using System;
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 
 namespace SchoolInventoryManagement.BLL.DTOs
 {
+    // One new-item ticket: one or more items sharing a reason and a date,
+    // approved or rejected together.
     public class CreateNewItemRequestDTO
     {
-        [Required]
-        [MaxLength(150)]
-        public string ItemName { get; set; } = null!;
+        public List<CreateNewItemRequestItemDTO> Items { get; set; } = new();
 
         [Required]
         [MaxLength(500)]
@@ -15,6 +16,13 @@ namespace SchoolInventoryManagement.BLL.DTOs
 
         [Required]
         public DateTime? NeededBy { get; set; }
+    }
+
+    public class CreateNewItemRequestItemDTO
+    {
+        [Required]
+        [MaxLength(150)]
+        public string ItemName { get; set; } = null!;
 
         // How many are wanted.
         [Range(1, 1000)]

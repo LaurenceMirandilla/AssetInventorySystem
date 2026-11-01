@@ -80,5 +80,11 @@ namespace SchoolInventoryManagement.DAL.Entities
 
         // Every stage it has been through, oldest first.
         public ICollection<NewItemRequestStep> Steps { get; set; } = new List<NewItemRequestStep>();
+
+        // What the ticket asks for, one line per item. ItemName, Quantity
+        // and EstimatedUnitPrice above then hold a summary ("Document
+        // camera, HDMI cable +3", total units, no price). Rows made before
+        // tickets existed have no lines: their own columns are the one item.
+        public ICollection<NewItemRequestItem> Items { get; set; } = new List<NewItemRequestItem>();
     }
 }

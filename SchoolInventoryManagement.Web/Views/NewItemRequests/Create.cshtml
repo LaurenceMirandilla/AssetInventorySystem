@@ -161,7 +161,7 @@
     </div>
 
     <div class="register-footer">
-        <span class="d-none d-md-inline">Each item becomes its own request; the reason and date apply to all of them.</span>
+        <span class="d-none d-md-inline">All the items go in one request, approved or rejected together.</span>
         <div class="d-flex ms-auto" style="gap:8px;">
             <a asp-action="MyRequests" class="btn btn-outline-secondary">Cancel</a>
             <button type="submit" class="btn btn-primary" id="submitBtn">Submit request</button>
@@ -216,13 +216,12 @@
                 addButton.disabled = rows.length >= maxRows;
 
                 document.getElementById('itemsNote').textContent = named
-                    ? named + ' item' + (named === 1 ? '' : 's') + (named > 1 ? ' · each becomes its own request' : '')
+                    ? named + ' item' + (named === 1 ? '' : 's') + (named > 1 ? ' · one request, decided together' : '')
                     : '';
                 document.getElementById('estimatedTotal').textContent = peso(total, true);
                 document.getElementById('pricedNote').textContent = named && priced < named ? '· ' + priced + ' of ' + named + ' items priced' : '';
                 document.getElementById('sumItems').textContent = named ? named + ' · ' + units + ' unit' + (units === 1 ? '' : 's') : '—';
                 document.getElementById('sumTotal').textContent = total > 0 ? peso(total, false) : '—';
-                document.getElementById('submitBtn').textContent = named > 1 ? 'Submit ' + named + ' requests' : 'Submit request';
 
                 // Needed by: the date, and "in 4 weeks" beside the heading.
                 var badge = document.getElementById('neededBadge');

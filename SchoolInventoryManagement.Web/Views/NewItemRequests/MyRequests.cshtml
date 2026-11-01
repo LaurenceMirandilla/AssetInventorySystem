@@ -1,4 +1,4 @@
-@model List<SchoolInventoryManagement.BLL.DTOs.NewItemRequestResponseDTO>
+﻿@model List<SchoolInventoryManagement.BLL.DTOs.NewItemRequestResponseDTO>
 @using SchoolInventoryManagement.BLL.DTOs
 @using SchoolInventoryManagement.DAL.Entities.Enums
 @using SchoolInventoryManagement.Web.ViewModels
@@ -128,7 +128,7 @@ else
                         var stopped = IsStopped(r);
                         <button type="button" class="myassets-item @(stopped ? "item-late" : g.Key == "transit" ? "item-transit" : "")"
                                 data-entry="n-@r.NewItemRequestID" data-stage="@r.RequestStatus.ToString().ToLowerInvariant()"
-                                data-search="@($"#{r.NewItemRequestID} {r.NewItemRequestID} {r.ItemName} {r.Reason} {DisplayText.Stage(r.RequestStatus)}".ToLowerInvariant())">
+                                data-search="@($"#{r.NewItemRequestID} {r.NewItemRequestID} {string.Join(' ', r.Items.Select(i => i.ItemName))} {r.Reason} {DisplayText.Stage(r.RequestStatus)}".ToLowerInvariant())">
                             <span class="myassets-badge">
                                 <strong>#@r.NewItemRequestID</strong>
                                 <small>New</small>
@@ -136,7 +136,7 @@ else
                             <span class="myassets-item-main">
                                 <span class="myassets-item-title">@r.ItemName</span>
                                 <span class="myassets-item-sub">
-                                    @r.Quantity unit@(r.Quantity == 1 ? "" : "s")@(r.EstimatedTotal is not null ? " · " + DisplayText.Peso(r.EstimatedTotal) : "")@(r.NeededBy is not null && !stopped && done < 5 ? " · needed " + r.NeededBy.Value.ToString("MMM d") : "")
+                                    @(r.Items.Count > 1 ? $"{r.Items.Count} items · " : "")@r.Quantity unit@(r.Quantity == 1 ? "" : "s")@(r.EstimatedTotal is not null ? " · " + DisplayText.Peso(r.EstimatedTotal) : "")@(r.NeededBy is not null && !stopped && done < 5 ? " · needed " + r.NeededBy.Value.ToString("MMM d") : "")
                                 </span>
                                 <span class="nir-progress @(stopped ? "is-stopped" : "")" aria-hidden="true">
                                     @for (var i = 0; i < 5; i++)
@@ -207,25 +207,14 @@ else
                     <partial name="_RequestSteps" model="steps" />
 
                     <div class="myassets-stats">
-                        <div><span>Quantity</span><strong>@r.Quantity unit@(r.Quantity == 1 ? "" : "s")</strong></div>
+                        <div><span>Items</span><strong>@r.Items.Count · @r.Quantity unit@(r.Quantity == 1 ? "" : "s")</strong></div>
                         <div><span>Estimated total</span><strong>@DisplayText.Peso(r.EstimatedTotal)</strong></div>
                         <div><span>Needed by</span><strong>@(r.NeededBy?.ToString("MMM d, yyyy") ?? "—")</strong></div>
                         <div><span>Last action</span><strong>@((lastStep?.ActedAt ?? r.RequestDate).ToString("MMM d"))</strong></div>
                     </div>
 
-                    <div class="myassets-units mt-3">
-                        <table class="table myassets-table nir-table">
-                            <thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Est. price each</th><th class="num">Est. total</th></tr></thead>
-                            <tbody>
-                                <tr>
-                                    <td data-label="Item">@r.ItemName</td>
-                                    <td data-label="Qty" class="num">@r.Quantity</td>
-                                    <td data-label="Est. price each" class="num">@DisplayText.Peso(r.EstimatedUnitPrice)</td>
-                                    <td data-label="Est. total" class="num">@DisplayText.Peso(r.EstimatedTotal)</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
+                    <h4 class="md-section-title">What you asked for</h4>
+                    <partial name="_NewItemTicketItems" model="r" />
 
                     <div class="nir-cols">
                         <div>
