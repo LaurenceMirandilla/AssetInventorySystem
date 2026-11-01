@@ -314,8 +314,13 @@
 <div class="register-footer rq-footer">
     <a asp-action="@backAction" class="btn btn-outline-secondary rq-back">&larr; @backLabel</a>
     <div class="d-flex flex-wrap" style="gap:8px;">
-        @if (canCancel)
+        @if (canCancel && isPending)
         {
+            <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#cancel-@Model.RequestID">Cancel request</button>
+        }
+        else if (canCancel)
+        {
+            @* In Transit: the Cancel page asks where each unit goes back. *@
             <a asp-action="Cancel" asp-route-id="@Model.RequestID" class="btn btn-outline-danger">Cancel request</a>
         }
         @if (isPending && isApprover)
@@ -345,4 +350,8 @@
 @if (isPending)
 {
     <partial name="_RejectRequestModal" model="Model" />
+}
+@if (canCancel && isPending)
+{
+    <partial name="_CancelRequestModal" model="Model" />
 }

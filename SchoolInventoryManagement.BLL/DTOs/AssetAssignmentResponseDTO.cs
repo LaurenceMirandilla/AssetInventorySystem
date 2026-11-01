@@ -14,6 +14,9 @@ namespace SchoolInventoryManagement.BLL.DTOs
         // The unit's current status (Assigned, InTransit, Overdue...).
         public AssetStatus AssetStatus { get; set; }
 
+        // Where the unit is now (My Assets' location filter).
+        public string? CurrentLocationName { get; set; }
+
         // The request the unit went out on; null for a direct assignment.
         // My Assets groups units by it.
         public int? RequestID { get; set; }

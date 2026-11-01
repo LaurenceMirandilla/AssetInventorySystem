@@ -57,7 +57,7 @@
 <div class="asset-detail-head mb-3 pb-0 border-0">
     <div>
         <h2 class="asset-detail-title">Request History</h2>
-        <div class="asset-detail-sub">Every Borrow and Transfer request that has been approved or rejected, newest decision first.</div>
+        <div class="asset-detail-sub">Every Borrow and Transfer request that is completely finished: returned, rejected, or cancelled after approval. Newest decision first.</div>
     </div>
     <div class="asset-detail-actions">
         <a asp-action="Pending" class="btn btn-outline-secondary">&larr; Back to Approvals</a>
@@ -66,7 +66,7 @@
 
 <nav class="page-tabs" aria-label="Decision">
     <a asp-action="History" asp-all-route-data="@WithDecision(null)" class="page-tab @(decision == "" ? "active" : "")">
-        All decided <span class="history-tab-count">@(Model.ApprovedCount + Model.RejectedCount)</span>
+        All finished <span class="history-tab-count">@(Model.ApprovedCount + Model.RejectedCount)</span>
     </a>
     <a asp-action="History" asp-all-route-data="@WithDecision("Approved")" class="page-tab @(decision == "Approved" ? "active" : "")">
         Approved <span class="history-tab-count">@Model.ApprovedCount</span>

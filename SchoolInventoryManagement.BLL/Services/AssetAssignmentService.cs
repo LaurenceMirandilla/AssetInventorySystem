@@ -26,6 +26,8 @@ namespace SchoolInventoryManagement.BLL.Services
             return _context.AssetAssignments
                 .Include(a => a.Asset)
                     .ThenInclude(a => a.Model)
+                .Include(a => a.Asset)
+                    .ThenInclude(a => a.CurrentLocation)
                 .Include(a => a.AssignedToUser)
                     .ThenInclude(u => u.Role)
                 .Include(a => a.AssignedByUser)

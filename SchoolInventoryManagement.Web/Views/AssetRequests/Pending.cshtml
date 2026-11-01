@@ -12,6 +12,8 @@
     List<AssetRequestResponseDTO> inProgress = (ViewBag.InProgress as List<AssetRequestResponseDTO>) ?? new List<AssetRequestResponseDTO>();
     Dictionary<int, string> categories = (ViewBag.ModelCategories as Dictionary<int, string>) ?? new Dictionary<int, string>();
     Dictionary<int, ModelStock> stock = (ViewBag.Stock as Dictionary<int, ModelStock>) ?? new Dictionary<int, ModelStock>();
+    Dictionary<int, string> deptBranches = (ViewBag.DepartmentBranches as Dictionary<int, string>) ?? new Dictionary<int, string>();
+    string BranchOf(AssetRequestResponseDTO r) => deptBranches.TryGetValue(r.DepartmentID, out var b) ? b : "";
 
     // Principals see the In progress list but cannot act on it: handing
     // over and recording returns is Officers' and Administrators' work.
@@ -116,10 +118,28 @@
                         </button>
                         <div class="dropdown-menu dropdown-menu-end md-filter-menu">
                             <label class="form-label">Type</label>
-                            <select class="form-select form-select-sm" data-md-filter="type">
+                            <select class="form-select form-select-sm mb-2" data-md-filter="type">
                                 <option value="">Any</option>
                                 <option value="borrow">Borrow</option>
                                 <option value="transfer">Transfer</option>
+                            </select>
+                            <label class="form-label">Branch</label>
+                            <div class="mb-2">
+                            <select class="form-select form-select-sm" data-md-filter="branch" data-combobox>
+                                <option value="">Any</option>
+                                @foreach (var d in Model.Select(BranchOf).Where(d => !string.IsNullOrEmpty(d)).Distinct().OrderBy(d => d))
+                                {
+                                    <option value="@d.ToLowerInvariant()">@d</option>
+                                }
+                            </select>
+                            </div>
+                            <label class="form-label">Department</label>
+                            <select class="form-select form-select-sm" data-md-filter="dept" data-combobox>
+                                <option value="">Any</option>
+                                @foreach (var d in Model.Select(r => r.DepartmentName).Where(d => !string.IsNullOrEmpty(d)).Distinct().OrderBy(d => d))
+                                {
+                                    <option value="@d.ToLowerInvariant()">@d</option>
+                                }
                             </select>
                         </div>
                     </div>
@@ -131,7 +151,8 @@
                     {
                         var waited = (today - r.RequestDate.Date).Days;
                         <button type="button" class="myassets-item" data-entry="a-@r.RequestID" data-search="@Search(r)"
-                                data-type="@r.RequestType.ToString().ToLowerInvariant()">
+                                data-type="@r.RequestType.ToString().ToLowerInvariant()"
+                                data-dept="@(r.DepartmentName?.ToLowerInvariant() ?? "")" data-branch="@BranchOf(r).ToLowerInvariant()">
                             <span class="md-avatar">@Initials(r.RequestedByUser.FullName)</span>
                             <span class="myassets-item-main">
                                 <span class="myassets-item-title">@r.RequestedByUser.FullName</span>
@@ -285,8 +306,20 @@
                                 <option value="borrow">Borrow</option>
                                 <option value="transfer">Transfer</option>
                             </select>
+                            <label class="form-label">Stage</label>
+                            <select class="form-select form-select-sm mb-2" data-md-filter="stage">
+                                <option value="">Any</option>
+                                <option value="deliver">Waiting for pickup or delivery</option>
+                                <option value="return">Waiting for return</option>
+                            </select>
+                            <label class="form-label">Timing</label>
+                            <select class="form-select form-select-sm mb-2" data-md-filter="timing">
+                                <option value="">Any</option>
+                                <option value="ontime">On time</option>
+                                <option value="overdue">Overdue</option>
+                            </select>
                             <label class="form-label">Department</label>
-                            <select class="form-select form-select-sm" data-md-filter="dept">
+                            <select class="form-select form-select-sm" data-md-filter="dept" data-combobox>
                                 <option value="">Any</option>
                                 @foreach (var d in inProgress.Select(r => r.DepartmentName).Where(d => !string.IsNullOrEmpty(d)).Distinct().OrderBy(d => d))
                                 {
@@ -306,7 +339,8 @@
                             var isBorrow = r.RequestType == RequestType.Borrow;
                             var late = g.Key == "late";
                             <button type="button" class="myassets-item" data-entry="p-@r.RequestID" data-search="@Search(r)"
-                                    data-type="@r.RequestType.ToString().ToLowerInvariant()" data-dept="@(r.DepartmentName?.ToLowerInvariant() ?? "")">
+                                    data-type="@r.RequestType.ToString().ToLowerInvariant()" data-dept="@(r.DepartmentName?.ToLowerInvariant() ?? "")"
+                                    data-stage="@(g.Key == "transit" ? "deliver" : "return")" data-timing="@(late ? "overdue" : "ontime")">
                                 <span class="md-avatar @(late ? "is-dark" : "")">@Initials(r.RequestedByUser.FullName)</span>
                                 <span class="myassets-item-main">
                                     <span class="myassets-item-title">@r.RequestedByUser.FullName</span>

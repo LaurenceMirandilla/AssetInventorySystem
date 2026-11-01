@@ -238,10 +238,11 @@ namespace SchoolInventoryManagement.BLL.Services
             return requests.Select(r => r.ToResponseDTO()).ToList();
         }
 
-        // Every request that has been decided: approved (whatever happened
-        // after -- in transit, assigned, returned, or cancelled while still
-        // in transit) or rejected. Requests still pending, or cancelled
-        // before anyone decided them, are left out.
+        // Every request that is completely finished: approved and then
+        // returned (or fulfilled, or cancelled while still in transit), or
+        // rejected. Anything still under way -- pending, in transit, or
+        // with the requester -- lives on Approvals' In progress tab
+        // instead; a request cancelled before anyone decided it is left out.
         public async Task<RequestHistoryResultDTO> GetDecisionHistoryAsync(
             RequestHistoryFilterDTO filter, int actingUserId)
         {
@@ -249,10 +250,7 @@ namespace SchoolInventoryManagement.BLL.Services
 
             var query = RequestQueryWithIncludes().Where(r =>
                 r.RequestStatus == RequestStatus.Rejected ||
-                r.RequestStatus == RequestStatus.Approved ||
                 r.RequestStatus == RequestStatus.Fulfilled ||
-                r.RequestStatus == RequestStatus.InTransit ||
-                r.RequestStatus == RequestStatus.Assigned ||
                 r.RequestStatus == RequestStatus.Returned ||
                 (r.RequestStatus == RequestStatus.Cancelled && r.ApprovedByUserID != null));
 

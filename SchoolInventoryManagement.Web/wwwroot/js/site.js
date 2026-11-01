@@ -331,7 +331,13 @@ document.addEventListener('change', function (e) {
             var q = search ? search.value.trim().toLowerCase() : '';
             return items.filter(function (b) {
                 if (q && (b.dataset.search || '').indexOf(q) === -1) return false;
-                return filters.every(function (f) { return !f.value || b.dataset[f.dataset.mdFilter] === f.value; });
+                return filters.every(function (f) {
+                    if (!f.value) return true;
+                    // "|a|b|" holds several values (a request whose units
+                    // sit in more than one room): match any of them.
+                    var v = b.dataset[f.dataset.mdFilter] || '';
+                    return v.charAt(0) === '|' ? v.indexOf('|' + f.value + '|') !== -1 : v === f.value;
+                });
             });
         }
 

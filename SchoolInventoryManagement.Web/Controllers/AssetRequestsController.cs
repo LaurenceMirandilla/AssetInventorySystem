@@ -96,6 +96,9 @@ namespace SchoolInventoryManagement.Web.Controllers
             var requests = await _requestService.GetPendingRequestsAsync(CurrentUserId);
             ViewBag.InProgress = await _requestService.GetInProgressRequestsAsync(CurrentUserId);
             ViewBag.ModelCategories = await ModelCategoriesAsync();
+            // Department id -> branch name, for the Branch filter.
+            ViewBag.DepartmentBranches = (await _departmentService.GetAllDepartmentsAsync())
+                .ToDictionary(d => d.DepartmentID, d => d.BranchName);
 
             // What is free right now, per model and per room, so the approver
             // sees "5 available, 3 at the IT Room" before picking units.
