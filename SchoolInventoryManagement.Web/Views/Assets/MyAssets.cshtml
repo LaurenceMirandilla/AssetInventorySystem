@@ -1,19 +1,112 @@
-@model List<SchoolInventoryManagement.BLL.DTOs.AssetAssignmentResponseDTO>
+﻿@model List<SchoolInventoryManagement.BLL.DTOs.AssetAssignmentResponseDTO>
+@using SchoolInventoryManagement.BLL.DTOs
 @using SchoolInventoryManagement.DAL.Entities.Enums
 @{
     ViewData["Title"] = "My Assets";
 
-    // One row per request, laid out like My Requests: what is inside it
-    // summarised as "Model ×N", one View link, and a click on the row
-    // opens the units underneath. A unit assigned directly from an asset
-    // page has no request, so it is a row of its own. Newest first.
-    var rows = Model
-        .GroupBy(a => a.RequestID is int id ? $"r{id}" : $"a{a.AssignmentID}")
-        .Select(g => g.OrderBy(a => a.AssetCode).ToList())
-        .OrderByDescending(units => units.Max(a => a.AssignmentDate))
+    // One entry per request; a unit assigned directly from an asset page has
+    // no request, so it is an entry of its own. The list on the left groups
+    // them by what needs doing, the panel on the right shows the one picked.
+    var today = DateTime.Today;
+    var entries = Model
+        .GroupBy(a => a.RequestID is int id ? $"req-{id}" : $"asg-{a.AssignmentID}")
+        .Select(g => new Entry(g.Key, g.OrderBy(a => a.AssetCode).ToList(), today))
         .ToList();
 
-    var requestCount = rows.Count(units => units[0].RequestID is not null);
+    var groups = new[]
+    {
+        (Key: "late", Label: "Needs returning", Items: entries.Where(e => e.Group == "late").OrderBy(e => e.ReturnBy).ToList()),
+        (Key: "transit", Label: "On the way to you", Items: entries.Where(e => e.Group == "transit").OrderByDescending(e => e.Issued).ToList()),
+        (Key: "use", Label: "In use", Items: entries.Where(e => e.Group == "use").OrderBy(e => e.ReturnBy ?? DateTime.MaxValue).ToList())
+    };
+    var ordered = groups.SelectMany(g => g.Items).ToList();
+
+    var requestCount = entries.Count(e => e.IsRequest);
+    var directCount = entries.Count - requestCount;
+    var sources = new List<string>();
+    if (requestCount > 0) { sources.Add($"{requestCount} request{(requestCount == 1 ? "" : "s")}"); }
+    if (directCount > 0) { sources.Add($"{directCount} direct assignment{(directCount == 1 ? "" : "s")}"); }
+}
+
+@functions {
+    // Everything the list item and the detail panel need for one request
+    // (or one directly assigned unit).
+    class Entry
+    {
+        public Entry(string id, List<AssetAssignmentResponseDTO> units, DateTime today)
+        {
+            Id = id;
+            Units = units;
+            First = units[0];
+            IsRequest = First.RequestID is not null;
+            Issued = units.Min(a => a.AssignmentDate).Date;
+            ReturnBy = First.RequestReturnBy?.Date;
+            Today = today;
+
+            // "Asahi Stand Fan ×5, Aspire Laptop ×5", as on My Requests.
+            Models = units.GroupBy(a => a.ModelName)
+                .Select(g => (Name: g.Key, Count: g.Count()))
+                .ToList();
+            // Up to two models read as "Folding Table ×4, Monoblock Chair ×2";
+            // more than that, "Renzo Chair, Folding Chair, SO2 Chair +2", with
+            // the full breakdown in the chips on the panel.
+            Title = !IsRequest ? First.AssetName
+                : Models.Count <= 2 ? string.Join(", ", Models.Select(m => m.Count > 1 ? $"{m.Name} ×{m.Count}" : m.Name))
+                : string.Join(", ", Models.Take(3).Select(m => m.Name)) + (Models.Count > 3 ? $" +{Models.Count - 3}" : "");
+
+            var anyOverdue = units.Any(a => a.AssetStatus == AssetStatus.Overdue)
+                || (ReturnBy.HasValue && ReturnBy.Value < today && units.Any(a => a.AssetStatus != AssetStatus.InTransit));
+            var allTransit = units.All(a => a.AssetStatus == AssetStatus.InTransit);
+            Group = anyOverdue ? "late" : allTransit ? "transit" : "use";
+
+            var issuers = units.Select(a => a.AssignedByUser.FullName).Distinct().ToList();
+            IssuedBy = issuers.Count == 1 ? issuers[0] : $"{issuers[0]} +{issuers.Count - 1}";
+        }
+
+        public string Id { get; }
+        public List<AssetAssignmentResponseDTO> Units { get; }
+        public AssetAssignmentResponseDTO First { get; }
+        public bool IsRequest { get; }
+        public DateTime Issued { get; }
+        public DateTime? ReturnBy { get; }
+        public DateTime Today { get; }
+        public List<(string Name, int Count)> Models { get; }
+        public string Title { get; }
+        public string Group { get; }
+        public string IssuedBy { get; }
+
+        public int DaysLate => ReturnBy.HasValue ? (Today - ReturnBy.Value).Days : 0;
+
+        public string TypeLabel => IsRequest ? (First.RequestType?.ToString() ?? "Request") : "Direct";
+
+        // The short note on the right of a list item.
+        public string DueNote =>
+            Group == "late" ? $"{DaysLate} day{(DaysLate == 1 ? "" : "s")} late"
+            : Group == "transit" ? "In transit"
+            : !ReturnBy.HasValue ? "No due date"
+            : ReturnBy.Value == Today ? "Due today"
+            : $"in {(ReturnBy.Value - Today).Days} day{((ReturnBy.Value - Today).Days == 1 ? "" : "s")}";
+
+        // The line under the title in the list.
+        public string SubLine =>
+            !IsRequest ? $"{First.AssetCode} · since {Issued:MMM d}"
+            : $"{Units.Count} unit{(Units.Count == 1 ? "" : "s")} · "
+              + (Group == "transit" || !ReturnBy.HasValue ? $"issued {Issued:MMM d}" : $"due {ReturnBy:MMM d}");
+
+        // Words the search box matches on.
+        public string SearchText => string.Join(" ", new[] { Title, TypeLabel, First.RequestID?.ToString() ?? "" }
+            .Concat(Models.Select(m => m.Name))
+            .Concat(Units.Select(u => u.AssetCode + " " + u.AssetName))).ToLowerInvariant();
+    }
+
+    static string Initials(string name)
+    {
+        var initials = string.Concat(name.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(p => p[0])).ToUpperInvariant();
+        return initials.Length > 2 ? initials[..2] : initials;
+    }
+
+    static string Pct(double value) =>
+        Math.Clamp(value, 0, 100).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + "%";
 }
 
 @if (TempData["ErrorMessage"] != null)
@@ -21,175 +114,228 @@
     <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
 }
 
-<div class="sab-page-head">
+<div class="asset-detail-head">
     <div>
-        <h2>My Assets</h2>
-        <p class="sab-page-sub">
-            @Model.Count unit@(Model.Count == 1 ? "" : "s") signed out to you@(requestCount > 0 ? $", from {requestCount} request{(requestCount == 1 ? "" : "s")}" : "").
-            Click a request to see the units in it. They stay here until an Asset Officer records their return.
-        </p>
+        <h2 class="asset-detail-title">My Assets</h2>
+        <div class="asset-detail-sub">
+            @if (Model.Any())
+            {
+                <span>
+                    @Model.Count unit@(Model.Count == 1 ? "" : "s") signed out to you, from @string.Join(" and ", sources).
+                    Pick one to see its units. They stay here until an Asset Officer records their return.
+                </span>
+            }
+            else
+            {
+                <span>Anything issued to you appears here until an Asset Officer records its return.</span>
+            }
+        </div>
     </div>
-    <div class="sab-page-actions">
-        <a asp-controller="AssetRequests" asp-action="Create" class="btn btn-primary">+ New Request</a>
+    <div class="asset-detail-actions">
+        <a asp-controller="AssetRequests" asp-action="Create" class="btn btn-primary">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+            New Request
+        </a>
     </div>
 </div>
 
-@if (Model.Any())
+@if (!Model.Any())
 {
     <div class="sab-table-card">
-        <table class="table mb-0 my-assets">
-            <thead>
-                <tr>
-                    <th style="width:28px;"></th>
-                    <th>#</th>
-                    <th>Type</th>
-                    <th>What</th>
-                    <th>Issued</th>
-                    <th>Return by</th>
-                    <th>Status</th>
-                    <th></th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var units in rows)
-                {
-                    var first = units[0];
-                    var isRequest = first.RequestID is not null;
-                    var rowId = isRequest ? $"req-{first.RequestID}" : $"asg-{first.AssignmentID}";
-
-                    // "Asahi Stand Fan ×5, Aspire Laptop ×5", as on My Requests.
-                    var what = string.Join(", ", units
-                        .GroupBy(a => a.ModelName)
-                        .Select(g => g.Count() > 1 ? $"{g.Key} ×{g.Count()}" : g.Key));
-
-                    // One pill per status present, with its count.
-                    var statuses = units
-                        .GroupBy(a => a.AssetStatus)
-                        .OrderBy(g => g.Key == AssetStatus.Overdue ? 0 : 1)
-                        .ToList();
-
-                    var returnBy = first.RequestReturnBy;
-                    var anyOverdue = units.Any(a => a.AssetStatus == AssetStatus.Overdue);
-
-                    <tr class="my-assets-row @(isRequest ? "is-expandable" : "")"
-                        @(isRequest ? Html.Raw($"data-toggle-units=\"{rowId}\" aria-expanded=\"false\" tabindex=\"0\"") : Html.Raw(""))>
-                        <td class="text-muted">
-                            @if (isRequest)
-                            {
-                                <span class="my-assets-caret" aria-hidden="true">&#9656;</span>
-                            }
-                        </td>
-                        <td>@(isRequest ? first.RequestID.ToString() : "—")</td>
-                        <td>
-                            @if (isRequest && first.RequestType is not null)
-                            {
-                                <span class="status-pill status-@first.RequestType.ToString()!.ToLowerInvariant()">@first.RequestType</span>
-                            }
-                            else
-                            {
-                                <span class="status-pill status-cancelled">Direct</span>
-                            }
-                        </td>
-                        <td>
-                            @(isRequest ? what : first.AssetName)
-                            <div class="text-muted small">@units.Count unit@(units.Count == 1 ? "" : "s")</div>
-                        </td>
-                        <td>@first.AssignmentDate.ToString("MMM d, yyyy")</td>
-                        <td class="@(anyOverdue ? "text-danger fw-semibold" : "")">
-                            @(returnBy?.ToString("MMM d, yyyy") ?? "—")
-                        </td>
-                        <td>
-                            @foreach (var s in statuses)
-                            {
-                                <span class="status-pill status-@s.Key.ToString().ToLowerInvariant() me-1">
-                                    @(statuses.Count > 1 || units.Count > 1 ? $"{s.Count()} " : "")@DisplayText.Humanize(s.Key.ToString())
-                                </span>
-                            }
-                        </td>
-                        <td>
-                            @if (isRequest)
-                            {
-                                <a asp-controller="AssetRequests" asp-action="Details" asp-route-id="@first.RequestID">View</a>
-                            }
-                            else
-                            {
-                                <a asp-action="Details" asp-route-id="@first.AssetID">View</a>
-                            }
-                        </td>
-                    </tr>
-
-                    @if (isRequest)
-                    {
-                        <tr class="my-assets-units" id="@rowId" hidden>
-                            <td></td>
-                            <td colspan="7" class="pt-0">
-                                <table class="table table-sm mb-2">
-                                    <thead>
-                                        <tr>
-                                            <th>Code</th>
-                                            <th>Asset</th>
-                                            <th>Status</th>
-                                            <th>Condition when issued</th>
-                                            <th>Issued by</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        @foreach (var unit in units)
-                                        {
-                                            <tr>
-                                                <td><a asp-action="Details" asp-route-id="@unit.AssetID" class="sab-code">@unit.AssetCode</a></td>
-                                                <td>@unit.AssetName</td>
-                                                <td>
-                                                    <span class="status-pill status-@unit.AssetStatus.ToString().ToLowerInvariant()">@DisplayText.Humanize(unit.AssetStatus.ToString())</span>
-                                                    @if (unit.AssetStatus == AssetStatus.InTransit)
-                                                    {
-                                                        <span class="text-muted small ms-1">not picked up yet</span>
-                                                    }
-                                                </td>
-                                                <td>
-                                                    <span class="status-pill status-@unit.ConditionOnAssignment.ToString().ToLowerInvariant()">@DisplayText.Humanize(unit.ConditionOnAssignment.ToString())</span>
-                                                </td>
-                                                <td>@unit.AssignedByUser.FullName</td>
-                                            </tr>
-                                        }
-                                    </tbody>
-                                </table>
-                            </td>
-                        </tr>
-                    }
-                }
-            </tbody>
-        </table>
-    </div>
-}
-else
-{
-    <div class="card">
         <div class="sab-empty">
             <div class="sab-empty-title">Nothing is signed out to you</div>
-            <p>Anything issued to you appears here until an Asset Officer records its return.</p>
+            <p>Browse what the school has and request what you need.</p>
             <a asp-controller="AssetRequests" asp-action="Create" class="btn btn-primary">Request an asset</a>
         </div>
     </div>
 }
+else
+{
+    @* Selecting, search, paging and the phone back-and-forth come from the
+       shared list-and-details script in site.js ([data-md]). *@
+    <div class="sab-table-card myassets" id="myAssets" data-md data-page-size="8" data-noun="entries">
+        <aside class="myassets-list" aria-label="Your requests and assets">
+            <label class="asset-search myassets-search">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+                <input type="text" id="myAssetsSearch" data-md-search autocomplete="off" placeholder="Search my assets..." aria-label="Search my assets" />
+            </label>
 
-@section Scripts {
-    <script>
-        // A click (or Enter/Space) on a request row shows or hides its
-        // units. Clicks on links inside the row still go where they point.
-        document.querySelectorAll('tr[data-toggle-units]').forEach(function (row) {
-            function toggle(e) {
-                if (e.target.closest('a')) return;
-                var units = document.getElementById(row.dataset.toggleUnits);
-                var open = units.hidden;
-                units.hidden = !open;
-                row.setAttribute('aria-expanded', open ? 'true' : 'false');
-                row.classList.toggle('is-open', open);
+            @foreach (var g in groups.Where(g => g.Items.Any()))
+            {
+                <div class="myassets-group" data-md-group>
+                    <div class="myassets-group-label group-@g.Key">@g.Label · <span data-md-count>@g.Items.Count</span></div>
+                    @foreach (var e in g.Items)
+                    {
+                        <button type="button" class="myassets-item item-@e.Group" data-entry="@e.Id" data-search="@e.SearchText"
+                                aria-controls="panel-@e.Id">
+                            <span class="myassets-badge">
+                                <strong>@(e.IsRequest ? "#" + e.First.RequestID : "—")</strong>
+                                <small>@e.TypeLabel</small>
+                            </span>
+                            <span class="myassets-item-main">
+                                <span class="myassets-item-title">@e.Title</span>
+                                <span class="myassets-item-sub">@e.SubLine</span>
+                            </span>
+                            <span class="myassets-item-due">@e.DueNote</span>
+                        </button>
+                    }
+                </div>
             }
-            row.addEventListener('click', toggle);
-            row.addEventListener('keydown', function (e) {
-                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(e); }
-            });
-        });
-    </script>
+            <div class="myassets-nomatch" data-md-empty hidden>Nothing matches your search.</div>
+
+            <div class="md-foot">
+                <span data-md-range></span>
+                <div data-md-pager></div>
+            </div>
+        </aside>
+
+        <section class="myassets-detail">
+            @foreach (var e in ordered)
+            {
+                var unitCount = e.Units.Count;
+                var late = e.Group == "late";
+                var statusClass = late ? "overdue" : e.Group == "transit" ? "intransit" : "assigned";
+                var statusLabel = late ? "Overdue" : e.Group == "transit" ? "In transit" : "In use";
+
+                <article class="myassets-panel" id="panel-@e.Id" data-panel="@e.Id" hidden>
+                    <button type="button" class="myassets-back" data-back>&larr; All my assets</button>
+
+                    <div class="myassets-panel-head">
+                        <div class="min-w-0">
+                            <div class="myassets-panel-meta">
+                                <span class="myassets-type">@e.TypeLabel</span>
+                                <span>@(e.IsRequest ? $"Request #{e.First.RequestID}" : e.First.AssetCode) · @unitCount unit@(unitCount == 1 ? "" : "s")</span>
+                            </div>
+                            <h3 class="myassets-panel-title">@e.Title</h3>
+                        </div>
+                        <div class="myassets-panel-actions">
+                            <span class="asset-pill asset-status st-@statusClass">@statusLabel</span>
+                            @if (e.IsRequest)
+                            {
+                                <a asp-controller="AssetRequests" asp-action="Details" asp-route-id="@e.First.RequestID" asp-route-from="mine" class="btn btn-outline-secondary">View request &rarr;</a>
+                            }
+                            else
+                            {
+                                <a asp-action="Details" asp-route-id="@e.First.AssetID" class="btn btn-outline-secondary">View asset &rarr;</a>
+                            }
+                        </div>
+                    </div>
+
+                    @if (e.IsRequest && e.Models.Count > 1)
+                    {
+                        <div class="myassets-chips">
+                            @foreach (var m in e.Models)
+                            {
+                                <span class="myassets-chip">@m.Name <strong>×@m.Count</strong></span>
+                            }
+                        </div>
+                    }
+
+                    @if (late)
+                    {
+                        <div class="myassets-alert">
+                            <strong>@e.DaysLate day@(e.DaysLate == 1 ? "" : "s") late.</strong>
+                            Bring @(unitCount == 1 ? "it" : "these") to the Asset Officer so the return can be recorded.
+                        </div>
+                    }
+                    else if (e.Group == "transit")
+                    {
+                        <div class="myassets-alert is-transit">
+                            <strong>Ready for you.</strong>
+                            @(unitCount == 1 ? "It has" : "These have") been set aside — collect @(unitCount == 1 ? "it" : "them") from the Asset Officer.
+                        </div>
+                    }
+
+                    <div class="myassets-stats">
+                        <div><span>Issued</span><strong>@e.Issued.ToString("MMM d, yyyy")</strong></div>
+                        <div class="@(late ? "is-late" : "")"><span>Return by</span><strong>@(e.ReturnBy?.ToString("MMM d, yyyy") ?? "No due date")</strong></div>
+                        <div><span>Units</span><strong>@unitCount</strong></div>
+                        <div><span>Issued by</span><strong>@e.IssuedBy</strong></div>
+                    </div>
+
+                    @* Issued -> return by -> today, to scale. Late: today is
+                       the far end and the overrun is red. Not yet due: the
+                       return date is the far end and today sits on the way. *@
+                    @if (e.ReturnBy.HasValue)
+                    {
+                        var rb = e.ReturnBy.Value;
+                        var end = late ? e.Today : rb;
+                        var span = Math.Max(1, (end - e.Issued).TotalDays);
+                        var rbPos = (rb - e.Issued).TotalDays / span * 100;
+                        var todayPos = Math.Clamp((e.Today - e.Issued).TotalDays / span * 100, 0, 100);
+                        // Labels keep clear of each other and of the ends.
+                        var rbLabelPos = Math.Clamp(rbPos, 22, 78);
+                        <div class="myassets-timeline @(late ? "is-late" : "")">
+                            <div class="myassets-track">
+                                <span class="myassets-fill" style="width:@Pct(late ? rbPos : todayPos)"></span>
+                                @if (late)
+                                {
+                                    <span class="myassets-over" style="left:@Pct(rbPos); width:@Pct(100 - rbPos)"></span>
+                                }
+                                <span class="myassets-dot dot-start" style="left:0%"></span>
+                                <span class="myassets-dot dot-due" style="left:@Pct(rbPos)"></span>
+                                @if (late)
+                                {
+                                    <span class="myassets-dot dot-today" style="left:100%"></span>
+                                }
+                                else if (e.Today >= e.Issued)
+                                {
+                                    <span class="myassets-dot dot-now" style="left:@Pct(todayPos)" title="Today"></span>
+                                }
+                            </div>
+                            <div class="myassets-labels">
+                                <span style="left:0%" class="lbl-start">Issued<b>@e.Issued.ToString("MMM d")</b></span>
+                                <span style="left:@Pct(late ? rbLabelPos : 100)" class="@(late ? "lbl-mid" : "lbl-end")">Return by<b>@rb.ToString("MMM d")</b></span>
+                                @if (late)
+                                {
+                                    <span style="left:100%" class="lbl-end lbl-today">Today<b>@e.Today.ToString("MMM d")</b></span>
+                                }
+                            </div>
+                        </div>
+                    }
+
+                    <h4 class="myassets-units-title">Units on this @(e.IsRequest ? "request" : "assignment")</h4>
+                    <div class="myassets-units">
+                        <table class="table myassets-table">
+                            <thead>
+                                <tr>
+                                    <th>Code</th>
+                                    <th>Asset</th>
+                                    <th>Status</th>
+                                    <th>Condition when issued</th>
+                                    <th>Issued by</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @for (var i = 0; i < e.Units.Count; i++)
+                                {
+                                    var u = e.Units[i];
+                                    <tr class="@(i >= 4 ? "myassets-extra" : "")" hidden="@(i >= 4)" data-extra="@(i >= 4 ? "true" : null)">
+                                        <td data-label="Code"><a asp-action="Details" asp-route-id="@u.AssetID" class="asset-code-chip">@u.AssetCode</a></td>
+                                        <td data-label="Asset">@u.AssetName</td>
+                                        <td data-label="Status">
+                                            <span class="asset-pill asset-status st-@u.AssetStatus.ToString().ToLowerInvariant()">@DisplayText.Humanize(u.AssetStatus.ToString())</span>
+                                        </td>
+                                        <td data-label="Condition">@DisplayText.Humanize(u.ConditionOnAssignment.ToString())</td>
+                                        <td data-label="Issued by">
+                                            <span class="history-person">
+                                                <span class="history-avatar">@Initials(u.AssignedByUser.FullName)</span>
+                                                @u.AssignedByUser.FullName
+                                            </span>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                        @if (e.Units.Count > 4)
+                        {
+                            <button type="button" class="myassets-more" data-more="@(e.Units.Count - 4)">
+                                Show @(e.Units.Count - 4) more unit@(e.Units.Count - 4 == 1 ? "" : "s") &#9662;
+                            </button>
+                        }
+                    </div>
+                </article>
+            }
+        </section>
+    </div>
 }

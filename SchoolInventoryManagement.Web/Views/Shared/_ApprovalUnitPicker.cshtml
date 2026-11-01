@@ -21,9 +21,12 @@
    the page when the approver chooses it) and the destination for a
    Transfer. Every line is auto-filled as the page loads when nothing is
    ticked yet. *@
+@*  Layout: a chip per model at the top (jumps to its card), then one card
+    per model with its filters, Auto-fill, a tile per unit, and its own
+    pager. Picked units are listed first. *@
 @{
     var targetLocationId = ViewBag.TargetLocationID as int?;
-    var locationBranches = ViewBag.LocationBranches as Dictionary<int, int> ?? new Dictionary<int, int>();
+    Dictionary<int, int> locationBranches = (ViewBag.LocationBranches as Dictionary<int, int>) ?? new Dictionary<int, int>();
 
     // Lower is better; Auto-fill sorts by it. Damaged is left out entirely.
     int ConditionRank(ConditionStatus c) => c switch
@@ -42,17 +45,19 @@
      data-target-location="@targetLocationId"
      data-location-branches="@System.Text.Json.JsonSerializer.Serialize(locationBranches.ToDictionary(kv => kv.Key.ToString(), kv => kv.Value))">
 
-    @if (Model.Any(l => l.Units.Any()))
+    @if (Model.Count > 1)
     {
-        <div class="form-text mb-2">
-            Each model has its own filters and Auto-fill. Auto-fill picks the units closest to where
-            they're going, then in the best condition, from the units that model's filters are showing.
-            Damaged units are skipped.
+        <div class="picker-chips" aria-label="Models on this request">
+            @for (var i = 0; i < Model.Count; i++)
+            {
+                <a href="#line-@i" class="picker-chip" data-chip-for="@i">@Model[i].ModelName <span class="chip-count">0/@Model[i].Quantity</span></a>
+            }
         </div>
     }
 
-    @foreach (var line in Model)
+    @for (var li = 0; li < Model.Count; li++)
     {
+        var line = Model[li];
         // This model's own choices: only the places its units are, and
         // only the conditions they are in.
         var locationChoices = line.Units
@@ -64,15 +69,19 @@
         var anyWithoutLocation = line.Units.Any(u => u.LocationID is null);
         var conditionChoices = line.Units.Select(u => u.Condition).Distinct().OrderBy(c => c).ToList();
 
-        <div class="card mb-3 unit-line" data-quantity="@line.Quantity">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                    <div class="fw-semibold">@line.ModelName</div>
-                    <div class="small">
-                        <span class="line-count">0</span> of @line.Quantity picked
-                    </div>
+        <section class="asset-card picker-line unit-line mb-3" id="line-@li" data-line="@li" data-quantity="@line.Quantity" data-page-size="20">
+            <div class="picker-head">
+                <div class="min-w-0">
+                    <span class="picker-model">@line.ModelName</span>
+                    <span class="picker-asked">asked for @line.Quantity · @line.Units.Count available</span>
                 </div>
+                <div class="picker-progress">
+                    <span class="picker-picked"><span class="line-count">0</span> of @line.Quantity picked</span>
+                    <span class="picker-bar"><span class="picker-bar-fill"></span></span>
+                </div>
+            </div>
 
+            <div class="picker-body">
                 @if (line.Units.Count < line.Quantity)
                 {
                     <div class="alert alert-warning py-2 mb-2">
@@ -84,10 +93,12 @@
 
                 @if (line.Units.Any())
                 {
-                    <div class="d-flex flex-wrap align-items-center mb-2 pb-2 border-bottom" style="gap:8px;">
-                        <input type="search" class="form-control form-control-sm line-search" style="width:160px;"
-                               placeholder="Search code…" autocomplete="off" />
-                        <select class="form-select form-select-sm line-location" style="width:auto;">
+                    <div class="picker-tools">
+                        <label class="asset-search picker-search">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+                            <input type="search" class="line-search" placeholder="Search code..." autocomplete="off" aria-label="Search unit codes" />
+                        </label>
+                        <select class="form-select form-select-sm line-location" aria-label="Location">
                             <option value="">All locations</option>
                             @foreach (var l in locationChoices)
                             {
@@ -98,48 +109,70 @@
                                 <option value="none">No location</option>
                             }
                         </select>
-                        <select class="form-select form-select-sm line-condition" style="width:auto;">
+                        <select class="form-select form-select-sm line-condition" aria-label="Condition">
                             <option value="">All conditions</option>
                             @foreach (var c in conditionChoices)
                             {
                                 <option value="@c">@DisplayText.Humanize(c.ToString())</option>
                             }
                         </select>
-                        <button type="button" class="btn btn-link btn-sm p-0 line-clear-filters">Clear filters</button>
-
-                        <span class="flex-grow-1"></span>
-
-                        <button type="button" class="btn btn-outline-primary btn-sm line-autofill">Auto-fill</button>
+                        <button type="button" class="btn btn-link btn-sm line-clear-filters">Clear filters</button>
+                        <span class="picker-tools-gap"></span>
+                        <button type="button" class="btn btn-outline-secondary btn-sm line-autofill">Auto-fill</button>
                         <button type="button" class="btn btn-outline-secondary btn-sm line-untick">Untick all</button>
                     </div>
                 }
 
                 <div class="line-short alert alert-warning py-2 mb-2 d-none"></div>
 
-                <div class="row row-cols-1 row-cols-md-2 g-1">
+                <div class="picker-grid">
                     @foreach (var unit in line.Units)
                     {
-                        <div class="col unit-row"
-                             data-code="@unit.AssetCode.ToLowerInvariant()"
-                             data-location="@(unit.LocationID?.ToString() ?? "none")"
-                             data-branch="@unit.BranchID"
-                             data-condition="@unit.Condition"
-                             data-condition-rank="@ConditionRank(unit.Condition)">
-                            <label class="form-check">
-                                <input type="checkbox" class="form-check-input unit-box" name="AssetIDs"
-                                       value="@unit.AssetID" checked="@unit.Selected" />
-                                <span class="form-check-label small">
-                                    <span class="sab-code">@unit.AssetCode</span>
-                                    — <span class="@(unit.Condition == ConditionStatus.Damaged || unit.Condition == ConditionStatus.Poor ? "text-danger" : "")">@DisplayText.Humanize(unit.Condition.ToString())</span>,
-                                    at @(unit.LocationName ?? "no location")
-                                </span>
-                            </label>
-                        </div>
+                        var weak = unit.Condition == ConditionStatus.Damaged || unit.Condition == ConditionStatus.Poor;
+                        <label class="unit-tile unit-row"
+                               data-code="@unit.AssetCode.ToLowerInvariant()"
+                               data-location="@(unit.LocationID?.ToString() ?? "none")"
+                               data-branch="@unit.BranchID"
+                               data-condition="@unit.Condition"
+                               data-condition-rank="@ConditionRank(unit.Condition)">
+                            <input type="checkbox" class="unit-box" name="AssetIDs" value="@unit.AssetID" checked="@unit.Selected" />
+                            <span class="unit-check" aria-hidden="true"></span>
+                            <span class="asset-code-chip">@unit.AssetCode</span>
+                            <span class="unit-cond @(weak ? "is-weak" : "")">@DisplayText.Humanize(unit.Condition.ToString())</span>
+                            <span class="unit-loc">@(unit.LocationName ?? "no location")</span>
+                        </label>
                     }
                 </div>
-                <div class="line-hidden text-muted small mt-1 d-none"></div>
+                <div class="line-hidden text-muted small mt-2 d-none"></div>
+
+                @if (line.Units.Any())
+                {
+                    <div class="picker-foot">
+                        <span class="line-range"></span>
+                        <div class="picker-foot-right">
+                            <span class="text-muted">Show</span>
+                            <div class="dropdown">
+                                <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle line-size-btn" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">20</button>
+                                <div class="dropdown-menu dropdown-menu-end picker-size-menu">
+                                    @foreach (var n in new[] { 10, 20, 50 })
+                                    {
+                                        <button type="button" class="dropdown-item line-size" data-size="@n">@n per page</button>
+                                    }
+                                    <div class="dropdown-divider"></div>
+                                    <div class="picker-size-custom">
+                                        <label class="small text-muted mb-0">Custom</label>
+                                        <input type="number" min="1" max="500" class="form-control form-control-sm line-size-input" aria-label="Units per page" />
+                                        <button type="button" class="btn btn-primary btn-sm line-size-apply">Apply</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <span class="text-muted">per page</span>
+                            <div class="line-pager d-flex" style="gap:6px;"></div>
+                        </div>
+                    </div>
+                }
             </div>
-        </div>
+        </section>
     }
 </div>
 
@@ -165,28 +198,63 @@
             return 2;
         }
 
+        // Tells the page how many units are ticked in all (the Approve
+        // button shows it).
+        function announce() {
+            var total = picker.querySelectorAll('.unit-box:checked').length;
+            picker.dispatchEvent(new CustomEvent('picker-change', { bubbles: true, detail: { total: total } }));
+        }
+
         // Everything below works on one line (one model) at a time.
         function setUpLine(line) {
+            var index = line.getAttribute('data-line');
             var quantity = parseInt(line.getAttribute('data-quantity'), 10);
+            var pageSize = parseInt(line.getAttribute('data-page-size'), 10) || 20;
+            var page = 1;
+            var grid = line.querySelector('.picker-grid');
             var rows = Array.from(line.querySelectorAll('.unit-row'));
-            var boxes = rows.map(function (r) { return r.querySelector('.unit-box'); });
+            var order = rows.slice();
+            var box = function (r) { return r.querySelector('.unit-box'); };
+            var boxes = rows.map(box);
             var search = line.querySelector('.line-search');
             var locationFilter = line.querySelector('.line-location');
             var conditionFilter = line.querySelector('.line-condition');
             var short = line.querySelector('.line-short');
             var hiddenNote = line.querySelector('.line-hidden');
+            var range = line.querySelector('.line-range');
+            var pager = line.querySelector('.line-pager');
+            var sizeBtn = line.querySelector('.line-size-btn');
+            var chip = picker.querySelector('[data-chip-for="' + index + '"]');
 
             // Re-ranks on a new pickup point only while the picks are still
             // Auto-fill's own -- never over a hand-made choice.
             var autoFilled = false;
 
+            // Picked units first, then the list as it came. Re-sorted when
+            // Auto-fill or Untick all runs, not on every tick, so a unit
+            // does not jump away from under the pointer.
+            function reorder() {
+                order = rows.slice().sort(function (a, b) {
+                    return (box(b).checked ? 1 : 0) - (box(a).checked ? 1 : 0) || rows.indexOf(a) - rows.indexOf(b);
+                });
+                order.forEach(function (r) { grid.appendChild(r); });
+            }
+
             function sync() {
                 var ticked = boxes.filter(function (b) { return b.checked; }).length;
-                var counter = line.querySelector('.line-count');
-                counter.textContent = ticked;
-                counter.parentElement.classList.toggle('text-success', ticked === quantity);
-                counter.parentElement.classList.toggle('text-danger', ticked !== quantity);
-                boxes.forEach(function (b) { if (!b.checked) b.disabled = ticked >= quantity; });
+                line.querySelector('.line-count').textContent = ticked;
+                line.querySelector('.picker-bar-fill').style.width = Math.min(100, quantity ? ticked * 100 / quantity : 0) + '%';
+                line.classList.toggle('is-complete', ticked === quantity);
+                boxes.forEach(function (b) {
+                    if (!b.checked) b.disabled = ticked >= quantity;
+                    b.closest('.unit-tile').classList.toggle('is-picked', b.checked);
+                    b.closest('.unit-tile').classList.toggle('is-locked', b.disabled);
+                });
+                if (chip) {
+                    chip.querySelector('.chip-count').textContent = ticked + '/' + quantity;
+                    chip.classList.toggle('is-complete', ticked === quantity);
+                }
+                announce();
             }
 
             function matches(row) {
@@ -197,15 +265,51 @@
                 return true;
             }
 
+            // Filters hide units (a ticked one always stays); the pager then
+            // pages through what is left.
             function applyFilters() {
-                var hidden = 0;
-                rows.forEach(function (row) {
-                    var show = row.querySelector('.unit-box').checked || matches(row);
-                    row.classList.toggle('d-none', !show);
-                    if (!show) hidden++;
-                });
+                var shown = order.filter(function (r) { return box(r).checked || matches(r); });
+                var hidden = rows.length - shown.length;
+                var pages = Math.max(1, Math.ceil(shown.length / pageSize));
+                page = Math.min(page, pages);
+                var onPage = shown.slice((page - 1) * pageSize, page * pageSize);
+                rows.forEach(function (r) { r.classList.toggle('d-none', onPage.indexOf(r) === -1); });
+
                 hiddenNote.textContent = hidden ? hidden + ' more unit' + (hidden === 1 ? '' : 's') + ' hidden by the filters.' : '';
                 hiddenNote.classList.toggle('d-none', !hidden);
+
+                if (range) {
+                    range.textContent = shown.length
+                        ? ((page - 1) * pageSize + 1) + '–' + Math.min(page * pageSize, shown.length) + ' of ' + shown.length + ' · picked first'
+                        : 'No units match';
+                }
+                if (pager) {
+                    pager.innerHTML = '';
+                    if (pages > 1) {
+                        var add = function (label, target, cls) {
+                            var b = document.createElement('button');
+                            b.type = 'button';
+                            b.className = 'asset-page ' + (cls || '');
+                            b.innerHTML = label;
+                            if (!cls) b.addEventListener('click', function () { page = target; applyFilters(); });
+                            pager.appendChild(b);
+                        };
+                        add('&lsaquo;', page - 1, page === 1 ? 'disabled' : '');
+                        for (var n = 1; n <= pages; n++) {
+                            if (pages > 5 && n !== 1 && n !== pages && Math.abs(n - page) > 1) {
+                                if (n === 2 || n === pages - 1) {
+                                    var gap = document.createElement('span');
+                                    gap.className = 'asset-page-gap';
+                                    gap.textContent = '…';
+                                    pager.appendChild(gap);
+                                }
+                                continue;
+                            }
+                            add(String(n), n, n === page ? 'current' : '');
+                        }
+                        add('&rsaquo;', page + 1, page === pages ? 'disabled' : '');
+                    }
+                }
             }
 
             function autoFill() {
@@ -220,7 +324,7 @@
                             || a.getAttribute('data-code').localeCompare(b.getAttribute('data-code'));
                     });
 
-                candidates.slice(0, quantity).forEach(function (r) { r.querySelector('.unit-box').checked = true; });
+                candidates.slice(0, quantity).forEach(function (r) { box(r).checked = true; });
 
                 var picked = Math.min(candidates.length, quantity);
                 short.textContent = picked < quantity && rows.length >= quantity
@@ -229,6 +333,8 @@
                     : '';
                 short.classList.toggle('d-none', !short.textContent);
 
+                reorder();
+                page = 1;
                 sync();
                 applyFilters();
                 autoFilled = true;
@@ -245,13 +351,15 @@
 
             [search, locationFilter, conditionFilter].forEach(function (el) {
                 if (!el) return;
-                el.addEventListener('input', applyFilters);
-                el.addEventListener('change', applyFilters);
+                var go = function () { page = 1; applyFilters(); };
+                el.addEventListener('input', go);
+                el.addEventListener('change', go);
             });
 
             var clear = line.querySelector('.line-clear-filters');
             if (clear) clear.addEventListener('click', function () {
                 search.value = ''; locationFilter.value = ''; conditionFilter.value = '';
+                page = 1;
                 applyFilters();
             });
 
@@ -263,15 +371,38 @@
                 boxes.forEach(function (b) { b.checked = false; });
                 short.classList.add('d-none');
                 autoFilled = false;
+                reorder();
                 sync();
                 applyFilters();
+            });
+
+            // Units per page: 10 / 20 / 50, or any number typed in.
+            function setSize(n) {
+                if (!(n > 0)) return;
+                pageSize = Math.min(500, Math.round(n));
+                page = 1;
+                if (sizeBtn) sizeBtn.textContent = pageSize;
+                line.querySelectorAll('.line-size').forEach(function (b) {
+                    b.classList.toggle('active', parseInt(b.dataset.size, 10) === pageSize);
+                });
+                applyFilters();
+                if (sizeBtn && window.bootstrap) bootstrap.Dropdown.getOrCreateInstance(sizeBtn).hide();
+            }
+            line.querySelectorAll('.line-size').forEach(function (b) {
+                b.addEventListener('click', function () { setSize(parseInt(b.dataset.size, 10)); });
+            });
+            var sizeInput = line.querySelector('.line-size-input');
+            var sizeApply = line.querySelector('.line-size-apply');
+            if (sizeApply) sizeApply.addEventListener('click', function () { setSize(parseInt(sizeInput.value, 10)); });
+            if (sizeInput) sizeInput.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter') { e.preventDefault(); setSize(parseInt(sizeInput.value, 10)); }
             });
 
             if (pickupSelect) pickupSelect.addEventListener('change', function () {
                 if (autoFilled) autoFill();
             });
 
-            return { autoFill: autoFill, sync: sync, applyFilters: applyFilters };
+            return { autoFill: autoFill, sync: sync, applyFilters: applyFilters, reorder: reorder, setSize: setSize };
         }
 
         var lines = Array.from(picker.querySelectorAll('.unit-line')).map(setUpLine);
@@ -279,9 +410,12 @@
         // First visit: nothing ticked, so every line is filled. After a
         // failed post the approver's own ticks come back and are kept.
         if (picker.querySelector('.unit-box:checked')) {
-            lines.forEach(function (l) { l.sync(); l.applyFilters(); });
+            lines.forEach(function (l) { l.reorder(); l.sync(); l.applyFilters(); });
         } else {
             lines.forEach(function (l) { l.autoFill(); });
         }
+        // Fewer units a page on a phone, where the tiles stack in one column.
+        var startSize = window.matchMedia('(max-width: 576px)').matches ? 10 : 20;
+        lines.forEach(function (l) { l.setSize(startSize); });
     })();
 </script>

@@ -1,42 +1,175 @@
 ﻿@model SchoolInventoryManagement.Web.ViewModels.ReturnAssetViewModel
+@using SchoolInventoryManagement.BLL.DTOs
+@using SchoolInventoryManagement.DAL.Entities.Enums
 @{
     ViewData["Title"] = "Return Asset";
+    var asset = (AssetResponseDTO)ViewBag.Asset;
+    var assignment = (AssetAssignmentResponseDTO)ViewBag.Assignment;
+    var locations = (List<LocationDTO>)ViewBag.ReturnLocations;
+    var holder = assignment.AssignedToUser.FullName;
+    var daysOut = (DateTime.Today - assignment.AssignmentDate.Date).Days;
+    var picked = locations.FirstOrDefault(l => l.LocationID == Model.ReturnLocationID);
+    var conditions = Enum.GetValues<ConditionStatus>();
 }
 
-<h2>Return Asset</h2>
-<p class="text-muted">@ViewBag.AssetCode — @ViewBag.AssetName (currently with @ViewBag.AssignedTo)</p>
+@functions {
+    static string Initials(string name)
+    {
+        var initials = string.Concat(name.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(p => p[0])).ToUpperInvariant();
+        return initials.Length > 2 ? initials[..2] : initials;
+    }
+}
 
-<form asp-action="Return" asp-route-id="@Model.AssignmentID" method="post">
+<div class="asset-detail-head">
+    <div>
+        <nav class="asset-crumbs" aria-label="Breadcrumb">
+            <a asp-controller="Assets" asp-action="Index">Assets</a>
+            <span aria-hidden="true">&rsaquo;</span>
+            <a asp-controller="Assets" asp-action="Details" asp-route-id="@assignment.AssetID">@assignment.AssetCode</a>
+            <span aria-hidden="true">&rsaquo;</span>
+            <span>Return</span>
+        </nav>
+        <h2 class="asset-detail-title">Return asset</h2>
+        <div class="asset-detail-sub">Record that this unit came back. It becomes Available at the location you pick.</div>
+    </div>
+</div>
+
+@if (asset != null)
+{
+    <partial name="_AssetStrip" model="asset" />
+}
+
+<form asp-action="Return" asp-route-id="@Model.AssignmentID" method="post" class="register-form">
     @Html.AntiForgeryToken()
     <input type="hidden" asp-for="AssignmentID" />
     <input type="hidden" asp-for="RequestID" />
     <input type="hidden" asp-for="RowVersionBase64" />
     <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
 
-    <div class="mb-3">
-        <label asp-for="ConditionOnReturn" class="form-label">Condition on Return</label>
-        <select asp-for="ConditionOnReturn" asp-items="Html.GetEnumSelectList<SchoolInventoryManagement.DAL.Entities.Enums.ConditionStatus>()" class="form-select"></select>
-        <span asp-validation-for="ConditionOnReturn" class="text-danger"></span>
+    <div class="row g-3">
+        <div class="col-lg-8">
+            <div class="asset-card holder-card mb-3">
+                <span class="handover-avatar holder-avatar">@Initials(holder)</span>
+                <div class="flex-grow-1 min-w-0">
+                    <div class="holder-label">Currently with</div>
+                    <div class="holder-name">@holder</div>
+                    <div class="holder-meta">
+                        Assigned @assignment.AssignmentDate.ToString("MMM d, yyyy") by @assignment.AssignedByUser.FullName
+                        · @(daysOut == 0 ? "today" : daysOut == 1 ? "1 day ago" : $"{daysOut} days ago")
+                    </div>
+                </div>
+                @if (assignment.RequestID is not null)
+                {
+                    <a asp-controller="AssetRequests" asp-action="Details" asp-route-id="@assignment.RequestID" class="holder-link">View request &rarr;</a>
+                }
+                else
+                {
+                    <a asp-controller="Assets" asp-action="History" asp-route-id="@assignment.AssetID" asp-fragment="assignments" class="holder-link">View assignment &rarr;</a>
+                }
+            </div>
+
+            <div class="asset-card register-step mb-3">
+                <div class="register-step-head">
+                    <span class="register-step-num">1</span>
+                    <div class="register-step-title">Condition on return</div>
+                </div>
+                <div class="register-step-body">
+                    <div class="cond-tiles" role="radiogroup" aria-label="Condition on return">
+                        @foreach (var c in conditions)
+                        {
+                            var id = "ret" + c;
+                            <input type="radio" class="btn-check" name="ConditionOnReturn" id="@id" value="@c" autocomplete="off" checked="@(c == Model.ConditionOnReturn)" data-label="@DisplayText.Humanize(c.ToString())" />
+                            <label class="cond-tile cond-dot-@c.ToString().ToLowerInvariant() @(c == assignment.ConditionOnAssignment ? "was-issued" : "")" for="@id">
+                                <span class="cond-tile-dot" aria-hidden="true"></span>
+                                @DisplayText.Humanize(c.ToString())
+                                @if (c == assignment.ConditionOnAssignment)
+                                {
+                                    <small>when issued</small>
+                                }
+                            </label>
+                        }
+                    </div>
+                    <span asp-validation-for="ConditionOnReturn" class="text-danger"></span>
+                </div>
+            </div>
+
+            <div class="asset-card register-step mb-3">
+                <div class="register-step-head">
+                    <span class="register-step-num">2</span>
+                    <div class="register-step-title">Return to location</div>
+                </div>
+                <div class="register-step-body">
+                    <label for="returnLocation" class="form-label">Location</label>
+                    @* Typeable (see site.js): rooms grouped by branch, the
+                       asset's own branch first. *@
+                    <div class="input-icon">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 21s-7-6.2-7-12a7 7 0 0 1 14 0c0 5.8-7 12-7 12z" /><circle cx="12" cy="9" r="2.5" /></svg>
+                        <select asp-for="ReturnLocationID" id="returnLocation" class="form-select" data-combobox>
+                            <option value="">Select a location</option>
+                            @foreach (var g in locations.GroupBy(l => l.BranchName))
+                            {
+                                <optgroup label="@g.Key">
+                                    @foreach (var l in g)
+                                    {
+                                        <option value="@l.LocationID" data-name="@l.LocationName"
+                                                selected="@(l.LocationID == Model.ReturnLocationID)">@l.LocationName@(l.LocationID == asset?.CurrentLocationID ? " (where it is kept now)" : "")</option>
+                                    }
+                                </optgroup>
+                            }
+                        </select>
+                    </div>
+                    <div class="form-text">Type a room or branch name. It becomes Available there.</div>
+                    <span asp-validation-for="ReturnLocationID" class="text-danger"></span>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="handover-card">
+                <div class="bulk-summary-label">After this return</div>
+                <dl class="handover-rows mt-0">
+                    <div><dt>Status</dt><dd>Available</dd></div>
+                    <div><dt>Location</dt><dd id="afterLocation">@(picked?.LocationName ?? "Pick a location")</dd></div>
+                    <div><dt>Condition</dt><dd id="afterCondition">@DisplayText.Humanize(Model.ConditionOnReturn.ToString())</dd></div>
+                    <div><dt>Holder</dt><dd>No one</dd></div>
+                </dl>
+            </div>
+        </div>
     </div>
 
-    <div class="mb-3">
-        <label asp-for="ReturnLocationID" class="form-label">Return to location</label>
-        <select asp-for="ReturnLocationID" asp-items="ViewBag.Locations" class="form-select">
-            <option value="">-- Select Location --</option>
-        </select>
-        <div class="form-text">Where the unit is being put back. It becomes Available there.</div>
-        <span asp-validation-for="ReturnLocationID" class="text-danger"></span>
+    <div class="register-footer">
+        <span>Condition and location are required.</span>
+        <div class="d-flex" style="gap:8px;">
+            @if (Model.RequestID is not null)
+            {
+                <a asp-controller="AssetRequests" asp-action="Details" asp-route-id="@Model.RequestID" class="btn btn-outline-secondary">Cancel</a>
+            }
+            else
+            {
+                <a asp-controller="Assets" asp-action="Details" asp-route-id="@assignment.AssetID" class="btn btn-outline-secondary">Cancel</a>
+            }
+            <button type="submit" class="btn btn-primary">Confirm return</button>
+        </div>
     </div>
-
-    <button type="submit" class="btn btn-primary">Confirm Return</button>
-    @if (Model.RequestID is not null)
-    {
-        <a asp-controller="AssetRequests" asp-action="Details" asp-route-id="@Model.RequestID" class="btn btn-secondary">Cancel</a>
-    }
 </form>
 
 @section Scripts {
     @{
         await Html.RenderPartialAsync("_ValidationScriptsPartial");
     }
+    <script>
+        (function () {
+            // The summary follows the picks.
+            var loc = document.getElementById('returnLocation');
+            loc.addEventListener('change', function () {
+                var opt = loc.options[loc.selectedIndex];
+                document.getElementById('afterLocation').textContent = opt && opt.value ? opt.dataset.name : 'Pick a location';
+            });
+            document.querySelectorAll('input[name="ConditionOnReturn"]').forEach(function (r) {
+                r.addEventListener('change', function () {
+                    document.getElementById('afterCondition').textContent = r.dataset.label;
+                });
+            });
+        })();
+    </script>
 }

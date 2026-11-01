@@ -1,0 +1,22 @@
+@model SchoolInventoryManagement.BLL.DTOs.NewItemRequestResponseDTO
+@using SchoolInventoryManagement.Web.Helpers
+@* A new-item request's steps, newest first: who did what, when, and
+   their remarks. *@
+<ul class="steps-feed">
+    @foreach (var s in Model.Steps.AsEnumerable().Reverse())
+    {
+        <li>
+            <span class="history-avatar">@NewItemProgress.Initials(s.ActedByName)</span>
+            <div>
+                <div class="steps-feed-text">
+                    <strong>@s.ActedByName</strong> @NewItemProgress.StepText(s.Status)@(string.IsNullOrWhiteSpace(s.Remarks) ? "" : $" — “{s.Remarks}”")
+                </div>
+                <div class="steps-feed-meta">@s.ActedAt.ToString("MMM d, h:mm tt") · @s.ActedByRole</div>
+            </div>
+        </li>
+    }
+    @if (!Model.Steps.Any())
+    {
+        <li><div class="steps-feed-meta">Submitted @Model.RequestDate.ToString("MMM d, h:mm tt").</div></li>
+    }
+</ul>

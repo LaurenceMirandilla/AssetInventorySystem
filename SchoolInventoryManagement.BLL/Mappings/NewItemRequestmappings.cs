@@ -17,6 +17,7 @@ namespace SchoolInventoryManagement.BLL.Mappings
                 RequestedByUserID = request.RequestedByUserID,
                 RequestedByUserName =
                     $"{request.RequestedByUser.FirstName} {request.RequestedByUser.LastName}",
+                RequestedByRoleName = request.RequestedByUser.Role?.RoleName,
                 DepartmentID = request.DepartmentID,
                 DepartmentName = request.Department.DepartmentName,
                 ItemName = request.ItemName,

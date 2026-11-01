@@ -1,6 +1,27 @@
 @model SchoolInventoryManagement.Web.ViewModels.AssetCatalogViewModel
 @{
     ViewData["Title"] = "Browse items";
+
+    // The current search as route values, so the pager carries it along.
+    var searchRoute = new Dictionary<string, string>();
+    if (!string.IsNullOrWhiteSpace(Model.Keyword)) { searchRoute["keyword"] = Model.Keyword; }
+    if (Model.CategoryId.HasValue) { searchRoute["categoryId"] = Model.CategoryId.Value.ToString(); }
+
+    Func<int, Dictionary<string, string>> pageRoute = n =>
+    {
+        var r = new Dictionary<string, string>(searchRoute) { ["page"] = n.ToString() };
+        if (Model.PageSize != 20) { r["pageSize"] = Model.PageSize.ToString(); }
+        return r;
+    };
+
+    // Same pager window as the Assets list: "1 2 3 … 14" on page one.
+    var lastPage = Model.TotalPages;
+    var windowStart = Math.Max(1, Model.Page - 1);
+    var windowEnd = Math.Min(lastPage, Model.Page + 1);
+    if (Model.Page <= 2) { windowEnd = Math.Min(lastPage, 3); }
+    if (Model.Page >= lastPage - 1) { windowStart = Math.Max(1, lastPage - 2); }
+
+    var filtersOpen = Model.CategoryId.HasValue;
 }
 
 @if (TempData["ErrorMessage"] != null)
@@ -11,76 +32,198 @@
 <div class="sab-page-head">
     <div>
         <h2>Browse items</h2>
-        <p class="sab-page-sub">
-            What the school keeps. Request the item you need; staff check what is free and choose the unit when they approve.
-        </p>
+        <p class="sab-page-sub">See what the school has. Request the item you need; staff choose the unit when they approve.</p>
     </div>
     <div class="sab-page-actions">
-        <a asp-action="MyAssets" class="btn btn-outline-secondary">My Assets</a>
-        <a asp-controller="AssetRequests" asp-action="Create" class="btn btn-primary">+ New Request</a>
+        <a asp-controller="AssetRequests" asp-action="MyRequests" class="btn btn-outline-secondary">My Requests</a>
+        <a asp-controller="AssetRequests" asp-action="Create" class="btn btn-primary">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+            New Request
+        </a>
     </div>
 </div>
 
-<form asp-action="Index" method="get" class="row g-2 mb-3">
-    <div class="col-md-6">
-        <input type="text" name="keyword" value="@Model.Keyword" class="form-control" placeholder="Search by name, category or description" />
-    </div>
-    <div class="col-md-4">
-        <select name="categoryId" class="form-select">
-            <option value="">All categories</option>
-            @foreach (var c in Model.CategoryOptions)
-            {
-                <option value="@c.CategoryID" selected="@(Model.CategoryId == c.CategoryID)">@c.CategoryName</option>
-            }
-        </select>
-    </div>
-    <div class="col-md-2 d-flex" style="gap:8px;">
-        <button type="submit" class="btn btn-outline-primary flex-grow-1">Search</button>
-        @if (Model.HasFilters)
-        {
-            <a asp-action="Index" class="btn btn-link">Clear</a>
-        }
-    </div>
-</form>
+<div class="sab-table-card asset-list">
+    <form id="catalogFilters" asp-action="Index" method="get">
+        <div class="asset-toolbar">
+            <label class="asset-search">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+                <input type="text" name="keyword" id="catalogKeyword" value="@Model.Keyword" autocomplete="off"
+                       placeholder="Search items..." aria-label="Search items by name, category or description" />
+                <kbd>/</kbd>
+            </label>
 
-@if (Model.Models.Any())
-{
-    <div class="sab-table-card">
-        <table class="table table-striped">
-            <thead>
-                <tr>
-                    <th>Item</th>
-                    <th>Category</th>
-                    <th>Description</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var m in Model.Models)
+            <button type="button" class="asset-tool-btn @(filtersOpen ? "active" : "")" data-bs-toggle="collapse"
+                    data-bs-target="#catalogFilterPanel" aria-expanded="@(filtersOpen ? "true" : "false")" aria-controls="catalogFilterPanel">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18l-7 8.5V19l-4 2v-7.5z" /></svg>
+                Filters
+                @if (filtersOpen)
                 {
-                    <tr>
-                        <td class="fw-semibold">@m.ModelName</td>
-                        <td>@m.CategoryName</td>
-                        <td>@(string.IsNullOrWhiteSpace(m.Description) ? "—" : m.Description)</td>
-                    </tr>
+                    <span class="asset-filter-count">1</span>
                 }
-            </tbody>
-        </table>
-    </div>
-}
-else
-{
-    <div class="card">
-        <div class="card-body text-muted">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 9l6 6 6-6z" /></svg>
+            </button>
+
+            <span class="asset-count">
+                @if (Model.TotalCount == 0)
+                {
+                    <text>No matches</text>
+                }
+                else
+                {
+                    <text>Showing <strong>@Model.FirstRowNumber–@Model.LastRowNumber</strong> of @Model.TotalCount item@(Model.TotalCount == 1 ? "" : "s")</text>
+                }
+            </span>
+        </div>
+
+        <div class="collapse @(filtersOpen ? "show" : "")" id="catalogFilterPanel">
+            <div class="asset-filter-panel">
+                <div>
+                    <label for="fCategory" class="form-label">Category</label>
+                    <select name="categoryId" id="fCategory" class="form-select form-select-sm">
+                        <option value="">All categories</option>
+                        @foreach (var c in Model.CategoryOptions)
+                        {
+                            <option value="@c.CategoryID" selected="@(Model.CategoryId == c.CategoryID)">@c.CategoryName</option>
+                        }
+                    </select>
+                </div>
+                <div class="asset-filter-actions">
+                    <a asp-action="Index" class="btn btn-outline-secondary btn-sm">Reset</a>
+                    <button type="submit" class="btn btn-primary btn-sm">Apply</button>
+                </div>
+            </div>
+        </div>
+    </form>
+
+    @if (Model.Models.Any())
+    {
+        <div class="table-responsive">
+            <table class="table asset-table">
+                <thead>
+                    <tr>
+                        <th>Item</th>
+                        @* On phones the category moves under the item name. *@
+                        <th class="d-none d-sm-table-cell">Category</th>
+                        <th><span class="visually-hidden">Request</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var m in Model.Models)
+                    {
+                        <tr>
+                            <td>
+                                <div class="catalog-item-name">@m.ModelName</div>
+                                @if (!string.IsNullOrWhiteSpace(m.Description))
+                                {
+                                    <div class="catalog-item-sub">@m.Description</div>
+                                }
+                                <div class="catalog-item-sub d-sm-none">@m.CategoryName</div>
+                            </td>
+                            <td class="asset-muted d-none d-sm-table-cell">@m.CategoryName</td>
+                            <td class="text-end">
+                                <a asp-controller="AssetRequests" asp-action="Create" asp-route-modelId="@m.ModelID"
+                                   class="btn btn-primary btn-sm catalog-request">Request</a>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="asset-foot">
+            <select name="pageSize" form="catalogFilters" class="form-select form-select-sm asset-page-size"
+                    aria-label="Rows per page" onchange="this.form.submit()">
+                @foreach (var size in Model.PageSizeOptions)
+                {
+                    <option value="@size" selected="@(size == Model.PageSize)">@size per page</option>
+                }
+            </select>
+
+            <div class="asset-pager">
+                <span class="asset-page-label">Page @Model.Page of @lastPage</span>
+                <nav aria-label="Item pages" class="d-flex" style="gap:6px;">
+                    @if (Model.Page > 1)
+                    {
+                        <a class="asset-page" asp-action="Index" asp-all-route-data="pageRoute(Model.Page - 1)" aria-label="Previous page">&lsaquo;</a>
+                    }
+                    else
+                    {
+                        <span class="asset-page disabled" aria-hidden="true">&lsaquo;</span>
+                    }
+
+                    @if (windowStart > 1)
+                    {
+                        <a class="asset-page" asp-action="Index" asp-all-route-data="pageRoute(1)">1</a>
+                        if (windowStart > 2)
+                        {
+                            <span class="asset-page-gap">…</span>
+                        }
+                    }
+
+                    @for (var n = windowStart; n <= windowEnd; n++)
+                    {
+                        if (n == Model.Page)
+                        {
+                            <span class="asset-page current" aria-current="page">@n</span>
+                        }
+                        else
+                        {
+                            <a class="asset-page" asp-action="Index" asp-all-route-data="pageRoute(n)">@n</a>
+                        }
+                    }
+
+                    @if (windowEnd < lastPage)
+                    {
+                        if (windowEnd < lastPage - 1)
+                        {
+                            <span class="asset-page-gap">…</span>
+                        }
+                        <a class="asset-page" asp-action="Index" asp-all-route-data="pageRoute(lastPage)">@lastPage</a>
+                    }
+
+                    @if (Model.Page < lastPage)
+                    {
+                        <a class="asset-page" asp-action="Index" asp-all-route-data="pageRoute(Model.Page + 1)" aria-label="Next page">&rsaquo;</a>
+                    }
+                    else
+                    {
+                        <span class="asset-page disabled" aria-hidden="true">&rsaquo;</span>
+                    }
+                </nav>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="sab-empty">
+            <div class="sab-empty-title">
+                @(Model.HasFilters ? "Nothing matches your search" : "No items have been added yet")
+            </div>
+            <p>
+                Need something that is not listed?
+                <a asp-controller="NewItemRequests" asp-action="Create">Request a new item</a>
+            </p>
             @if (Model.HasFilters)
             {
-                <text>Nothing matches your search.</text>
+                <a asp-action="Index" class="btn btn-outline-secondary">Clear search</a>
             }
-            else
-            {
-                <text>No items have been added yet.</text>
-            }
-            Need something that is not listed?
-            <a asp-controller="NewItemRequests" asp-action="Create">Request a new item</a>
         </div>
-    </div>
+    }
+</div>
+
+@section Scripts {
+    <script>
+        // "/" jumps to the search box, as the hint in it says.
+        document.addEventListener('keydown', function (e) {
+            if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
+            var t = e.target;
+            if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+            var box = document.getElementById('catalogKeyword');
+            if (!box) return;
+            e.preventDefault();
+            box.focus();
+            box.select();
+        });
+    </script>
 }

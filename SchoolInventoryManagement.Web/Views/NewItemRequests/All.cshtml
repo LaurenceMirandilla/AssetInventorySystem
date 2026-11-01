@@ -1,0 +1,189 @@
+﻿@model List<SchoolInventoryManagement.BLL.DTOs.NewItemRequestResponseDTO>
+@using SchoolInventoryManagement.BLL.DTOs
+@using SchoolInventoryManagement.DAL.Entities.Enums
+@using SchoolInventoryManagement.Web.Helpers
+@{
+    // Everyone's new-item requests (NewItemRequestsController.All), as a
+    // read-only overview: decisions happen on New-Item Approvals. Every
+    // request is on the page; the stage chips and the search narrow it.
+    ViewData["Title"] = "All New-Item Requests";
+    NewItemStatus? status = ViewBag.Status as NewItemStatus?;
+    string search = ViewBag.Search as string ?? "";
+    string sort = ViewBag.Sort as string ?? "newest";
+    var stages = new[] { NewItemStatus.AwaitingDeptHead, NewItemStatus.AwaitingBudget, NewItemStatus.Procuring,
+                         NewItemStatus.AwaitingArrival, NewItemStatus.Arrived, NewItemStatus.Rejected,
+                         NewItemStatus.Cancelled };
+    var chipLabel = new Dictionary<NewItemStatus, string>
+    {
+        [NewItemStatus.AwaitingDeptHead] = "Department head",
+        [NewItemStatus.AwaitingBudget] = "Principal",
+        [NewItemStatus.Procuring] = "Procuring",
+        [NewItemStatus.AwaitingArrival] = "Waiting arrival",
+        [NewItemStatus.Arrived] = "Arrived",
+        [NewItemStatus.Rejected] = "Rejected",
+        [NewItemStatus.Cancelled] = "Cancelled"
+    };
+}
+@if (TempData["ErrorMessage"] != null)
+{
+    <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
+}
+
+<div class="asset-detail-head mb-3 pb-0 border-0">
+    <div>
+        <h2 class="asset-detail-title">All New-Item Requests</h2>
+        <div class="asset-detail-sub">@Model.Count request@(Model.Count == 1 ? "" : "s") from everyone, @sort first, wherever they have got to.</div>
+    </div>
+    <div class="asset-detail-actions">
+        <div class="dropdown">
+            <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                @(sort == "oldest" ? "Oldest first" : "Newest first")
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+                <li><a class="dropdown-item @(sort != "oldest" ? "active" : "")" asp-action="All" asp-route-sort="newest">Newest first</a></li>
+                <li><a class="dropdown-item @(sort == "oldest" ? "active" : "")" asp-action="All" asp-route-sort="oldest">Oldest first</a></li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+@if (!Model.Any())
+{
+    <div class="sab-table-card">
+        <div class="sab-empty">
+            <div class="sab-empty-title">No requests yet</div>
+            <p>New-item requests appear here once anyone submits one.</p>
+        </div>
+    </div>
+}
+else
+{
+    <div data-md id="allNewItems" data-page-size="6">
+        @* Stage chips: they set the hidden filter below, which the shared
+           list script (site.js) applies. *@
+        <div class="stage-chips" role="group" aria-label="Stage">
+            <button type="button" class="stage-chip @(status == null ? "active" : "")" data-chip="">All <span>@Model.Count</span></button>
+            @foreach (var s in stages)
+            {
+                var count = Model.Count(r => r.RequestStatus == s);
+                <button type="button" class="stage-chip @(status == s ? "active" : "")" data-chip="@s.ToString().ToLowerInvariant()">@chipLabel[s] <span>@count</span></button>
+            }
+            <select data-md-filter="stage" class="d-none" aria-hidden="true" tabindex="-1">
+                <option value=""></option>
+                @foreach (var s in stages)
+                {
+                    <option value="@s.ToString().ToLowerInvariant()" selected="@(status == s)"></option>
+                }
+            </select>
+        </div>
+
+        <div class="sab-table-card myassets">
+            <aside class="myassets-list" aria-label="New-item requests">
+                <div class="md-toolbar">
+                    <label class="asset-search">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+                        <input type="text" data-md-search value="@search" autocomplete="off" placeholder="Item, reason, requester, department or #..." aria-label="Search new-item requests" />
+                    </label>
+                </div>
+
+                <div class="myassets-group" data-md-group>
+                    @foreach (var r in Model)
+                    {
+                        var stopped = NewItemProgress.IsStopped(r);
+                        <button type="button" class="myassets-item" data-entry="n-@r.NewItemRequestID"
+                                data-stage="@r.RequestStatus.ToString().ToLowerInvariant()"
+                                data-search="@($"#{r.NewItemRequestID} {r.NewItemRequestID} {r.ItemName} {r.Reason} {r.RequestedByUserName} {r.DepartmentName}".ToLowerInvariant())">
+                            <span class="md-avatar @(stopped ? "is-dark" : "")">@NewItemProgress.Initials(r.RequestedByUserName)</span>
+                            <span class="myassets-item-main">
+                                <span class="myassets-item-title">@r.ItemName@(r.Quantity > 1 ? $" ×{r.Quantity}" : "")</span>
+                                <span class="myassets-item-sub">@r.RequestedByUserName · @r.DepartmentName</span>
+                                <span class="myassets-item-sub">@DisplayText.Peso(r.EstimatedTotal) · @r.RequestDate.ToString("MMM d")</span>
+                            </span>
+                            <span class="asset-pill asset-status md-pill @NewItemProgress.Pill(r.RequestStatus)">@NewItemProgress.Short(r.RequestStatus)</span>
+                        </button>
+                    }
+                </div>
+                <div class="myassets-nomatch" data-md-empty hidden>Nothing matches these filters.</div>
+
+                <div class="md-foot">
+                    <span data-md-range></span>
+                    <div data-md-pager></div>
+                </div>
+            </aside>
+
+            <section class="myassets-detail">
+                @foreach (var r in Model)
+                {
+                    var last = r.Steps.LastOrDefault();
+                    var lastText = last == null ? "Submitted · " + r.RequestDate.ToString("MMM d")
+                        : (last.Status == NewItemStatus.AwaitingDeptHead ? "Submitted" : DisplayText.Humanize(last.Status.ToString())) + " · " + last.ActedAt.ToString("MMM d");
+                    var steps = NewItemProgress.Steps(r, "waiting");
+
+                    <article class="myassets-panel" data-panel="n-@r.NewItemRequestID" hidden>
+                        <button type="button" class="myassets-back" data-back>&larr; All requests</button>
+
+                        <div class="myassets-panel-head">
+                            <div class="md-person">
+                                <span class="md-avatar md-avatar-lg">@NewItemProgress.Initials(r.RequestedByUserName)</span>
+                                <div class="min-w-0">
+                                    <div class="myassets-panel-meta"><span>New-item request #@r.NewItemRequestID · submitted @r.RequestDate.ToString("MMM d, yyyy")</span></div>
+                                    <h3 class="md-person-name">@r.ItemName@(r.Quantity > 1 ? $" ×{r.Quantity}" : "")</h3>
+                                    <div class="myassets-panel-meta">@r.RequestedByUserName@(r.RequestedByRoleName != null ? " · " + r.RequestedByRoleName : "") · @r.DepartmentName</div>
+                                </div>
+                            </div>
+                            <div class="myassets-panel-actions">
+                                <span class="asset-pill asset-status @NewItemProgress.Pill(r.RequestStatus)">@NewItemProgress.Short(r.RequestStatus)</span>
+                                <a asp-action="Details" asp-route-id="@r.NewItemRequestID" class="btn btn-outline-secondary">Open &rarr;</a>
+                            </div>
+                        </div>
+
+                        <partial name="_RequestSteps" model="steps" />
+
+                        <div class="myassets-stats">
+                            <div><span>Quantity</span><strong>@r.Quantity</strong></div>
+                            <div><span>Est. total</span><strong>@DisplayText.Peso(r.EstimatedTotal)</strong></div>
+                            <div><span>Needed by</span><strong>@(r.NeededBy?.ToString("MMM d, yyyy") ?? "—")</strong></div>
+                            <div><span>Last action</span><strong>@lastText</strong></div>
+                        </div>
+
+                        @if (!string.IsNullOrWhiteSpace(r.Reason))
+                        {
+                            <div class="req-note"><strong>Reason:</strong> @r.Reason</div>
+                        }
+
+                        @if (NewItemProgress.Open.Contains(r.RequestStatus))
+                        {
+                            <div class="req-waiting">
+                                <span>Waiting on</span>
+                                <span>@NewItemProgress.WaitingOn(r.RequestStatus). This page is a read-only overview — decisions happen on New-Item Approvals.</span>
+                            </div>
+                        }
+                        else if (r.Steps.Any())
+                        {
+                            <h4 class="md-section-title">Steps</h4>
+                            <partial name="_NewItemStepsFeed" model="r" />
+                        }
+                    </article>
+                }
+            </section>
+        </div>
+    </div>
+}
+
+@section Scripts {
+    <script>
+        // Stage chips drive the hidden stage filter the list script watches.
+        (function () {
+            var root = document.getElementById('allNewItems');
+            if (!root) return;
+            var select = root.querySelector('[data-md-filter="stage"]');
+            root.querySelectorAll('[data-chip]').forEach(function (chip) {
+                chip.addEventListener('click', function () {
+                    root.querySelectorAll('[data-chip]').forEach(function (c) { c.classList.toggle('active', c === chip); });
+                    select.value = chip.dataset.chip;
+                    select.dispatchEvent(new Event('change'));
+                });
+            });
+        })();
+    </script>
+}

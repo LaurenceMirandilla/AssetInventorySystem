@@ -52,7 +52,7 @@ namespace SchoolInventoryManagement.Web.Controllers
             }
 
             await PopulateLocationDropdownAsync(asset.CurrentLocationID);
-            SetAssetViewData(asset);
+            await SetAssetViewDataAsync(asset);
 
             return View(new TransferAssetViewModel { AssetID = id });
         }
@@ -106,15 +106,18 @@ namespace SchoolInventoryManagement.Web.Controllers
                 return NotFound();
 
             await PopulateLocationDropdownAsync(asset.CurrentLocationID);
-            SetAssetViewData(asset);
+            await SetAssetViewDataAsync(asset);
             return View(model);
         }
 
-        private void SetAssetViewData(AssetResponseDTO asset)
+        // The asset strip at the top, and the "Recent moves" card: its last
+        // three movements, newest first.
+        private async Task SetAssetViewDataAsync(AssetResponseDTO asset)
         {
-            ViewBag.AssetName = asset.AssetName;
-            ViewBag.AssetCode = asset.AssetCode;
-            ViewBag.CurrentLocationName = asset.CurrentLocationName;
+            ViewBag.Asset = asset;
+            ViewBag.RecentMoves = (await _movementService.GetMovementHistoryForAssetAsync(asset.AssetID))
+                .Take(3)
+                .ToList();
         }
 
         // Where the asset already is isn't a destination — TransferAssetAsync
@@ -123,11 +126,12 @@ namespace SchoolInventoryManagement.Web.Controllers
         {
             var locations = await _locationService.GetAllLocationsAsync();
 
-            ViewBag.Locations = new SelectList(
-                locations
-                    .Where(l => l.LocationID != currentLocationId)
-                    .Select(l => new { l.LocationID, Label = $"{l.BranchName} — {l.LocationName}" }),
-                "LocationID", "Label");
+            // The options carry their branch, which the form shows under
+            // the destination.
+            ViewBag.LocationOptions = locations
+                .Where(l => l.LocationID != currentLocationId)
+                .OrderBy(l => l.BranchName).ThenBy(l => l.LocationName)
+                .ToList();
         }
     }
 }

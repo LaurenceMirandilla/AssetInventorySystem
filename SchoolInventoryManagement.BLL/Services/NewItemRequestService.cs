@@ -44,11 +44,16 @@ namespace SchoolInventoryManagement.BLL.Services
 
         private IQueryable<NewItemRequest> QueryWithIncludes()
         {
+            // With each request's steps: the request lists show where every
+            // one has got to and who moved it on.
             return _context.NewItemRequests
                 .Include(n => n.RequestedByUser)
                     .ThenInclude(u => u.Role)
                 .Include(n => n.Department)
-                .Include(n => n.ReviewedByUser);
+                .Include(n => n.ReviewedByUser)
+                .Include(n => n.Steps)
+                    .ThenInclude(s => s.ActedByUser)
+                        .ThenInclude(u => u.Role);
         }
 
         // Matches the form's limits; enforced here as the boundary that

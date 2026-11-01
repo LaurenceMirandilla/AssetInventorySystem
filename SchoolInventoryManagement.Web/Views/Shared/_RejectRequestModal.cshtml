@@ -1,0 +1,93 @@
+@model SchoolInventoryManagement.BLL.DTOs.AssetRequestResponseDTO
+@using SchoolInventoryManagement.DAL.Entities.Enums
+@* Reject confirmation for a pending request, used by Approvals, the
+   approve pages and the request's own page. Opened by a button with
+   data-bs-toggle="modal" data-bs-target="#reject-{RequestID}". Posts to
+   AssetRequests/Reject; if that fails, the full Reject page shows the
+   error. Must sit outside any other form on the page. *@
+@{
+    var r = Model;
+    var categories = ViewBag.ModelCategories as Dictionary<int, string>;
+    var isBorrow = r.RequestType == RequestType.Borrow;
+    var tones = new[] { "", "is-teal", "is-purple" };
+
+    string Abbr(string name)
+    {
+        var letters = string.Concat(name.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Where(w => char.IsLetterOrDigit(w[0])).Take(3).Select(w => char.ToUpperInvariant(w[0])));
+        return letters.Length == 0 ? "?" : letters;
+    }
+}
+
+<div class="modal fade" id="reject-@r.RequestID" tabindex="-1" aria-labelledby="rejectTitle-@r.RequestID" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable cancel-dialog">
+        <form asp-controller="AssetRequests" asp-action="Reject" asp-route-id="@r.RequestID" method="post" class="modal-content cancel-modal">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="RequestID" value="@r.RequestID" />
+            <input type="hidden" name="RowVersionBase64" value="@Convert.ToBase64String(r.RowVersion)" />
+
+            <div class="cancel-head">
+                <span class="cancel-icon" aria-hidden="true">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9" /><path d="m5.7 5.7 12.6 12.6" /></svg>
+                </span>
+                <div class="flex-grow-1 min-w-0">
+                    <h3 class="cancel-title" id="rejectTitle-@r.RequestID">Reject request #@r.RequestID?</h3>
+                    <div class="cancel-meta">
+                        <span class="md-tag @(isBorrow ? "" : "is-transfer")">@r.RequestType</span>
+                        <span>From @r.RequestedByUser.FullName (@r.RequestedByUser.RoleName)</span>
+                    </div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body cancel-body">
+                <div class="cancel-facts">
+                    <div>
+                        <span>Needed</span>
+                        <strong>@(r.NeededFrom?.ToString("MMM d") ?? "—")@(r.ReturnBy is not null ? " – " + r.ReturnBy.Value.ToString("MMM d") : "")</strong>
+                    </div>
+                    <div><span>Items</span><strong>@r.Items.Count model@(r.Items.Count == 1 ? "" : "s") · @r.TotalQuantity unit@(r.TotalQuantity == 1 ? "" : "s")</strong></div>
+                    <div><span>Status</span><strong>@DisplayText.Humanize(r.RequestStatus.ToString())</strong></div>
+                </div>
+
+                <div class="cancel-label">
+                    <span>Items on this request</span>
+                    <span class="text-muted fw-normal">@r.Items.Count model@(r.Items.Count == 1 ? "" : "s")@(r.Items.Count > 4 ? " · scroll for all" : "")</span>
+                </div>
+                <div class="cancel-items">
+                    @for (var i = 0; i < r.Items.Count; i++)
+                    {
+                        var item = r.Items[i];
+                        <div class="cancel-item">
+                            <span class="cancel-item-abbr @tones[i % tones.Length]">@Abbr(item.ModelName)</span>
+                            <div class="flex-grow-1 min-w-0">
+                                <div class="req-item-name">@item.ModelName</div>
+                                @if (categories != null && categories.TryGetValue(item.ModelID, out var cat))
+                                {
+                                    <div class="req-item-meta">@cat</div>
+                                }
+                            </div>
+                            <span class="req-item-qty">×@item.Quantity</span>
+                        </div>
+                    }
+                </div>
+
+                <label class="cancel-label" for="rejectReason-@r.RequestID">
+                    <span>Reason for rejecting</span>
+                    <span class="text-muted fw-normal">optional · the requester sees this</span>
+                </label>
+                <textarea name="Remarks" id="rejectReason-@r.RequestID" class="form-control" rows="3" maxlength="500"
+                          placeholder="e.g. All projectors are booked that week."></textarea>
+                <div class="form-text">Left empty, they'll see “No reason was given.”</div>
+            </div>
+
+            <div class="cancel-foot">
+                <span class="text-muted small">Nothing is reserved yet, so no units are affected.</span>
+                <div class="d-flex" style="gap:8px;">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Go back</button>
+                    <button type="submit" class="btn btn-danger">Reject request</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>

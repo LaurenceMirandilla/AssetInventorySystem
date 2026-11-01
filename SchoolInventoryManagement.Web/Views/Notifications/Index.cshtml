@@ -1,97 +1,191 @@
 ﻿@model List<SchoolInventoryManagement.BLL.DTOs.NotificationResponseDTO>
+@using System.Text.RegularExpressions
 @{
     ViewData["Title"] = "Notifications";
     var unreadOnly = ViewData["UnreadOnly"] as bool? ?? false;
-    var hasUnread = Model.Any(n => !n.IsRead);
     var unreadCount = Model.Count(n => !n.IsRead);
+
+    var today = DateTime.Today;
+    string Day(DateTime d) =>
+        d.Date == today ? "Today" : d.Date == today.AddDays(-1) ? "Yesterday" : "Earlier";
+    var groups = Model.GroupBy(n => Day(n.CreatedAt)).ToList();
 }
+
+@functions {
+    // Notifications carry only their text, so the label and icon are read
+    // from the wording the services use ("... was approved", "... is
+    // overdue", ...). Anything else is a plain update.
+    static (string Label, string Css, string Icon) Kind(string message)
+    {
+        var m = message.ToLowerInvariant();
+        if (m.Contains("overdue")) return ("Overdue", "is-red", "<circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M12 7v5l3 2\"/>");
+        if (m.Contains("reject")) return ("Rejected", "is-red", "<path d=\"M6 6l12 12M18 6 6 18\"/>");
+        if (m.Contains("cancel")) return ("Cancelled", "is-gray", "<path d=\"M6 6l12 12M18 6 6 18\"/>");
+        if (m.Contains("new-item") || m.Contains("new item")) return ("New item", "is-teal", "<path d=\"M3 4h2l2.5 11h11L21 7H7\"/><circle cx=\"10\" cy=\"19\" r=\"1.5\"/><circle cx=\"17\" cy=\"19\" r=\"1.5\"/>");
+        if (m.Contains("return")) return ("Returned", "is-gray", "<path d=\"M9 14 4 9l5-5\"/><path d=\"M4 9h11a5 5 0 0 1 0 10h-3\"/>");
+        if (m.Contains("set aside") || m.Contains("ready") || m.Contains("collect") || m.Contains("pick")) return ("Ready", "is-teal", "<path d=\"M3 7h11v9H3zM14 10h4l3 3v3h-7\"/><circle cx=\"7\" cy=\"18\" r=\"1.5\"/><circle cx=\"17\" cy=\"18\" r=\"1.5\"/>");
+        if (m.Contains("approved")) return ("Approved", "is-green", "<path d=\"m5 12 5 5 9-10\"/>");
+        if (m.Contains("assigned to you") || m.Contains("issued")) return ("Issued", "is-green", "<path d=\"M12 2 3 7v10l9 5 9-5V7z\"/><path d=\"m3 7 9 5 9-5M12 12v10\"/>");
+        return ("Update", "is-gray", "<path d=\"M6 16V11a6 6 0 0 1 12 0v5l2 2H4z\"/><path d=\"M10 20a2 2 0 0 0 4 0\"/>");
+    }
+
+    // The message, with request numbers ("#35") and asset codes in bold.
+    static string Emphasise(string message)
+    {
+        var safe = System.Net.WebUtility.HtmlEncode(message);
+        return Regex.Replace(safe, @"(#\d+|\b[A-Z]{2,4}-\d{3,4}\b)", "<strong>$1</strong>");
+    }
+
+    static string When(DateTime d, DateTime today) =>
+        d.Date == today || d.Date == today.AddDays(-1) ? d.ToString("h:mm tt")
+        : d.Year == today.Year ? d.ToString("MMM d, h:mm tt") : d.ToString("MMM d, yyyy");
+}
+
 @if (TempData["ErrorMessage"] != null)
 {
     <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
 }
 
-<div class="sab-page-head">
+<div class="asset-detail-head mb-3 pb-0 border-0">
     <div>
-        <h2>Notifications</h2>
-        <p class="sab-page-sub">
-            @(unreadCount == 0 ? "Nothing unread." : $"{unreadCount} unread.")
-        </p>
+        <h2 class="asset-detail-title">Notifications</h2>
+        <div class="asset-detail-sub">@(unreadCount == 0 ? "Nothing unread." : $"{unreadCount} unread.")</div>
     </div>
-    @if (hasUnread)
+    @if (unreadCount > 0)
     {
-        <div class="sab-page-actions">
+        <div class="asset-detail-actions">
             <form asp-action="MarkAllRead" method="post">
                 @Html.AntiForgeryToken()
-                <button type="submit" class="btn btn-outline-secondary">Mark all as read</button>
+                <button type="submit" class="btn btn-outline-secondary">&#10003; Mark all as read</button>
             </form>
         </div>
     }
 </div>
 
-<ul class="nav nav-tabs mb-3">
-    <li class="nav-item">
-        <a class="nav-link @(unreadOnly ? "" : "active")"
-           asp-action="Index" asp-route-unreadOnly="false">All</a>
-    </li>
-    <li class="nav-item">
-        <a class="nav-link @(unreadOnly ? "active" : "")"
-           asp-action="Index" asp-route-unreadOnly="true">Unread@(unreadCount > 0 ? $" · {unreadCount}" : "")</a>
-    </li>
-</ul>
+<div class="page-tabs" role="tablist">
+    <button type="button" class="@(unreadOnly ? "" : "active")" data-notif-tab="all">All <span class="history-tab-count">@Model.Count</span></button>
+    <button type="button" class="@(unreadOnly ? "active" : "")" data-notif-tab="unread">Unread <span class="history-tab-count">@unreadCount</span></button>
+</div>
 
 @if (!Model.Any())
 {
-    <div class="card">
+    <div class="sab-table-card">
         <div class="sab-empty">
-            <div class="sab-empty-title">@(unreadOnly ? "Nothing unread" : "No notifications yet")</div>
+            <div class="sab-empty-title">No notifications yet</div>
             <p>You are told when a request you made is decided, and when something is issued to or returned by you.</p>
         </div>
     </div>
 }
 else
 {
-    <div class="list-group">
-        @foreach (var notification in Model)
+    <div id="notifications" data-page-size="7">
+        @foreach (var g in groups)
         {
-            <div class="list-group-item @(notification.IsRead ? "" : "list-group-item-light border-start border-4 border-primary")">
-                <div class="d-flex justify-content-between align-items-start">
-                    <div class="me-3">
-                        <div class="@(notification.IsRead ? "text-muted" : "fw-semibold")">
-                            @notification.Message
+            <section class="notif-group" data-notif-group>
+                <div class="notif-day">@g.Key</div>
+                <div class="notif-card">
+                    @foreach (var n in g)
+                    {
+                        var kind = Kind(n.Message);
+                        <div class="notif @(n.IsRead ? "" : "is-unread")" data-notif data-unread="@(n.IsRead ? "false" : "true")">
+                            <span class="notif-icon @kind.Css" aria-hidden="true">
+                                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">@Html.Raw(kind.Icon)</svg>
+                            </span>
+                            <div class="notif-main">
+                                <div class="notif-text">@Html.Raw(Emphasise(n.Message))</div>
+                                <div class="notif-meta">
+                                    <span class="notif-kind @kind.Css">@kind.Label</span>
+                                    @When(n.CreatedAt, today)
+                                </div>
+                            </div>
+                            <div class="notif-actions">
+                                @* Following a notification also marks it read, in one click. *@
+                                @if (!string.IsNullOrWhiteSpace(n.ActionURL))
+                                {
+                                    <form asp-action="MarkRead" asp-route-id="@n.NotificationID" method="post">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="returnUrl" value="@n.ActionURL" />
+                                        <button type="submit" class="btn btn-outline-secondary btn-sm notif-view">View &rarr;</button>
+                                    </form>
+                                }
+                                @if (!n.IsRead)
+                                {
+                                    <form asp-action="MarkRead" asp-route-id="@n.NotificationID" method="post">
+                                        @Html.AntiForgeryToken()
+                                        <button type="submit" class="btn btn-link btn-sm notif-mark">Mark read</button>
+                                    </form>
+                                    <span class="notif-dot" title="Unread"></span>
+                                }
+                            </div>
                         </div>
-                        <small class="text-muted">@notification.CreatedAt.ToString("g")</small>
-                    </div>
-
-                    <div class="text-nowrap">
-                        @* One click both follows the link and clears the
-                           notification, so the list does not fill up with
-                           things the user has already acted on. *@
-                        @if (!string.IsNullOrWhiteSpace(notification.ActionURL))
-                        {
-                            <form asp-action="MarkRead" asp-route-id="@notification.NotificationID"
-                                  method="post" class="d-inline">
-                                @Html.AntiForgeryToken()
-                                <input type="hidden" name="returnUrl" value="@notification.ActionURL" />
-                                <button type="submit" class="btn btn-link p-0">View</button>
-                            </form>
-                        }
-
-                        @if (!notification.IsRead)
-                        {
-                            <form asp-action="MarkRead" asp-route-id="@notification.NotificationID"
-                                  method="post" class="d-inline">
-                                @Html.AntiForgeryToken()
-                                <button type="submit" class="btn btn-link text-muted p-0 ms-2">Mark read</button>
-                            </form>
-                        }
-                    </div>
+                    }
                 </div>
-            </div>
+            </section>
         }
-    </div>
+        <div class="sab-empty" id="notifEmpty" hidden>
+            <div class="sab-empty-title">Nothing unread</div>
+            <p>You're all caught up.</p>
+        </div>
 
-    <p class="text-muted mt-3 small">
-        Opening a notification marks it read in the same click. Approvals raise
-        one notification for the whole outcome, not one per step.
-    </p>
+        <div class="notif-foot">
+            <span id="notifRange"></span>
+            <div id="notifPager" class="d-flex" style="gap:6px;"></div>
+        </div>
+    </div>
+}
+
+@section Scripts {
+    <script>
+        // All / Unread and paging, on the page: every notification is loaded.
+        (function () {
+            var root = document.getElementById('notifications');
+            if (!root) return;
+            var items = Array.from(root.querySelectorAll('[data-notif]'));
+            var tabs = Array.from(document.querySelectorAll('[data-notif-tab]'));
+            var pageSize = parseInt(root.dataset.pageSize, 10);
+            var tab = '@(unreadOnly ? "unread" : "all")';
+            var page = 1;
+
+            function render() {
+                var hits = items.filter(function (n) { return tab === 'all' || n.dataset.unread === 'true'; });
+                var pages = Math.max(1, Math.ceil(hits.length / pageSize));
+                page = Math.min(page, pages);
+                var onPage = hits.slice((page - 1) * pageSize, page * pageSize);
+                items.forEach(function (n) { n.hidden = onPage.indexOf(n) === -1; });
+                root.querySelectorAll('[data-notif-group]').forEach(function (g) {
+                    g.hidden = !Array.from(g.querySelectorAll('[data-notif]')).some(function (n) { return !n.hidden; });
+                });
+                document.getElementById('notifEmpty').hidden = hits.length > 0;
+                document.getElementById('notifRange').textContent = hits.length
+                    ? ((page - 1) * pageSize + 1) + '–' + Math.min(page * pageSize, hits.length) + ' of ' + hits.length + ' notification' + (hits.length === 1 ? '' : 's')
+                    : '';
+                var pager = document.getElementById('notifPager');
+                pager.innerHTML = '';
+                if (pages > 1) {
+                    function btn(label, target, cls) {
+                        var b = document.createElement('button');
+                        b.type = 'button';
+                        b.className = 'asset-page ' + (cls || '');
+                        b.innerHTML = label;
+                        if (!cls) b.addEventListener('click', function () { page = target; render(); window.scrollTo({ top: 0 }); });
+                        pager.appendChild(b);
+                    }
+                    btn('&lsaquo;', page - 1, page === 1 ? 'disabled' : '');
+                    for (var n = 1; n <= pages; n++) btn(String(n), n, n === page ? 'current' : '');
+                    btn('&rsaquo;', page + 1, page === pages ? 'disabled' : '');
+                }
+            }
+
+            tabs.forEach(function (t) {
+                t.addEventListener('click', function () {
+                    tab = t.dataset.notifTab;
+                    page = 1;
+                    tabs.forEach(function (x) { x.classList.toggle('active', x === t); });
+                    history.replaceState(null, '', tab === 'unread' ? '?unreadOnly=true' : location.pathname);
+                    render();
+                });
+            });
+            render();
+        })();
+    </script>
 }

@@ -1,56 +1,153 @@
 ﻿@model SchoolInventoryManagement.Web.ViewModels.TransferAssetViewModel
+@using SchoolInventoryManagement.BLL.DTOs
 @{
     ViewData["Title"] = "Transfer Asset";
+    var asset = (AssetResponseDTO)ViewBag.Asset;
+    var locations = (List<LocationDTO>)ViewBag.LocationOptions;
+    var recent = (List<AssetMovementResponseDTO>)ViewBag.RecentMoves;
+    var chosen = locations.FirstOrDefault(l => l.LocationID == Model.DestinationLocationID);
+    ViewData["ChipName"] = "ConditionOnTransfer";
+    ViewData["ChipNoneLabel"] = "Leave unchanged";
 }
 
-<h2>Transfer Asset</h2>
-<p class="text-muted">
-    @ViewBag.AssetCode — @ViewBag.AssetName
-    (currently at @(ViewBag.CurrentLocationName ?? "no recorded location"))
-</p>
+<div class="asset-detail-head">
+    <div>
+        <nav class="asset-crumbs" aria-label="Breadcrumb">
+            <a asp-controller="Assets" asp-action="Index">Assets</a>
+            <span aria-hidden="true">&rsaquo;</span>
+            <a asp-controller="Assets" asp-action="Details" asp-route-id="@asset.AssetID">@asset.AssetCode</a>
+            <span aria-hidden="true">&rsaquo;</span>
+            <span>Transfer</span>
+        </nav>
+        <h2 class="asset-detail-title">Transfer asset</h2>
+        <div class="asset-detail-sub">Move this unit to another location.</div>
+    </div>
+</div>
 
-<form asp-action="Transfer" asp-route-id="@Model.AssetID" method="post">
+<partial name="_AssetStrip" model="asset" />
+
+<form asp-action="Transfer" asp-route-id="@Model.AssetID" method="post" class="register-form">
     @Html.AntiForgeryToken()
     <input type="hidden" asp-for="AssetID" />
     <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
 
-    <div class="mb-3">
-        <label asp-for="DestinationLocationID" class="form-label">Move to</label>
-        <select asp-for="DestinationLocationID" asp-items="ViewBag.Locations" class="form-select">
-            <option value="">-- Select Location --</option>
-        </select>
-        <span asp-validation-for="DestinationLocationID" class="text-danger"></span>
+    <div class="row g-3">
+        <div class="col-lg-8">
+            <div class="asset-card register-step mb-3">
+                <div class="register-step-body">
+                    <div class="register-step-title mb-3">Where is it going?</div>
+                    <div class="move-grid">
+                        <div class="move-box">
+                            <div class="register-side-label">From</div>
+                            <div class="move-place">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 21s-7-6.2-7-12a7 7 0 0 1 14 0c0 5.8-7 12-7 12z" /><circle cx="12" cy="9" r="2.5" /></svg>
+                                @(asset.CurrentLocationName ?? "No recorded location")
+                            </div>
+                            <div class="move-note">@asset.BranchName · current location</div>
+                        </div>
+                        <span class="move-arrow" aria-hidden="true">&rarr;</span>
+                        <div class="move-box is-target">
+                            <label for="destination" class="register-side-label">Move to</label>
+                            <select asp-for="DestinationLocationID" id="destination" class="form-select" data-combobox>
+                                <option value="">Select a location</option>
+                                @foreach (var g in locations.GroupBy(l => l.BranchName))
+                                {
+                                    <optgroup label="@g.Key">
+                                        @foreach (var l in g)
+                                        {
+                                            <option value="@l.LocationID" data-branch="@l.BranchName" data-name="@l.LocationName"
+                                                    selected="@(l.LocationID == Model.DestinationLocationID)">@l.LocationName</option>
+                                        }
+                                    </optgroup>
+                                }
+                            </select>
+                            <div class="move-note" id="destBranch">@(chosen?.BranchName ?? "Pick where it goes")</div>
+                            <span asp-validation-for="DestinationLocationID" class="text-danger"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="asset-card register-step mb-3">
+                <div class="register-step-head">
+                    <span class="register-step-num">2</span>
+                    <div>
+                        <div class="register-step-title">Why and how</div>
+                        <div class="register-step-sub">Recorded in the asset's movement history.</div>
+                    </div>
+                </div>
+                <div class="register-step-body">
+                    <div class="mb-3">
+                        <label asp-for="ReasonForTransfer" class="form-label">Reason for transfer</label>
+                        <textarea asp-for="ReasonForTransfer" class="form-control" rows="2" placeholder="e.g. Library needs extra fans for the reading month."></textarea>
+                        <span asp-validation-for="ReasonForTransfer" class="text-danger"></span>
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-label">Condition at transfer <span class="register-optional">(optional)</span></div>
+                        <partial name="_ConditionChips" model="Model.ConditionOnTransfer" />
+                        <div class="form-text">Leaving this unchanged keeps the condition already on record (@DisplayText.Humanize(asset.Condition.ToString())).</div>
+                    </div>
+                    <div>
+                        <label asp-for="Notes" class="form-label">Notes <span class="register-optional">(optional)</span></label>
+                        <textarea asp-for="Notes" class="form-control" rows="2" placeholder="Anything the receiving room should know."></textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="asset-card register-side mb-3">
+                <div class="register-side-title mb-1">What happens next</div>
+                <div class="register-side-note">
+                    The asset's location changes to <strong id="nextPlace">@(chosen?.LocationName ?? "the new location")</strong>
+                    right away, and the move appears under <strong>History › Movements</strong> with your name and reason.
+                </div>
+            </div>
+
+            <div class="asset-card register-side">
+                <div class="register-side-title mb-2">Recent moves</div>
+                @if (recent.Any())
+                {
+                    <ul class="recent-moves">
+                        @foreach (var m in recent)
+                        {
+                            <li><span>@(m.SourceLocationName ?? "—") &rarr; @m.DestinationLocationName</span><span>@m.DateMoved.ToString("MMM d")</span></li>
+                        }
+                    </ul>
+                }
+                else
+                {
+                    <div class="register-side-note">It hasn't been moved before.</div>
+                }
+                <a asp-controller="Assets" asp-action="History" asp-route-id="@asset.AssetID" asp-fragment="movements" class="asset-back mt-2">View full history &rarr;</a>
+            </div>
+        </div>
     </div>
 
-    <div class="mb-3">
-        <label asp-for="ReasonForTransfer" class="form-label">Reason for transfer</label>
-        <textarea asp-for="ReasonForTransfer" class="form-control"></textarea>
-        <span asp-validation-for="ReasonForTransfer" class="text-danger"></span>
+    <div class="register-footer">
+        <span>Reason and destination are required.</span>
+        <div class="d-flex" style="gap:8px;">
+            <a asp-controller="Assets" asp-action="Details" asp-route-id="@Model.AssetID" class="btn btn-outline-secondary">Cancel</a>
+            <button type="submit" class="btn btn-primary">Confirm transfer</button>
+        </div>
     </div>
-
-    <div class="mb-3">
-        <label asp-for="ConditionOnTransfer" class="form-label">
-            Condition at transfer <span class="text-muted">(optional)</span>
-        </label>
-        <select asp-for="ConditionOnTransfer"
-                asp-items="Html.GetEnumSelectList<SchoolInventoryManagement.DAL.Entities.Enums.ConditionStatus>()"
-                class="form-select">
-            <option value="">-- Leave unchanged --</option>
-        </select>
-        <div class="form-text">Leaving this blank keeps the condition already on record.</div>
-    </div>
-
-    <div class="mb-3">
-        <label asp-for="Notes" class="form-label">Notes <span class="text-muted">(optional)</span></label>
-        <textarea asp-for="Notes" class="form-control"></textarea>
-    </div>
-
-    <button type="submit" class="btn btn-primary">Confirm Transfer</button>
-    <a asp-controller="Assets" asp-action="Details" asp-route-id="@Model.AssetID" class="btn btn-secondary">Cancel</a>
 </form>
 
 @section Scripts {
     @{
         await Html.RenderPartialAsync("_ValidationScriptsPartial");
     }
+    <script>
+        (function () {
+            // The branch under the picker and the "What happens next" text
+            // follow the destination.
+            var dest = document.getElementById('destination');
+            dest.addEventListener('change', function () {
+                var opt = dest.options[dest.selectedIndex];
+                var picked = opt && opt.value;
+                document.getElementById('destBranch').textContent = picked ? opt.dataset.branch : 'Pick where it goes';
+                document.getElementById('nextPlace').textContent = picked ? opt.dataset.name : 'the new location';
+            });
+        })();
+    </script>
 }

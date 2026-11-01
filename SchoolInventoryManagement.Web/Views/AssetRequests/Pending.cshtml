@@ -1,406 +1,504 @@
 ﻿@model List<SchoolInventoryManagement.BLL.DTOs.AssetRequestResponseDTO>
+@using SchoolInventoryManagement.BLL.DTOs
 @using SchoolInventoryManagement.DAL.Constants
 @using SchoolInventoryManagement.DAL.Entities.Enums
+@using SchoolInventoryManagement.Web.ViewModels
 @{
-    ViewData["Title"] = "Pending Requests";
+    ViewData["Title"] = "Approvals";
 
     // Approved requests still out: In Transit or Assigned, until returned.
-    var inProgress = ViewBag.InProgress as List<SchoolInventoryManagement.BLL.DTOs.AssetRequestResponseDTO>
-        ?? new List<SchoolInventoryManagement.BLL.DTOs.AssetRequestResponseDTO>();
+    // Explicit types: ViewBag is dynamic, and a var here would stay dynamic,
+    // which breaks the lambdas and "out var" lookups below.
+    List<AssetRequestResponseDTO> inProgress = (ViewBag.InProgress as List<AssetRequestResponseDTO>) ?? new List<AssetRequestResponseDTO>();
+    Dictionary<int, string> categories = (ViewBag.ModelCategories as Dictionary<int, string>) ?? new Dictionary<int, string>();
+    Dictionary<int, ModelStock> stock = (ViewBag.Stock as Dictionary<int, ModelStock>) ?? new Dictionary<int, ModelStock>();
 
-    // Principals see this list but cannot act on it: handing over and
-    // recording returns is Officers' and Administrators' work.
-    var canManageAssets = User.IsInRole(RoleNames.AssetOfficer)
-        || User.IsInRole(RoleNames.Administrator);
+    // Principals see the In progress list but cannot act on it: handing
+    // over and recording returns is Officers' and Administrators' work.
+    var canManageAssets = User.IsInRole(RoleNames.AssetOfficer) || User.IsInRole(RoleNames.Administrator);
+
+    var now = DateTime.Now;
+    var today = DateTime.Today;
+    bool IsOverdue(AssetRequestResponseDTO r) =>
+        r.RequestStatus == RequestStatus.Assigned && r.ReturnBy is not null && r.ReturnBy.Value < now;
+
+    var overdue = inProgress.Where(IsOverdue).OrderBy(r => r.ReturnBy).ToList();
+    var transit = inProgress.Where(r => r.RequestStatus == RequestStatus.InTransit).ToList();
+    var outNow = inProgress.Where(r => r.RequestStatus != RequestStatus.InTransit && !IsOverdue(r))
+        .OrderBy(r => r.ReturnBy ?? DateTime.MaxValue).ToList();
+    var progressGroups = new[]
+    {
+        (Key: "late", Label: "Overdue", Items: overdue),
+        (Key: "transit", Label: "Ready for pickup or delivery", Items: transit),
+        (Key: "use", Label: "Out now", Items: outNow)
+    };
+    var progressOrdered = progressGroups.SelectMany(g => g.Items).ToList();
 }
+
+@functions {
+    static string Initials(string name)
+    {
+        var initials = string.Concat(name.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(p => p[0])).ToUpperInvariant();
+        return initials.Length > 2 ? initials[..2] : initials;
+    }
+
+    static string Days(int n) => n == 1 ? "1 day" : $"{n} days";
+
+    // "→ Library" for a transfer; nothing for a borrow.
+    static string Where(AssetRequestResponseDTO r) =>
+        r.RequestType == RequestType.Transfer && r.RequestedLocationName != null ? " → " + r.RequestedLocationName : "";
+
+    static string Search(AssetRequestResponseDTO r) =>
+        string.Join(" ", new[] { "#" + r.RequestID, r.RequestID.ToString(), r.RequestedByUser.FullName, r.DepartmentName,
+            r.ItemsSummary, r.RequestedLocationName ?? "", r.RequestType.ToString() }
+            .Concat(r.Units.Select(u => u.AssetCode))).ToLowerInvariant();
+
+    // Short due note for the In progress list.
+    static string DueNote(DateTime? due, DateTime today)
+    {
+        if (due is null) return "no due date";
+        var d = (due.Value.Date - today).Days;
+        return d < 0 ? $"{Days(-d)} late" : d == 0 ? "today" : d == 1 ? "tomorrow" : $"in {d} days";
+    }
+}
+
 @if (TempData["ErrorMessage"] != null)
 {
     <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
 }
 
-<div class="sab-page-head">
+<div class="asset-detail-head mb-3 pb-0 border-0">
     <div>
-        <h2>Approvals</h2>
-        <p class="sab-page-sub">
-            @Model.Count request@(Model.Count == 1 ? "" : "s") awaiting a decision from you, oldest first.
-        </p>
+        <h2 class="asset-detail-title">Approvals</h2>
+        <div class="asset-detail-sub">@Model.Count request@(Model.Count == 1 ? "" : "s") awaiting a decision from you.</div>
     </div>
-    @if (User.IsInRole("Asset Officer") || User.IsInRole("Administrator"))
+    @if (canManageAssets)
     {
-        <div class="sab-page-actions">
+        <div class="asset-detail-actions">
             <a asp-action="History" class="btn btn-outline-secondary">Request History</a>
         </div>
     }
 </div>
 
-@if (Model.Any())
-{
-    <div class="card">
-        <div class="card-body">
-            @foreach (var request in Model)
-            {
-                var requesterName = request.RequestedByUser.FullName;
-                var requesterInitials = string.Concat(requesterName
-                    .Split(' ', StringSplitOptions.RemoveEmptyEntries)
-                    .Select(part => part[0])).ToUpperInvariant();
-                if (requesterInitials.Length > 2) { requesterInitials = requesterInitials[..2]; }
-
-                <div class="sab-row">
-                    <div class="d-flex align-items-center" style="gap:12px; min-width:0;">
-                        <span class="sab-avatar sab-avatar-soft">@requesterInitials</span>
-                        <div style="min-width:0;">
-                            <div class="sab-row-title">
-                                @requesterName &mdash;
-                                @request.ItemsSummary
-                                @if (request.RequestType == RequestType.Transfer)
-                                {
-                                    <text> &rarr; @request.RequestedLocationName</text>
-                                }
-                            </div>
-                            <div class="sab-row-meta">
-                                <span class="status-pill status-@request.RequestType.ToString().ToLowerInvariant()">@request.RequestType</span>
-                                <span class="ms-1">
-                                    @request.RequestedByUser.RoleName &middot; @request.DepartmentName
-                                    &middot; submitted <strong>@request.RequestDate.ToString("MMM d, yyyy h:mm tt")</strong>
-                                    @if (request.RequestType == RequestType.Borrow && request.RequestedLocationName is not null)
-                                    {
-                                        <text>&middot; pickup at @request.RequestedLocationName</text>
-                                    }
-                                    @if (request.NeededFrom is not null)
-                                    {
-                                        <text>&middot; needed @request.NeededFrom.Value.ToString("MMM d")</text>
-                                        @if (request.ReturnBy is not null)
-                                        {
-                                            <text>&ndash; @request.ReturnBy.Value.ToString("MMM d")</text>
-                                        }
-                                    }
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="text-nowrap">
-                        <a asp-action="Details" asp-route-id="@request.RequestID">View</a>
-                        <a asp-action="Approve" asp-route-id="@request.RequestID" class="ms-3">Approve</a>
-                        <a asp-action="Reject" asp-route-id="@request.RequestID" class="ms-3 text-danger">Reject</a>
-                    </div>
-                </div>
-            }
-        </div>
-    </div>
-}
-else
-{
-    <div class="card">
-        <div class="sab-empty">
-            <div class="sab-empty-title">Nothing is waiting on you</div>
-            <p>Requests appear here as soon as somebody submits one.</p>
-        </div>
-    </div>
-}
-
-<div class="sab-page-head mt-4">
-    <div>
-        <h2>In Progress</h2>
-        <p class="sab-page-sub">
-            Approved and still out, oldest request first. <strong>In Transit</strong> means
-            waiting to be collected (Borrow) or on its way (Transfer); <strong>Assigned</strong>
-            means the requester has it. Each stays here until its return is recorded.
-        </p>
-    </div>
-    @if (inProgress.Any())
-    {
-        <div class="sab-page-actions">
-            <button type="button" id="ipToggle" class="btn btn-outline-secondary" aria-expanded="false" aria-controls="ipFilters">Filter</button>
-        </div>
-    }
+<div class="page-tabs" role="tablist">
+    <button type="button" class="active" role="tab" aria-selected="true" data-md-tab="tabAwaiting">
+        Awaiting your decision <span class="history-tab-count">@Model.Count</span>
+    </button>
+    <button type="button" role="tab" aria-selected="false" data-md-tab="tabProgress">
+        In progress <span class="history-tab-count">@inProgress.Count</span>
+    </button>
 </div>
 
-@if (inProgress.Any())
-{
-    var departments = inProgress.Select(r => r.DepartmentName).Where(d => !string.IsNullOrEmpty(d)).Distinct().OrderBy(d => d).ToList();
-
-    @* Off until "Filter" is clicked. Everything here runs in the browser on
-       the rows already on the page -- the list is only what is out right
-       now, so there is nothing to fetch. Turning the filter off clears it
-       and puts the list back in its usual order. *@
-    <div id="ipFilters" class="card mb-3 d-none">
-        <div class="card-body py-2">
-            <div class="row g-2 align-items-end">
-                <div class="col-6 col-md-2">
-                    <label for="ipTicket" class="form-label small mb-1">Ticket #</label>
-                    <input type="search" id="ipTicket" class="form-control form-control-sm" inputmode="numeric" placeholder="e.g. 42" autocomplete="off" />
-                </div>
-                <div class="col-6 col-md-3">
-                    <label for="ipRequester" class="form-label small mb-1">Requester</label>
-                    <input type="search" id="ipRequester" class="form-control form-control-sm" placeholder="Name" autocomplete="off" />
-                </div>
-                <div class="col-6 col-md-3">
-                    <label for="ipItem" class="form-label small mb-1">Item</label>
-                    <input type="search" id="ipItem" class="form-control form-control-sm" placeholder="Model or unit code" autocomplete="off" />
-                </div>
-                <div class="col-6 col-md-2">
-                    <label for="ipStatus" class="form-label small mb-1">Status</label>
-                    <select id="ipStatus" class="form-select form-select-sm">
-                        <option value="">Any</option>
-                        <option value="intransit">In Transit</option>
-                        <option value="assigned">Assigned</option>
-                        <option value="overdue">Overdue</option>
-                    </select>
-                </div>
-                <div class="col-6 col-md-2">
-                    <label for="ipType" class="form-label small mb-1">Type</label>
-                    <select id="ipType" class="form-select form-select-sm">
-                        <option value="">Any</option>
-                        <option value="borrow">Borrow</option>
-                        <option value="transfer">Transfer</option>
-                    </select>
-                </div>
-                <div class="col-6 col-md-3">
-                    <label for="ipDepartment" class="form-label small mb-1">Department</label>
-                    <select id="ipDepartment" class="form-select form-select-sm">
-                        <option value="">Any</option>
-                        @foreach (var d in departments)
-                        {
-                            <option value="@d!.ToLowerInvariant()">@d</option>
-                        }
-                    </select>
-                </div>
-                <div class="col-6 col-md-3">
-                    <label for="ipSort" class="form-label small mb-1">Sort by</label>
-                    <select id="ipSort" class="form-select form-select-sm">
-                        <option value="submitted-asc">Submitted — oldest first</option>
-                        <option value="submitted-desc">Submitted — newest first</option>
-                        <option value="due-asc">Due back — soonest first</option>
-                        <option value="due-desc">Due back — latest first</option>
-                        <option value="ticket-asc">Ticket # — low to high</option>
-                        <option value="ticket-desc">Ticket # — high to low</option>
-                        <option value="requester-asc">Requester — A to Z</option>
-                    </select>
-                </div>
-                <div class="col-12 col-md-6 d-flex align-items-center" style="gap:12px;">
-                    <button type="button" id="ipClear" class="btn btn-link btn-sm p-0">Clear filters</button>
-                    <span id="ipCount" class="text-muted small"></span>
-                </div>
+@* ---- Awaiting your decision ---------------------------------------- *@
+<section id="tabAwaiting" role="tabpanel">
+    @if (!Model.Any())
+    {
+        <div class="sab-table-card">
+            <div class="sab-empty">
+                <div class="sab-empty-title">Nothing is waiting on you</div>
+                <p>Requests appear here as soon as somebody submits one.</p>
             </div>
         </div>
-    </div>
+    }
+    else
+    {
+        <div class="sab-table-card myassets" data-md data-page-size="6">
+            <aside class="myassets-list" aria-label="Requests awaiting a decision">
+                <div class="md-toolbar">
+                    <label class="asset-search">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+                        <input type="text" data-md-search autocomplete="off" placeholder="Search requests..." aria-label="Search requests" />
+                    </label>
+                    <div class="dropdown">
+                        <button type="button" class="asset-tool-btn" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18l-7 8.5V19l-4 2v-7.5z" /></svg>
+                            Filters
+                        </button>
+                        <div class="dropdown-menu dropdown-menu-end md-filter-menu">
+                            <label class="form-label">Type</label>
+                            <select class="form-select form-select-sm" data-md-filter="type">
+                                <option value="">Any</option>
+                                <option value="borrow">Borrow</option>
+                                <option value="transfer">Transfer</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
 
-    <div class="sab-table-card">
-        <table class="table table-striped">
-            <thead>
-                <tr>
-                    <th>#</th>
-                    <th>Submitted</th>
-                    <th>Requester</th>
-                    <th>Items</th>
-                    <th>Where</th>
-                    <th>Due back</th>
-                    <th>Status</th>
-                    <th></th>
-                </tr>
-            </thead>
-            <tbody id="ipRows">
-                @for (var i = 0; i < inProgress.Count; i++)
+                <div class="myassets-group" data-md-group>
+                    <div class="myassets-group-label group-late">Oldest first · <span data-md-count>@Model.Count</span></div>
+                    @foreach (var r in Model)
+                    {
+                        var waited = (today - r.RequestDate.Date).Days;
+                        <button type="button" class="myassets-item" data-entry="a-@r.RequestID" data-search="@Search(r)"
+                                data-type="@r.RequestType.ToString().ToLowerInvariant()">
+                            <span class="md-avatar">@Initials(r.RequestedByUser.FullName)</span>
+                            <span class="myassets-item-main">
+                                <span class="myassets-item-title">@r.RequestedByUser.FullName</span>
+                                <span class="myassets-item-sub">@(r.ItemsSummary + Where(r))</span>
+                                <span class="md-tags">
+                                    <span class="md-tag @(r.RequestType == RequestType.Transfer ? "is-transfer" : "")">@r.RequestType</span>
+                                    @r.DepartmentName
+                                </span>
+                            </span>
+                            <span class="md-age @(waited >= 2 ? "is-late" : "")">@(waited == 0 ? "today" : Days(waited))</span>
+                        </button>
+                    }
+                </div>
+                <div class="myassets-nomatch" data-md-empty hidden>Nothing matches your search.</div>
+
+                <div class="md-foot">
+                    <span data-md-range></span>
+                    <div data-md-pager></div>
+                </div>
+            </aside>
+
+            <section class="myassets-detail">
+                @foreach (var r in Model)
                 {
-                    var r = inProgress[i];
+                    var waited = (today - r.RequestDate.Date).Days;
                     var isBorrow = r.RequestType == RequestType.Borrow;
-                    var overdue = r.RequestStatus == RequestStatus.Assigned
-                        && r.ReturnBy is not null && r.ReturnBy.Value < DateTime.Now;
+                    // The same role cannot decide it (the service refuses too).
+                    var sameRole = User.IsInRole(r.RequestedByUser.RoleName);
+                    var freeForRequest = r.Items.Sum(i => stock.TryGetValue(i.ModelID, out var s) ? s.Total : 0);
 
-                    // What the filter matches and sorts on. Item covers the
-                    // models asked for and the codes of the units handed out.
-                    var itemText = (r.ItemsSummary + " " + string.Join(" ", r.Units.Select(u => u.AssetCode))).ToLowerInvariant();
+                    <article class="myassets-panel" data-panel="a-@r.RequestID" hidden>
+                        <button type="button" class="myassets-back" data-back>&larr; All requests</button>
 
-                    <tr class="ip-row"
-                        data-order="@i"
-                        data-ticket="@r.RequestID"
-                        data-submitted="@r.RequestDate.Ticks"
-                        data-due="@(r.ReturnBy?.Ticks.ToString() ?? "")"
-                        data-requester="@r.RequestedByUser.FullName.ToLowerInvariant()"
-                        data-items="@itemText"
-                        data-status="@(overdue ? "overdue" : r.RequestStatus.ToString().ToLowerInvariant())"
-                        data-type="@r.RequestType.ToString().ToLowerInvariant()"
-                        data-department="@(r.DepartmentName?.ToLowerInvariant() ?? "")">
-                        <td><a asp-action="Details" asp-route-id="@r.RequestID">@r.RequestID</a></td>
-                        <td class="small text-nowrap">
-                            <div>@r.RequestDate.ToString("MMM d, yyyy")</div>
-                            <div class="text-muted">@r.RequestDate.ToString("h:mm tt")</div>
-                        </td>
-                        <td>
-                            <div>@r.RequestedByUser.FullName</div>
-                            <div class="text-muted small">@r.DepartmentName</div>
-                        </td>
-                        <td>
-                            <div>@r.ItemsSummary</div>
-                            <div class="text-muted small">@r.UnitsOut of @r.Units.Count unit@(r.Units.Count == 1 ? "" : "s") out</div>
-                        </td>
-                        <td class="small">
-                            @if (isBorrow)
+                        <div class="myassets-panel-head">
+                            <div class="md-person">
+                                <span class="md-avatar md-avatar-lg">@Initials(r.RequestedByUser.FullName)</span>
+                                <div class="min-w-0">
+                                    <div class="myassets-panel-meta">
+                                        <span class="md-tag @(isBorrow ? "" : "is-transfer")">@r.RequestType</span>
+                                        <span>Request #@r.RequestID · submitted @r.RequestDate.ToString("MMM d, h:mm tt")</span>
+                                    </div>
+                                    <h3 class="md-person-name">@r.RequestedByUser.FullName <small>· @r.RequestedByUser.RoleName · @r.DepartmentName</small></h3>
+                                </div>
+                            </div>
+                            <div class="myassets-panel-actions">
+                                <span class="md-wait @(waited >= 2 ? "" : "is-calm")">Waiting @(waited == 0 ? "since today" : Days(waited))</span>
+                                <a asp-action="Details" asp-route-id="@r.RequestID" asp-route-from="approvals" class="btn btn-outline-secondary">View &rarr;</a>
+                            </div>
+                        </div>
+
+                        <div class="myassets-stats">
+                            <div><span>@(isBorrow ? "Pickup at" : "Move to")</span><strong>@(r.RequestedLocationName ?? "—")</strong></div>
+                            <div>
+                                <span>Needed</span>
+                                <strong>@(r.NeededFrom?.ToString("MMM d") ?? "—")@(r.ReturnBy is not null ? " → " + r.ReturnBy.Value.ToString("MMM d") : "")</strong>
+                            </div>
+                            <div><span>Units</span><strong>@r.TotalQuantity</strong></div>
+                            <div><span>Available now</span><strong class="@(freeForRequest >= r.TotalQuantity ? "text-success" : "text-danger")">@freeForRequest in stock</strong></div>
+                        </div>
+
+                        <h4 class="md-section-title">What they're asking for</h4>
+                        <div class="req-items">
+                            @foreach (var item in r.Items)
                             {
-                                @(r.RequestStatus == RequestStatus.InTransit
-                                    ? "Pickup: " + (r.PickupLocationName ?? "—")
-                                    : "With requester")
+                                stock.TryGetValue(item.ModelID, out var s);
+                                var free = s?.Total ?? 0;
+                                var atPickup = s != null && r.RequestedLocationName != null && s.ByLocation.TryGetValue(r.RequestedLocationName, out var here) ? here : 0;
+                                <div class="req-item">
+                                    <span class="req-item-icon" aria-hidden="true">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 2 3 7v10l9 5 9-5V7z" /><path d="m3 7 9 5 9-5M12 12v10" /></svg>
+                                    </span>
+                                    <div class="min-w-0">
+                                        <div class="req-item-name">@item.ModelName</div>
+                                        <div class="req-item-meta @(free < item.Quantity ? "is-short" : "")">
+                                            @(categories.TryGetValue(item.ModelID, out var cat) ? cat + " · " : "")@free available@(isBorrow && r.RequestedLocationName != null ? $", {atPickup} at the {r.RequestedLocationName}" : "")
+                                        </div>
+                                    </div>
+                                    <span class="req-item-qty">×@item.Quantity</span>
+                                </div>
                             }
-                            else
-                            {
-                                <text>&rarr; @r.RequestedLocationName</text>
-                            }
-                        </td>
-                        <td class="small @(overdue ? "text-danger fw-semibold" : "")">
-                            @(r.ReturnBy?.ToString("MMM d, h:mm tt") ?? "—")
-                            @if (overdue)
-                            {
-                                <div>Overdue</div>
-                            }
-                        </td>
-                        <td>
-                            <span class="status-pill status-@r.RequestType.ToString().ToLowerInvariant()">@r.RequestType</span>
-                            <span class="status-pill status-@r.RequestStatus.ToString().ToLowerInvariant()">@DisplayText.Humanize(r.RequestStatus.ToString())</span>
-                        </td>
-                        <td class="text-nowrap">
-                            @if (canManageAssets && r.RequestStatus == RequestStatus.InTransit)
-                            {
-                                <form asp-action="MarkAssigned" asp-route-id="@r.RequestID" method="post" class="d-inline">
-                                    @Html.AntiForgeryToken()
-                                    <input type="hidden" name="rowVersionBase64" value="@Convert.ToBase64String(r.RowVersion)" />
-                                    <input type="hidden" name="fromApprovals" value="true" />
-                                    <button type="submit" class="btn btn-link p-0">@(isBorrow ? "Picked up" : "Delivered")</button>
-                                </form>
-                            }
-                            @* Not picked up or delivered yet: cancel, don't return. *@
-                            @if (canManageAssets && r.RequestStatus == RequestStatus.InTransit)
-                            {
-                                <a asp-action="Cancel" asp-route-id="@r.RequestID" class="ms-3 text-danger">Cancel</a>
-                            }
-                            else if (canManageAssets && r.UnitsOut > 0)
-                            {
-                                <a asp-action="RecordReturn" asp-route-id="@r.RequestID" class="ms-3">Record return</a>
-                            }
-                            @if (!canManageAssets)
-                            {
-                                <a asp-action="Details" asp-route-id="@r.RequestID">View</a>
-                            }
-                        </td>
-                    </tr>
+                        </div>
+
+                        @if (!string.IsNullOrWhiteSpace(r.Reason))
+                        {
+                            <div class="req-note"><strong>Reason:</strong> @r.Reason</div>
+                        }
+
+                        @if (sameRole)
+                        {
+                            <div class="sab-callout sab-callout-warn mt-3">
+                                <span class="sab-callout-label">Not yours to decide</span>
+                                This request is from someone with your own role, so it has to go to an approver of a different role.
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="req-action">
+                                <div>
+                                    <div class="req-action-title">Your decision</div>
+                                    <div class="req-action-note">Approving takes you to pick the units; rejecting asks for a reason.</div>
+                                </div>
+                                <div class="req-action-buttons">
+                                    <a asp-action="Approve" asp-route-id="@r.RequestID" class="btn btn-primary">Approve &amp; pick units &rarr;</a>
+                                    <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#reject-@r.RequestID">Reject</button>
+                                </div>
+                            </div>
+                        }
+                    </article>
                 }
-            </tbody>
-        </table>
-        <div id="ipNoMatch" class="sab-empty d-none">
-            <div class="sab-empty-title">No requests match these filters</div>
-            <p>Change or clear the filters to see the rest.</p>
+            </section>
         </div>
-    </div>
-}
-else
+    }
+</section>
+
+@* Reject confirmations for the requests above, outside the list so a
+   hidden panel cannot hide them. *@
+@foreach (var r in Model)
 {
-    <div class="card">
-        <div class="sab-empty">
-            <div class="sab-empty-title">Nothing out right now</div>
-            <p>Approved requests appear here until their return is recorded.</p>
+    <partial name="_RejectRequestModal" model="r" />
+}
+
+@* ---- In progress ------------------------------------------------------ *@
+<section id="tabProgress" role="tabpanel" hidden>
+    @if (!inProgress.Any())
+    {
+        <div class="sab-table-card">
+            <div class="sab-empty">
+                <div class="sab-empty-title">Nothing out right now</div>
+                <p>Approved requests appear here until their return is recorded.</p>
+            </div>
         </div>
-    </div>
-}
+    }
+    else
+    {
+        <div class="sab-table-card myassets" data-md data-page-size="6">
+            <aside class="myassets-list" aria-label="Requests in progress">
+                <div class="md-toolbar">
+                    <label class="asset-search">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+                        <input type="text" data-md-search autocomplete="off" placeholder="Ticket #, name or item..." aria-label="Search by ticket number, name or item" />
+                    </label>
+                    <div class="dropdown">
+                        <button type="button" class="asset-tool-btn" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18l-7 8.5V19l-4 2v-7.5z" /></svg>
+                            Filters
+                        </button>
+                        <div class="dropdown-menu dropdown-menu-end md-filter-menu">
+                            <label class="form-label">Type</label>
+                            <select class="form-select form-select-sm mb-2" data-md-filter="type">
+                                <option value="">Any</option>
+                                <option value="borrow">Borrow</option>
+                                <option value="transfer">Transfer</option>
+                            </select>
+                            <label class="form-label">Department</label>
+                            <select class="form-select form-select-sm" data-md-filter="dept">
+                                <option value="">Any</option>
+                                @foreach (var d in inProgress.Select(r => r.DepartmentName).Where(d => !string.IsNullOrEmpty(d)).Distinct().OrderBy(d => d))
+                                {
+                                    <option value="@d.ToLowerInvariant()">@d</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+                </div>
 
-<div class="sab-callout sab-callout-warn mt-3">
-    <span class="sab-callout-label">Not yours to decide</span>
-    A request cannot be decided by someone holding the requester's own role.
-    One from an approver of your own role stays listed here, but has to go to
-    an approver of a different role.
-</div>
-
-@section Scripts {
-    <script>
-        (function () {
-            var toggle = document.getElementById('ipToggle');
-            var panel = document.getElementById('ipFilters');
-            var tbody = document.getElementById('ipRows');
-            if (!toggle || !panel || !tbody) return;
-
-            var rows = Array.from(tbody.querySelectorAll('.ip-row'));
-            var ticket = document.getElementById('ipTicket');
-            var requester = document.getElementById('ipRequester');
-            var item = document.getElementById('ipItem');
-            var status = document.getElementById('ipStatus');
-            var type = document.getElementById('ipType');
-            var department = document.getElementById('ipDepartment');
-            var sort = document.getElementById('ipSort');
-            var count = document.getElementById('ipCount');
-            var noMatch = document.getElementById('ipNoMatch');
-            var table = tbody.closest('table');
-            var inputs = [ticket, requester, item, status, type, department, sort];
-
-            function text(el) { return (el.value || '').trim().toLowerCase(); }
-            function num(row, attr) { var v = row.getAttribute(attr); return v === '' ? null : Number(v); }
-
-            function matches(row) {
-                // Ticket: the number as typed, with or without a leading "#".
-                var t = text(ticket).replace(/^#/, '');
-                if (t && row.getAttribute('data-ticket').indexOf(t) !== 0) return false;
-                if (text(requester) && row.getAttribute('data-requester').indexOf(text(requester)) === -1) return false;
-                if (text(item) && row.getAttribute('data-items').indexOf(text(item)) === -1) return false;
-                if (status.value && row.getAttribute('data-status') !== status.value) return false;
-                if (type.value && row.getAttribute('data-type') !== type.value) return false;
-                if (department.value && row.getAttribute('data-department') !== department.value) return false;
-                return true;
-            }
-
-            // Rows without a due date go last whichever way due-date sorts.
-            function compare(a, b) {
-                switch (sort.value) {
-                    case 'submitted-desc': return num(b, 'data-submitted') - num(a, 'data-submitted');
-                    case 'due-asc':
-                    case 'due-desc':
-                        var da = num(a, 'data-due'), db = num(b, 'data-due');
-                        if (da === null && db === null) return 0;
-                        if (da === null) return 1;
-                        if (db === null) return -1;
-                        return sort.value === 'due-asc' ? da - db : db - da;
-                    case 'ticket-asc': return num(a, 'data-ticket') - num(b, 'data-ticket');
-                    case 'ticket-desc': return num(b, 'data-ticket') - num(a, 'data-ticket');
-                    case 'requester-asc': return a.getAttribute('data-requester').localeCompare(b.getAttribute('data-requester'));
-                    default: return num(a, 'data-order') - num(b, 'data-order'); // as the server sent it: oldest first
+                @foreach (var g in progressGroups.Where(g => g.Items.Any()))
+                {
+                    <div class="myassets-group" data-md-group>
+                        <div class="myassets-group-label group-@g.Key">@g.Label · <span data-md-count>@g.Items.Count</span></div>
+                        @foreach (var r in g.Items)
+                        {
+                            var isBorrow = r.RequestType == RequestType.Borrow;
+                            var late = g.Key == "late";
+                            <button type="button" class="myassets-item" data-entry="p-@r.RequestID" data-search="@Search(r)"
+                                    data-type="@r.RequestType.ToString().ToLowerInvariant()" data-dept="@(r.DepartmentName?.ToLowerInvariant() ?? "")">
+                                <span class="md-avatar @(late ? "is-dark" : "")">@Initials(r.RequestedByUser.FullName)</span>
+                                <span class="myassets-item-main">
+                                    <span class="myassets-item-title">@r.RequestedByUser.FullName</span>
+                                    <span class="myassets-item-sub">@(r.ItemsSummary + Where(r)) · @r.Units.Count unit@(r.Units.Count == 1 ? "" : "s")</span>
+                                    <span class="md-tags">
+                                        <span class="md-tag @(isBorrow ? "" : "is-transfer")">@r.RequestType</span>
+                                        @if (g.Key == "transit")
+                                        {
+                                            @(isBorrow ? "pick up at " + (r.PickupLocationName ?? "—") : "to " + (r.RequestedLocationName ?? "—"))
+                                        }
+                                        else
+                                        {
+                                            @(r.ReturnBy is not null ? "due " + r.ReturnBy.Value.ToString("MMM d") : "no due date")
+                                        }
+                                    </span>
+                                </span>
+                                <span class="md-age @(late ? "is-late" : g.Key == "transit" ? "is-transit" : "is-soon")">
+                                    @(g.Key == "transit" ? "In transit" : DueNote(r.ReturnBy, today))
+                                </span>
+                            </button>
+                        }
+                    </div>
                 }
-            }
+                <div class="myassets-nomatch" data-md-empty hidden>Nothing matches your search.</div>
 
-            function apply() {
-                var shown = 0;
-                rows.slice().sort(compare).forEach(function (row) {
-                    tbody.appendChild(row);
-                    var show = matches(row);
-                    row.classList.toggle('d-none', !show);
-                    if (show) shown++;
-                });
-                count.textContent = 'Showing ' + shown + ' of ' + rows.length;
-                noMatch.classList.toggle('d-none', shown > 0);
-                table.classList.toggle('d-none', shown === 0);
-            }
+                <div class="md-foot">
+                    <span data-md-range></span>
+                    <div data-md-pager></div>
+                </div>
+            </aside>
 
-            function reset() {
-                inputs.forEach(function (el) { el.value = el === sort ? 'submitted-asc' : ''; });
-                apply();
-            }
+            <section class="myassets-detail">
+                @foreach (var r in progressOrdered)
+                {
+                    var isBorrow = r.RequestType == RequestType.Borrow;
+                    var late = IsOverdue(r);
+                    var inTransit = r.RequestStatus == RequestStatus.InTransit;
+                    var daysLate = late ? (today - r.ReturnBy!.Value.Date).Days : 0;
+                    var unitsOverdue = r.Units.Count(u => u.AssetStatus == AssetStatus.Overdue);
+                    var steps = new List<RequestStep>
+                    {
+                        new("Submitted", r.RequestDate.ToString("MMM d"), RequestStepState.Done),
+                        new("Approved", r.ApprovalDate?.ToString("MMM d"), RequestStepState.Done),
+                        new(isBorrow ? "Picked up" : "Delivered",
+                            inTransit ? (isBorrow ? "at " + (r.PickupLocationName ?? "—") : "to " + (r.RequestedLocationName ?? "—")) : r.AssignedDate?.ToString("MMM d"),
+                            inTransit ? RequestStepState.Current : RequestStepState.Done),
+                        new("Returned", r.ReturnBy is not null ? "due " + r.ReturnBy.Value.ToString("MMM d") : null,
+                            late ? RequestStepState.Late : inTransit ? RequestStepState.Todo : RequestStepState.Current)
+                    };
 
-            inputs.forEach(function (el) {
-                el.addEventListener('input', apply);
-                el.addEventListener('change', apply);
-            });
-            document.getElementById('ipClear').addEventListener('click', reset);
+                    <article class="myassets-panel" data-panel="p-@r.RequestID" hidden>
+                        <button type="button" class="myassets-back" data-back>&larr; All requests</button>
 
-            // "Filter" turns the panel on; turning it off clears everything,
-            // so a hidden filter can never be quietly hiding rows.
-            toggle.addEventListener('click', function () {
-                var on = panel.classList.toggle('d-none') === false;
-                toggle.setAttribute('aria-expanded', on ? 'true' : 'false');
-                toggle.classList.toggle('active', on);
-                toggle.textContent = on ? 'Hide filter' : 'Filter';
-                if (on) {
-                    apply();
-                    ticket.focus();
-                } else {
-                    reset();
+                        <div class="myassets-panel-head">
+                            <div class="md-person">
+                                <span class="md-avatar md-avatar-lg @(late ? "is-dark" : "")">@Initials(r.RequestedByUser.FullName)</span>
+                                <div class="min-w-0">
+                                    <div class="myassets-panel-meta">
+                                        <span class="md-tag @(isBorrow ? "" : "is-transfer")">@r.RequestType</span>
+                                        <span>Request #@r.RequestID · submitted @r.RequestDate.ToString("MMM d, h:mm tt")</span>
+                                    </div>
+                                    <h3 class="md-person-name">@r.RequestedByUser.FullName <small>· @r.RequestedByUser.RoleName · @r.DepartmentName</small></h3>
+                                </div>
+                            </div>
+                            <div class="myassets-panel-actions">
+                                @if (late)
+                                {
+                                    <span class="asset-pill asset-status st-overdue">@(unitsOverdue > 0 ? unitsOverdue + " overdue" : "Overdue")</span>
+                                }
+                                else if (inTransit)
+                                {
+                                    <span class="asset-pill asset-status st-intransit">In transit</span>
+                                }
+                                else
+                                {
+                                    <span class="asset-pill asset-status st-assigned">Out</span>
+                                }
+                                <a asp-action="Details" asp-route-id="@r.RequestID" asp-route-from="approvals" class="btn btn-outline-secondary">View &rarr;</a>
+                            </div>
+                        </div>
+
+                        <partial name="_RequestSteps" model="steps" />
+
+                        <div class="myassets-stats">
+                            <div>
+                                <span>Where</span>
+                                <strong>
+                                    @if (isBorrow)
+                                    {
+                                        @(inTransit ? "Pick up at " + (r.PickupLocationName ?? "—") : "With requester")
+                                    }
+                                    else
+                                    {
+                                        @("→ " + (r.RequestedLocationName ?? "—"))
+                                    }
+                                </strong>
+                            </div>
+                            <div class="@(late ? "is-late" : "")">
+                                <span>Due back</span>
+                                <strong>@(r.ReturnBy?.ToString("MMM d") ?? "—")@(late ? $" · {Days(daysLate)} late" : "")</strong>
+                            </div>
+                            <div><span>Units out</span><strong>@r.UnitsOut of @r.Units.Count</strong></div>
+                            <div><span>Approved by</span><strong>@(r.ApprovedByUser?.FullName ?? "—")</strong></div>
+                        </div>
+
+                        @if (r.Items.Count > 1)
+                        {
+                            <div class="myassets-chips">
+                                @foreach (var item in r.Items)
+                                {
+                                    <span class="myassets-chip">@item.ModelName <strong>×@item.Quantity</strong></span>
+                                }
+                            </div>
+                        }
+
+                        @if (r.Units.Any())
+                        {
+                            <h4 class="md-section-title">Units on this request</h4>
+                            <div class="myassets-units">
+                                <table class="table myassets-table">
+                                    <thead><tr><th>Code</th><th>Asset</th><th>Status</th></tr></thead>
+                                    <tbody>
+                                        @for (var i = 0; i < r.Units.Count; i++)
+                                        {
+                                            var u = r.Units[i];
+                                            <tr hidden="@(i >= 3)" data-extra="@(i >= 3 ? "true" : null)">
+                                                <td data-label="Code"><a asp-controller="Assets" asp-action="Details" asp-route-id="@u.AssetID" class="asset-code-chip">@u.AssetCode</a></td>
+                                                <td data-label="Asset">@u.AssetName</td>
+                                                <td data-label="Status">
+                                                    @if (u.ReturnDate is not null)
+                                                    {
+                                                        <span class="asset-pill asset-status st-available">Returned @u.ReturnDate.Value.ToString("MMM d")</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="asset-pill asset-status st-@u.AssetStatus.ToString().ToLowerInvariant()">@DisplayText.Humanize(u.AssetStatus.ToString())</span>
+                                                    }
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                                @if (r.Units.Count > 3)
+                                {
+                                    <button type="button" class="myassets-more" data-more>Show @(r.Units.Count - 3) more unit@(r.Units.Count - 3 == 1 ? "" : "s") &#9662;</button>
+                                }
+                            </div>
+                        }
+
+                        @if (canManageAssets)
+                        {
+                            <div class="req-action @(late ? "is-late" : "")">
+                                <div>
+                                    <div class="req-action-title">
+                                        @if (late)
+                                        {
+                                            @(Days(daysLate) + " overdue")
+                                        }
+                                        else if (inTransit)
+                                        {
+                                            @(isBorrow ? "Waiting to be picked up" : "On its way")
+                                        }
+                                        else
+                                        {
+                                            @("Due back " + (r.ReturnBy?.ToString("MMM d") ?? "—"))
+                                        }
+                                    </div>
+                                    <div class="req-action-note">
+                                        @(inTransit ? "Not handed over yet: mark it done, or cancel to put the units back." : "Record the return when the units come back.")
+                                    </div>
+                                </div>
+                                <div class="req-action-buttons">
+                                    @if (inTransit)
+                                    {
+                                        <form asp-action="MarkAssigned" asp-route-id="@r.RequestID" method="post">
+                                            @Html.AntiForgeryToken()
+                                            <input type="hidden" name="rowVersionBase64" value="@Convert.ToBase64String(r.RowVersion)" />
+                                            <input type="hidden" name="fromApprovals" value="true" />
+                                            <button type="submit" class="btn btn-primary">@(isBorrow ? "Picked up" : "Delivered")</button>
+                                        </form>
+                                        <a asp-action="Cancel" asp-route-id="@r.RequestID" class="btn btn-outline-danger">Cancel</a>
+                                    }
+                                    else if (r.UnitsOut > 0)
+                                    {
+                                        <a asp-action="RecordReturn" asp-route-id="@r.RequestID" class="btn btn-primary">Record return &rarr;</a>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </article>
                 }
-            });
-        })();
-    </script>
-}
+            </section>
+        </div>
+    }
+</section>

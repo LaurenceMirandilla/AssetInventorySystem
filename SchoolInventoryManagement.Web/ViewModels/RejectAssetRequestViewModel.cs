@@ -6,9 +6,10 @@ namespace SchoolInventoryManagement.Web.ViewModels
     {
         public int RequestID { get; set; }
 
-        [Required(ErrorMessage = "Give the requester a reason for the rejection.")]
+        // Optional: left empty, the requester is told "No reason was given."
+        // (AssetRequestService.RejectRequestAsync).
         [MaxLength(500)]
-        public string Remarks { get; set; } = null!;
+        public string? Remarks { get; set; }
 
         [Required]
         public string RowVersionBase64 { get; set; } = null!;

@@ -37,10 +37,13 @@
     // everything else in the controller is the requester's own view.
     var approvalActions = new[] { "Pending", "Approve", "ApproveBorrow", "ApproveTransfer", "Reject" };
     var inRequests = isActive(new[] { "AssetRequests" });
+    // A request's own page lights the list it was opened from
+    // (ViewData["NavSection"], set by AssetRequestsController.Details).
+    var navSection = ViewData["NavSection"] as string;
     var onApprovals = inRequests
-        && approvalActions.Contains(currentAction, StringComparer.OrdinalIgnoreCase);
+        && (approvalActions.Contains(currentAction, StringComparer.OrdinalIgnoreCase) || navSection == "approvals");
     var onRequestHistory = inRequests
-        && string.Equals(currentAction, "History", StringComparison.OrdinalIgnoreCase);
+        && (string.Equals(currentAction, "History", StringComparison.OrdinalIgnoreCase) || navSection == "history");
 
     // NewItemRequestsController splits the same way: Pending/Approve/Reject
     // are the reviewer's screens, MyRequests/Create the requester's.

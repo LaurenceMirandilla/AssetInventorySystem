@@ -31,9 +31,11 @@ namespace SchoolInventoryManagement.Web.Controllers
         private readonly IDisposalService _disposalService;
         private readonly IWebHostEnvironment _webHostEnvironment;
 
-        // Matches the mockup's page size. Unrelated to the KPI tiles above
-        // it -- those count the whole filtered set, not just this page.
+        // Matches the mockup's default page size. The footer's "per page"
+        // picker can choose any of PageSizeOptions; anything else falls
+        // back to this.
         private const int PageSize = 20;
+        private static readonly int[] PageSizeOptions = { 10, 20, 50, 100 };
 
         public AssetsController(
             IAssetService assetService,
@@ -212,10 +214,14 @@ namespace SchoolInventoryManagement.Web.Controllers
         public async Task<IActionResult> Index(
             string? keyword, int? categoryId, int? departmentId,
             AssetStatus? status, ConditionStatus? condition, int? locationId, int? modelId,
-            int? branchId, bool includeDisposed = false, int page = 1)
+            int? branchId, bool includeDisposed = false, int page = 1, int? pageSize = null)
         {
+            var size = pageSize.HasValue && PageSizeOptions.Contains(pageSize.Value)
+                ? pageSize.Value
+                : PageSize;
+
             if (IsRequesterOnly)
-                return await CatalogAsync(keyword, categoryId);
+                return await CatalogAsync(keyword, categoryId, page, size);
 
             // One query drives both the table and the KPI tiles, which is
             // what makes the tiles mirror the rows: every filter, status
@@ -233,12 +239,13 @@ namespace SchoolInventoryManagement.Web.Controllers
                 ? matches
                 : matches.Where(a => a.Status != AssetStatus.Disposed).ToList();
 
-            var currentPage = Math.Max(page, 1);
             var totalFiltered = filtered.Count;
+            var lastPage = Math.Max(1, (int)Math.Ceiling(totalFiltered / (double)size));
+            var currentPage = Math.Clamp(page, 1, lastPage);
 
             var paged = filtered
-                .Skip((currentPage - 1) * PageSize)
-                .Take(PageSize)
+                .Skip((currentPage - 1) * size)
+                .Take(size)
                 .ToList();
 
             // Unfiltered headcount, for the "N of M" caption above the tiles.
@@ -269,7 +276,8 @@ namespace SchoolInventoryManagement.Web.Controllers
                 ModelId = modelId,
                 BranchId = branchId,
                 Page = currentPage,
-                PageSize = PageSize,
+                PageSize = size,
+                PageSizeOptions = PageSizeOptions,
                 TotalFilteredCount = totalFiltered
             };
 
@@ -355,7 +363,7 @@ namespace SchoolInventoryManagement.Web.Controllers
         // The Assets page for Teachers and Staff: every model, with its
         // category and description, and nothing about the units. They
         // request a model; the approver picks the unit.
-        private async Task<IActionResult> CatalogAsync(string? keyword, int? categoryId)
+        private async Task<IActionResult> CatalogAsync(string? keyword, int? categoryId, int page, int pageSize)
         {
             var query = _context.Models.AsQueryable();
 
@@ -371,12 +379,22 @@ namespace SchoolInventoryManagement.Web.Controllers
             if (categoryId.HasValue)
                 query = query.Where(m => m.CategoryID == categoryId.Value);
 
+            var total = await query.CountAsync();
+            var lastPage = Math.Max(1, (int)Math.Ceiling(total / (double)pageSize));
+            var currentPage = Math.Clamp(page, 1, lastPage);
+
             var model = new AssetCatalogViewModel
             {
                 Keyword = keyword,
                 CategoryId = categoryId,
+                Page = currentPage,
+                PageSize = pageSize,
+                PageSizeOptions = PageSizeOptions,
+                TotalCount = total,
                 Models = await query
                     .OrderBy(m => m.Category.CategoryName).ThenBy(m => m.ModelName)
+                    .Skip((currentPage - 1) * pageSize)
+                    .Take(pageSize)
                     .Select(m => new ModelDTO
                     {
                         ModelID = m.ModelID,
@@ -538,6 +556,7 @@ namespace SchoolInventoryManagement.Web.Controllers
             }
 
             await PopulateDropdownsAsync();
+            await SetFormHeaderAsync(asset);
 
             var model = new AssetEditViewModel
             {
@@ -576,6 +595,7 @@ namespace SchoolInventoryManagement.Web.Controllers
             model.AssetID = id;
             model.ImageURL = current.ImageURL;
             model.WarrantyFileURL = current.WarrantyFileURL;
+            await SetFormHeaderAsync(current);
 
             if (!ModelState.IsValid)
             {
@@ -623,6 +643,20 @@ namespace SchoolInventoryManagement.Web.Controllers
             }
         }
 
+        // The Edit form's asset strip and its "Last edited ... by ..." line,
+        // from the newest audit entry for the asset.
+        private async Task SetFormHeaderAsync(AssetResponseDTO asset)
+        {
+            ViewBag.Asset = asset;
+            ViewBag.LastEdit = await _context.AuditLogs
+                .Where(a => a.TargetAssetID == asset.AssetID)
+                .OrderByDescending(a => a.LogDateTime)
+                .Select(a => new { a.LogDateTime, Name = a.User.FirstName + " " + a.User.LastName })
+                .FirstOrDefaultAsync() is { } last
+                ? $"Last edited {last.LogDateTime:MMM d, yyyy} by {last.Name}"
+                : null;
+        }
+
         // GET /Assets/Dispose/5
         [Authorize(Roles = RoleNames.AssetOfficer + "," + RoleNames.Administrator)]
         public async Task<IActionResult> Dispose(int id)
@@ -637,8 +671,7 @@ namespace SchoolInventoryManagement.Web.Controllers
                 AssetRowVersionBase64 = RowVersionHelper.ToBase64(asset.RowVersion)
             };
 
-            ViewBag.AssetName = asset.AssetName;
-            ViewBag.AssetCode = asset.AssetCode;
+            ViewBag.Asset = asset;
             return View(model);
         }
 
@@ -648,6 +681,12 @@ namespace SchoolInventoryManagement.Web.Controllers
         [Authorize(Roles = RoleNames.AssetOfficer + "," + RoleNames.Administrator)]
         public async Task<IActionResult> Dispose(int id, DisposeAssetViewModel model)
         {
+            // For the asset strip at the top if the form is shown again.
+            var asset = await _assetService.GetAssetByIdAsync(id);
+            if (asset is null)
+                return NotFound();
+            ViewBag.Asset = asset;
+
             if (!ModelState.IsValid)
                 return View(model);
 

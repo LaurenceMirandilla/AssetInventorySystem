@@ -276,11 +276,6 @@ namespace SchoolInventoryManagement.BLL.Services
                 })
                 .ToListAsync();
 
-            if (string.Equals(filter.Decision, "Approved", StringComparison.OrdinalIgnoreCase))
-                query = query.Where(r => r.RequestStatus != RequestStatus.Rejected);
-            else if (string.Equals(filter.Decision, "Rejected", StringComparison.OrdinalIgnoreCase))
-                query = query.Where(r => r.RequestStatus == RequestStatus.Rejected);
-
             if (filter.Type.HasValue)
                 query = query.Where(r => r.RequestType == filter.Type.Value);
 
@@ -312,8 +307,18 @@ namespace SchoolInventoryManagement.BLL.Services
                 }
             }
 
-            var total = await query.CountAsync();
+            // The Approved / Rejected counts come from the other filters
+            // only, so each tab keeps its number whichever one is open; the
+            // decision then narrows the rows and the total.
+            var decidedCount = await query.CountAsync();
             var rejected = await query.CountAsync(r => r.RequestStatus == RequestStatus.Rejected);
+
+            if (string.Equals(filter.Decision, "Approved", StringComparison.OrdinalIgnoreCase))
+                query = query.Where(r => r.RequestStatus != RequestStatus.Rejected);
+            else if (string.Equals(filter.Decision, "Rejected", StringComparison.OrdinalIgnoreCase))
+                query = query.Where(r => r.RequestStatus == RequestStatus.Rejected);
+
+            var total = await query.CountAsync();
 
             var pageSize = Math.Clamp(filter.PageSize, 1, 100);
             var lastPage = Math.Max(1, (int)Math.Ceiling(total / (double)pageSize));
@@ -330,7 +335,7 @@ namespace SchoolInventoryManagement.BLL.Services
             {
                 Rows = rows.Select(r => r.ToResponseDTO()).ToList(),
                 TotalCount = total,
-                ApprovedCount = total - rejected,
+                ApprovedCount = decidedCount - rejected,
                 RejectedCount = rejected,
                 Deciders = deciders
             };

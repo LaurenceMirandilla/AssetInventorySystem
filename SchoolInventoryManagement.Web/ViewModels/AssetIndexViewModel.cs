@@ -71,6 +71,20 @@ namespace SchoolInventoryManagement.Web.ViewModels
 
         public int Page { get; set; } = 1;
         public int PageSize { get; set; } = 20;
+        public int[] PageSizeOptions { get; set; } = { 10, 20, 50, 100 };
+
+        // Filters that live behind the "Filters" button (everything except
+        // the search box). Drives the badge on the button and whether the
+        // panel starts open.
+        public int ActiveFilterCount =>
+            (CategoryId.HasValue ? 1 : 0) +
+            (ModelId.HasValue ? 1 : 0) +
+            (BranchId.HasValue ? 1 : 0) +
+            (LocationId.HasValue ? 1 : 0) +
+            (DepartmentId.HasValue ? 1 : 0) +
+            (Status.HasValue ? 1 : 0) +
+            (Condition.HasValue ? 1 : 0) +
+            (IncludeDisposed ? 1 : 0);
 
         // Rows matching the current filters, before paging. Also the value
         // of the leading "All" tile, which is what makes it mirror the table.

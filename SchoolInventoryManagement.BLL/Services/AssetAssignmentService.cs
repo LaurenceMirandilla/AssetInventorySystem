@@ -42,7 +42,7 @@ namespace SchoolInventoryManagement.BLL.Services
         public async Task<AssetAssignmentResponseDTO> AssignAssetAsync(
             int assetId, int assignToUserId, ConditionStatus conditionOnAssignment,
             int departmentId, int actingUserId, string? remarks, bool notifyRecipient = true,
-            int? requestId = null)
+            int? requestId = null, int? keptAtLocationId = null, int? branchId = null)
         {
             var actingUser = await PermissionHelper.EnsureIsAssetManagerAsync(_context, actingUserId);
 
@@ -60,9 +60,35 @@ namespace SchoolInventoryManagement.BLL.Services
                 throw new InvalidOperationException(
                     $"Asset is currently '{asset.Status}' and cannot be assigned.");
 
-            var departmentExists = await _context.Departments.AnyAsync(d => d.DepartmentID == departmentId);
-            if (!departmentExists)
+            var department = await _context.Departments.FindAsync(departmentId);
+            if (department is null)
                 throw new KeyNotFoundException("Department not found.");
+
+            // The branch it is going to: the one picked, or where it is now.
+            // Picking one moves the asset there, so its department has to be
+            // in that branch too -- the same rule the register and edit
+            // forms follow. (Request approval passes no branch and keeps the
+            // old behaviour.)
+            var targetBranchId = branchId ?? asset.BranchID;
+            if (branchId is int pickedBranch)
+            {
+                if (!await _context.Branches.AnyAsync(b => b.BranchID == pickedBranch))
+                    throw new KeyNotFoundException("Branch not found.");
+                if (department.BranchID != pickedBranch)
+                    throw new InvalidOperationException(
+                        "Pick a department in the chosen branch.");
+            }
+
+            // Where it will be kept, if anywhere: a room in that branch.
+            if (keptAtLocationId is int locationId)
+            {
+                var location = await _context.Locations.FindAsync(locationId);
+                if (location is null)
+                    throw new KeyNotFoundException("Location not found.");
+                if (location.BranchID != targetBranchId)
+                    throw new InvalidOperationException(
+                        "Pick a location in the chosen branch.");
+            }
 
             var assignment = new AssetAssignment
             {
@@ -79,7 +105,9 @@ namespace SchoolInventoryManagement.BLL.Services
             asset.AssignedUserID = assignToUserId;
             asset.Status = AssetStatus.Assigned;
             asset.DepartmentID = departmentId;
-            asset.CurrentLocationID = null; // no longer stored anywhere — it's with a person now
+            asset.BranchID = targetBranchId;
+            // The room it will be kept in, or none: it's with the person.
+            asset.CurrentLocationID = keptAtLocationId;
 
             if (notifyRecipient)
             {

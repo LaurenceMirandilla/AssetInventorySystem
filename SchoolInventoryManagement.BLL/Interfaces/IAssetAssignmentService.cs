@@ -10,11 +10,15 @@ namespace SchoolInventoryManagement.BLL.Interfaces
         // notifyRecipient lets RequestFulfillmentService suppress the
         // per-step notification in favour of one combined message.
         // requestId links the assignment to the request the unit went out
-        // on. Both optional, so existing call sites are unaffected.
+        // on. keptAtLocationId is the room the unit will be kept in while
+        // it is assigned (a fan for a classroom); null means it is simply
+        // with the person. branchId moves the asset to that branch (the
+        // department and any location must then be in it); null keeps its
+        // branch. All optional, so existing call sites are unaffected.
         Task<AssetAssignmentResponseDTO> AssignAssetAsync(
             int assetId, int assignToUserId, ConditionStatus conditionOnAssignment,
             int departmentId, int actingUserId, string? remarks, bool notifyRecipient = true,
-            int? requestId = null);
+            int? requestId = null, int? keptAtLocationId = null, int? branchId = null);
 
         // Closes the assignment and puts the unit at returnLocationId (staff
         // choose it). If the unit was out on a request and was its last one

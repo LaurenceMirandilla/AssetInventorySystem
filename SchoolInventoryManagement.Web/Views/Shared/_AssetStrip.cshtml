@@ -1,0 +1,35 @@
+@model SchoolInventoryManagement.BLL.DTOs.AssetResponseDTO
+@using SchoolInventoryManagement.DAL.Entities.Enums
+@* The unit an action form is about, across the top of Assign, Transfer,
+   Dispose and Edit: photo (or an icon), code, status, name, and where it
+   is now. *@
+@{
+    var statusLabel = Model.Status == AssetStatus.UnderMaintenance ? "Maintenance" : DisplayText.Humanize(Model.Status.ToString());
+}
+
+<div class="asset-card asset-strip">
+    <div class="asset-strip-main">
+        @if (!string.IsNullOrWhiteSpace(Model.ImageURL))
+        {
+            <img src="@Model.ImageURL" alt="" class="asset-strip-thumb" />
+        }
+        else
+        {
+            <span class="asset-strip-thumb">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 3 7v10l9 5 9-5V7z" /><path d="m3 7 9 5 9-5M12 12v10" /></svg>
+            </span>
+        }
+        <div class="min-w-0">
+            <div class="d-flex align-items-center flex-wrap" style="gap:8px;">
+                <span class="asset-code-chip">@Model.AssetCode</span>
+                <span class="asset-pill asset-status st-@Model.Status.ToString().ToLowerInvariant()">@statusLabel</span>
+            </div>
+            <div class="asset-strip-name">@Model.AssetName</div>
+        </div>
+    </div>
+    <dl class="asset-strip-facts">
+        <div><dt>Location</dt><dd>@(Model.CurrentLocationName ?? "—")</dd></div>
+        <div><dt>Condition</dt><dd>@DisplayText.Humanize(Model.Condition.ToString())</dd></div>
+        <div><dt>Department</dt><dd>@(Model.DepartmentName ?? "—")</dd></div>
+    </dl>
+</div>

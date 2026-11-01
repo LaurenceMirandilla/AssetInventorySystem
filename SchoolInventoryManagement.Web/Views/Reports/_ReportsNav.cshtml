@@ -1,19 +1,31 @@
 @{
     // Which report is on screen. All five live on ReportsController, so the
-    // action name alone identifies the active row.
+    // action name alone identifies the active tab. Shown as a tab strip
+    // across the top; the report pages' side column stacks above their
+    // content (see .sab-reports-grid in site.css), so it fits every page.
     var current = ViewContext.RouteData.Values["action"]?.ToString() ?? "Index";
     Func<string, string> navClass = action =>
         string.Equals(action, current, StringComparison.OrdinalIgnoreCase) ? "active" : "";
 }
-<div class="card">
-    <div class="card-body">
-        <h5 class="mb-2" style="font-size:1rem;">Reports</h5>
-        <ul class="sab-subnav">
-            <li><a class="@navClass("Index")" asp-action="Index">Inventory summary</a></li>
-            <li><a class="@navClass("Assignments")" asp-action="Assignments">Borrowed items</a></li>
-            <li><a class="@navClass("Disposals")" asp-action="Disposals">Disposals</a></li>
-            <li><a class="@navClass("Requests")" asp-action="Requests">Request activity</a></li>
-            <li><a class="@navClass("Audit")" asp-action="Audit">Audit trail</a></li>
-        </ul>
-    </div>
-</div>
+<nav class="page-tabs report-tabs" aria-label="Reports">
+    <a class="page-tab @navClass("Index")" asp-action="Index">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19V5M4 19h16M8 15l4-4 3 3 5-6" /></svg>
+        Inventory summary
+    </a>
+    <a class="page-tab @navClass("Assignments")" asp-action="Assignments">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+        Borrowed items
+    </a>
+    <a class="page-tab @navClass("Disposals")" asp-action="Disposals">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /></svg>
+        Disposals
+    </a>
+    <a class="page-tab @navClass("Requests")" asp-action="Requests">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
+        Request activity
+    </a>
+    <a class="page-tab @navClass("Audit")" asp-action="Audit">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" /></svg>
+        Audit trail
+    </a>
+</nav>

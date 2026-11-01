@@ -1,65 +1,125 @@
 ﻿@model SchoolInventoryManagement.Web.ViewModels.ApproveTransferRequestViewModel
+@using SchoolInventoryManagement.BLL.DTOs
+@using SchoolInventoryManagement.Web.ViewModels
 @{
     ViewData["Title"] = "Approve Transfer Request";
-    var request = ViewBag.Request as SchoolInventoryManagement.BLL.DTOs.AssetRequestResponseDTO;
-    var lines = ViewBag.Lines as List<SchoolInventoryManagement.Web.ViewModels.ApprovalLineChoice>
-        ?? new List<SchoolInventoryManagement.Web.ViewModels.ApprovalLineChoice>();
+    AssetRequestResponseDTO? request = ViewBag.Request as AssetRequestResponseDTO;
+    List<ApprovalLineChoice> lines = (ViewBag.Lines as List<ApprovalLineChoice>) ?? new List<ApprovalLineChoice>();
+    var asked = lines.Sum(l => l.Quantity);
+    var name = request?.RequestedByUser.FullName ?? "";
+    var initials = string.Concat(name.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(p => p[0])).ToUpperInvariant();
+    if (initials.Length > 2) { initials = initials[..2]; }
+    var days = request?.NeededFrom is not null && request.ReturnBy is not null
+        ? Math.Max(1, (int)Math.Ceiling((request.ReturnBy.Value - request.NeededFrom.Value).TotalDays))
+        : (int?)null;
 }
 
-<h2>Approve Transfer Request #@Model.RequestID</h2>
-
-@if (request is not null)
-{
-    <p class="text-muted">
-        @request.RequestedByUser.FullName (@request.RequestedByUser.RoleName)
-        asked for <strong>@request.ItemsSummary</strong>
-        to be moved to <strong>@request.RequestedLocationName</strong>.
-    </p>
-    @if (request.NeededFrom is not null)
-    {
-        <p class="text-muted">
-            Needed from <strong>@request.NeededFrom.Value.ToString("MMM d, yyyy h:mm tt")</strong>
-            @if (request.ReturnBy is not null)
-            {
-                <text>until <strong>@request.ReturnBy.Value.ToString("MMM d, yyyy h:mm tt")</strong></text>
-            }
-        </p>
-    }
-    @if (!string.IsNullOrWhiteSpace(request.Reason))
-    {
-        <p class="text-muted">Reason given: @request.Reason</p>
-    }
-}
-
-<div class="alert alert-info">
-    Tick the units to send — exactly the amount asked for on each line. The
-    best units are already ticked for you (see Auto-fill below). Units
-    already at the destination are not listed. Approving reserves them to the
-    requester; the request is then <strong>In Transit</strong> and stays under
-    Approvals until an Asset Officer or Administrator marks it delivered, and
-    later records the return.
+<div class="asset-detail-head">
+    <div>
+        <nav class="asset-crumbs" aria-label="Breadcrumb">
+            <a asp-action="Pending">Approvals</a>
+            <span aria-hidden="true">&rsaquo;</span>
+            <span>Transfer #@Model.RequestID</span>
+        </nav>
+        <h2 class="asset-detail-title">Approve transfer #@Model.RequestID <span class="md-tag is-transfer">Transfer</span></h2>
+    </div>
 </div>
 
-<form asp-action="ApproveTransfer" asp-route-id="@Model.RequestID" method="post">
+<form asp-action="ApproveTransfer" asp-route-id="@Model.RequestID" method="post" class="register-form" id="approveForm">
     @Html.AntiForgeryToken()
     <input type="hidden" asp-for="RequestID" />
     <input type="hidden" asp-for="RowVersionBase64" />
     <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
 
-    <h5 class="mb-2">Units to send</h5>
-    <partial name="_ApprovalUnitPicker" model="lines" />
+    <div class="row g-3">
+        <div class="col-lg-8">
+            @if (request is not null)
+            {
+                <div class="asset-card approve-who mb-3">
+                    <span class="md-avatar is-dark">@initials</span>
+                    <div class="flex-grow-1 min-w-0">
+                        <div class="fw-bold">@request.RequestedByUser.FullName</div>
+                        <div class="text-muted small">@request.RequestedByUser.RoleName · @request.DepartmentName</div>
+                    </div>
+                    <div class="text-end">
+                        <div class="text-muted small">Submitted</div>
+                        <div class="fw-bold small">@request.RequestDate.ToString("MMM d · h:mm tt")</div>
+                    </div>
+                </div>
+            }
 
-    <div class="mb-3">
-        <label asp-for="Remarks" class="form-label">Notes <span class="text-muted">(optional)</span></label>
-        <textarea asp-for="Remarks" class="form-control"></textarea>
+            @if (lines.Count > 1)
+            {
+                <div class="approve-sub">
+                    <strong>Units to send</strong>
+                    <span>· @lines.Count models · units already at the destination aren&#39;t listed</span>
+                </div>
+            }
+
+            <partial name="_ApprovalUnitPicker" model="lines" />
+
+            <div class="asset-card register-step mb-3">
+                <div class="register-step-head"><div class="register-step-title">Notes</div></div>
+                <div class="register-step-body">
+                    <textarea asp-for="Remarks" class="form-control" rows="3" placeholder="e.g. Chairs come from the Gym first." aria-label="Notes"></textarea>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            @if (request is not null)
+            {
+                <div class="asset-card approve-side">
+                    <div class="asset-card-title">The request</div>
+                    <div class="approve-side-body">
+                        <div class="register-side-label mb-2">Transferred to</div>
+                        <div class="approve-place">
+                            <strong>@(request.RequestedLocationName ?? "—")</strong>
+                        </div>
+                        <dl class="approve-facts">
+                            <div><dt>Needed from</dt><dd>@(request.NeededFrom?.ToString("MMM d · h:mm tt") ?? "—")</dd></div>
+                            <div><dt>Until</dt><dd>@(request.ReturnBy?.ToString("MMM d · h:mm tt") ?? "—")</dd></div>
+                            <div><dt>Units</dt><dd>@asked</dd></div>
+                        </dl>
+                        @if (!string.IsNullOrWhiteSpace(request.Reason))
+                        {
+                            <div class="approve-reason"><span>Reason</span>@request.Reason</div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
     </div>
 
-    <button type="submit" class="btn btn-success">Approve</button>
-    <a asp-action="Details" asp-route-id="@Model.RequestID" class="btn btn-secondary">Cancel</a>
+    <div class="register-footer approve-footer">
+        <span>Approving reserves the units; they stay In Transit until marked delivered.</span>
+        <div class="d-flex" style="gap:8px;">
+            <a asp-action="Details" asp-route-id="@Model.RequestID" class="btn btn-outline-secondary">Cancel</a>
+            <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#reject-@Model.RequestID">Reject</button>
+            <button type="submit" class="btn btn-primary" id="approveBtn">Approve</button>
+        </div>
+    </div>
 </form>
+
+@* The Reject confirmation: outside the approve form, which it cannot sit in. *@
+@if (request is not null)
+{
+    <partial name="_RejectRequestModal" model="request" />
+}
 
 @section Scripts {
     @{
         await Html.RenderPartialAsync("_ValidationScriptsPartial");
     }
+    <script>
+        // The button says how many units approving will send.
+        (function () {
+            var btn = document.getElementById('approveBtn');
+            function label(total) {
+                btn.textContent = total > 0 ? 'Approve & send ' + total + ' unit' + (total === 1 ? '' : 's') : 'Approve';
+            }
+            document.addEventListener('picker-change', function (e) { label(e.detail.total); });
+            label(document.querySelectorAll('#unitPicker .unit-box:checked').length);
+        })();
+    </script>
 }

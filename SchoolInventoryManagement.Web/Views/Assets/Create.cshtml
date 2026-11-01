@@ -1,125 +1,213 @@
 ﻿@model SchoolInventoryManagement.Web.ViewModels.AssetCreateViewModel
+@using SchoolInventoryManagement.Web.Helpers
 @{
     ViewData["Title"] = "New Asset";
     var modelChoices = (List<SchoolInventoryManagement.Web.ViewModels.ModelCodeOption>)ViewBag.ModelChoices;
     ViewData["SelectedModelId"] = Model.ModelID;
 }
 
-<h2>New Asset</h2>
+<div class="asset-detail-head">
+    <div>
+        <nav class="asset-crumbs" aria-label="Breadcrumb">
+            <a asp-action="Index">Assets</a>
+            <span aria-hidden="true">&rsaquo;</span>
+            <span>New asset</span>
+        </nav>
+        <h2 class="asset-detail-title">New asset</h2>
+        <div class="asset-detail-sub">Register one unit. Its code is given automatically from the model's category when you save.</div>
+    </div>
+    <div class="asset-detail-actions">
+        <a asp-action="BulkCreate" class="btn btn-outline-secondary">+ Bulk register instead</a>
+    </div>
+</div>
 
-<form asp-action="Create" method="post" enctype="multipart/form-data">
+<form asp-action="Create" method="post" enctype="multipart/form-data" class="register-form">
     @Html.AntiForgeryToken()
     <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
 
-    <div class="mb-3">
-        <partial name="_ModelPicker" model="modelChoices" view-data="ViewData" />
-    </div>
+    <div class="row g-3">
+        <div class="col-lg-8">
 
-    @* The code is not typed: it comes from the model's category and the
-       next free number, and is shown here before saving. *@
-    <div class="mb-3">
-        <div class="form-label">Asset code</div>
-        <div id="codePreview" class="fw-semibold sab-code">Pick a model to see its code.</div>
-        <div class="form-text">Given automatically when you save, and never changes.</div>
-    </div>
+            <div class="asset-card register-step mb-3">
+                <div class="register-step-head">
+                    <span class="register-step-num">1</span>
+                    <div>
+                        <div class="register-step-title">What it is</div>
+                        <div class="register-step-sub">Pick the model first — the name fills in for you.</div>
+                    </div>
+                </div>
+                <div class="register-step-body">
+                    <div class="mb-3">
+                        <partial name="_ModelPicker" model="modelChoices" view-data="ViewData" />
+                    </div>
 
-    <div class="mb-3">
-        <label asp-for="AssetName" class="form-label"></label>
-        <input asp-for="AssetName" id="assetName" class="form-control" />
-        <span asp-validation-for="AssetName" class="text-danger"></span>
-    </div>
+                    <div class="mb-3">
+                        <label asp-for="AssetName" class="form-label">Asset name</label>
+                        <input asp-for="AssetName" id="assetName" class="form-control" />
+                        <span asp-validation-for="AssetName" class="text-danger"></span>
+                    </div>
 
-    <div class="mb-3">
-        <label asp-for="Description" class="form-label"></label>
-        <textarea asp-for="Description" class="form-control"></textarea>
-    </div>
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-5">
+                            <label asp-for="SerialNumber" class="form-label">Serial number <span class="register-optional">(optional)</span></label>
+                            <input asp-for="SerialNumber" class="form-control" placeholder="e.g. AS16-2026-0413" />
+                        </div>
+                        <div class="col-md-7">
+                            <div class="form-label">Condition</div>
+                            <partial name="_ConditionChips" model="Model.Condition" />
+                        </div>
+                    </div>
 
-    <div class="mb-3">
-        <label asp-for="SerialNumber" class="form-label"></label>
-        <input asp-for="SerialNumber" class="form-control" />
-    </div>
+                    <div>
+                        <label asp-for="Description" class="form-label">Description <span class="register-optional">(optional)</span></label>
+                        <textarea asp-for="Description" class="form-control" rows="3"
+                                  placeholder="Anything that helps tell this unit apart — colour, accessories, marks."></textarea>
+                    </div>
+                </div>
+            </div>
 
-    <div class="mb-3">
-        <label asp-for="AcquisitionDate" class="form-label"></label>
-        <input asp-for="AcquisitionDate" type="date" class="form-control" />
-    </div>
+            <div class="asset-card register-step mb-3">
+                <div class="register-step-head">
+                    <span class="register-step-num">2</span>
+                    <div>
+                        <div class="register-step-title">Purchase &amp; warranty</div>
+                        <div class="register-step-sub">Used for the value-in-service total and warranty reminders.</div>
+                    </div>
+                </div>
+                <div class="register-step-body">
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label asp-for="AcquisitionDate" class="form-label">Acquired on <span class="register-optional">(optional)</span></label>
+                            <input asp-for="AcquisitionDate" type="date" class="form-control" />
+                        </div>
+                        <div class="col-md-6">
+                            <label asp-for="AcquisitionCost" class="form-label">Cost <span class="register-optional">(optional)</span></label>
+                            <div class="input-group">
+                                <span class="input-group-text">₱</span>
+                                <input asp-for="AcquisitionCost" type="number" step="0.01" min="0" placeholder="0.00" class="form-control" />
+                            </div>
+                        </div>
+                    </div>
 
-    <div class="mb-3">
-        <label asp-for="AcquisitionCost" class="form-label"></label>
-        <div class="input-group">
-            <span class="input-group-text">₱</span>
-            <input asp-for="AcquisitionCost" type="number" step="0.01" min="0" placeholder="0.00" class="form-control" />
+                    <div class="mb-3">
+                        <label asp-for="WarrantyInformation" class="form-label">Warranty <span class="register-optional">(optional)</span></label>
+                        <input asp-for="WarrantyInformation" class="form-control" placeholder="e.g. 1 year, until Mar 2027" />
+                    </div>
+
+                    <div>
+                        <div class="form-label">Warranty photo or file <span class="register-optional">(optional)</span></div>
+                        <label class="file-drop file-drop-row">
+                            <span class="file-drop-icon">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6v18h12V7z" /><path d="M14 3v4h4" /></svg>
+                            </span>
+                            <span class="flex-grow-1">
+                                <span class="file-drop-title" data-empty="Drop the warranty card or receipt here">Drop the warranty card or receipt here</span>
+                                <span class="file-drop-sub">JPG, PNG, WebP or PDF · up to @FileUploads.MaxMegabytes MB</span>
+                            </span>
+                            <span class="btn btn-outline-secondary btn-sm">Choose file</span>
+                            <input asp-for="WarrantyFile" type="file" accept="@FileUploads.DocumentAccept"
+                                   data-max-bytes="@FileUploads.MaxBytes" class="file-drop-input" />
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="asset-card register-step mb-3">
+                <div class="register-step-head">
+                    <span class="register-step-num">3</span>
+                    <div>
+                        <div class="register-step-title">Where it goes</div>
+                        <div class="register-step-sub">Choose the branch first — locations and departments follow it.</div>
+                    </div>
+                </div>
+                <div class="register-step-body">
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label asp-for="BranchID" class="form-label">Branch</label>
+                            <select asp-for="BranchID" id="branchSelect" asp-items="ViewBag.Branches" class="form-select">
+                                <option value="">Select a branch</option>
+                            </select>
+                            <span asp-validation-for="BranchID" class="text-danger"></span>
+                        </div>
+                        <div class="col-md-4">
+                            <label asp-for="CurrentLocationID" class="form-label">Location <span class="register-optional">(optional)</span></label>
+                            <select asp-for="CurrentLocationID" id="locationSelect" class="form-select">
+                                <option value="">-- Pick a branch first --</option>
+                                @foreach (var loc in (List<SchoolInventoryManagement.BLL.DTOs.LocationDTO>)ViewBag.LocationsByBranch)
+                                {
+                                    <option value="@loc.LocationID" data-branch="@loc.BranchID" data-code="@loc.LocationCode"
+                                            selected="@(loc.LocationID == Model.CurrentLocationID)">@loc.LocationName (@loc.LocationCode)</option>
+                                }
+                            </select>
+                            <div class="form-text">Only this branch's locations.</div>
+                        </div>
+                        <div class="col-md-4">
+                            <label asp-for="DepartmentID" class="form-label">Department</label>
+                            <select asp-for="DepartmentID" id="departmentSelect" class="form-select">
+                                <option value="">-- Pick a branch first --</option>
+                                @foreach (var dept in (List<SchoolInventoryManagement.BLL.DTOs.DepartmentDTO>)ViewBag.DepartmentsByBranch)
+                                {
+                                    <option value="@dept.DepartmentID" data-branch="@dept.BranchID"
+                                            selected="@(dept.DepartmentID == Model.DepartmentID)">@dept.DepartmentName</option>
+                                }
+                            </select>
+                            <span asp-validation-for="DepartmentID" class="text-danger"></span>
+                            <div class="form-text">Only this branch's departments.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            @* The code is not typed: it comes from the model's category and
+               the next free number, and is shown here before saving. *@
+            <div class="asset-card register-side mb-3">
+                <div class="register-side-label">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M3 12V3h9l9 9-9 9z" /><circle cx="7.5" cy="7.5" r="1.5" /></svg>
+                    Asset code
+                </div>
+                <div id="codePreview" class="register-code is-empty">Pick a model to see its code.</div>
+                <div id="codeNote" class="register-side-note">Given automatically when you save, and never changes.</div>
+            </div>
+
+            <div class="asset-card register-side mb-3">
+                <div class="register-side-title">Photo <span class="register-optional">(optional)</span></div>
+                <label class="file-drop file-drop-tall" data-preview="true">
+                    <img class="file-drop-preview d-none" alt="" />
+                    <span class="file-drop-icon">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z" /><circle cx="12" cy="13" r="3.5" /></svg>
+                    </span>
+                    <span class="file-drop-title" data-empty="Drop a photo or click to upload">Drop a photo or click to upload</span>
+                    <span class="file-drop-sub">JPG, PNG or WebP · up to @FileUploads.MaxMegabytes MB</span>
+                    <input asp-for="ImageFile" type="file" accept="@FileUploads.ImageAccept"
+                           data-max-bytes="@FileUploads.MaxBytes" class="file-drop-input" />
+                </label>
+            </div>
+
+            <div class="asset-card register-toggle">
+                <span class="register-toggle-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 6v12M7 6v12M11 6v12M14 6v12M18 6v12M20 6v12" /></svg>
+                </span>
+                <label for="createBarcode" class="flex-grow-1 mb-0">
+                    <span class="register-toggle-title">Add barcode label</span>
+                    <span class="register-toggle-sub">Makes a barcode when you save. You can still add one later from the asset's page.</span>
+                    <span id="barcodePreview" class="register-toggle-preview"></span>
+                </label>
+                <div class="form-check form-switch m-0">
+                    <input asp-for="CreateBarcode" type="checkbox" role="switch" id="createBarcode" class="form-check-input" />
+                </div>
+            </div>
         </div>
     </div>
 
-    <div class="mb-3">
-        <label asp-for="WarrantyInformation" class="form-label"></label>
-        <input asp-for="WarrantyInformation" class="form-control" placeholder="e.g. 1 year, until Mar 2027" />
+    <div class="register-footer">
+        <span>Model, asset name, branch and department are required.</span>
+        <div class="d-flex" style="gap:8px;">
+            <a asp-action="Index" class="btn btn-outline-secondary">Cancel</a>
+            <button type="submit" class="btn btn-primary">Create asset</button>
+        </div>
     </div>
-
-    <div class="mb-3">
-        <label asp-for="WarrantyFile" class="form-label">Warranty photo or file <span class="text-muted">(optional)</span></label>
-        <input asp-for="WarrantyFile" type="file" accept="@SchoolInventoryManagement.Web.Helpers.FileUploads.DocumentAccept"
-               data-max-bytes="@SchoolInventoryManagement.Web.Helpers.FileUploads.MaxBytes" class="form-control" />
-        <div class="form-text">A photo of the warranty card or receipt, or a PDF. Max @SchoolInventoryManagement.Web.Helpers.FileUploads.MaxMegabytes MB.</div>
-    </div>
-
-    <div class="mb-3">
-        <label asp-for="ImageFile" class="form-label">Photo <span class="text-muted">(optional)</span></label>
-        <input asp-for="ImageFile" type="file" accept="@SchoolInventoryManagement.Web.Helpers.FileUploads.ImageAccept"
-               data-max-bytes="@SchoolInventoryManagement.Web.Helpers.FileUploads.MaxBytes" class="form-control" />
-        <div class="form-text">JPG, PNG or WEBP. Max @SchoolInventoryManagement.Web.Helpers.FileUploads.MaxMegabytes MB.</div>
-    </div>
-    <div class="mb-3">
-        <label asp-for="Condition" class="form-label"></label>
-        <select asp-for="Condition" asp-items="Html.GetEnumSelectList<SchoolInventoryManagement.DAL.Entities.Enums.ConditionStatus>()" class="form-select"></select>
-    </div>
-
-    <div class="mb-3">
-        <label asp-for="BranchID" class="form-label">Branch</label>
-        <select asp-for="BranchID" id="branchSelect" asp-items="ViewBag.Branches" class="form-select">
-            <option value="">-- Select Branch --</option>
-        </select>
-        <span asp-validation-for="BranchID" class="text-danger"></span>
-    </div>
-
-    <div class="mb-3">
-        <label asp-for="CurrentLocationID" class="form-label">Location</label>
-        <select asp-for="CurrentLocationID" id="locationSelect" class="form-select">
-            <option value="">-- Pick a branch first --</option>
-            @foreach (var loc in (List<SchoolInventoryManagement.BLL.DTOs.LocationDTO>)ViewBag.LocationsByBranch)
-            {
-                <option value="@loc.LocationID" data-branch="@loc.BranchID" data-code="@loc.LocationCode"
-                        selected="@(loc.LocationID == Model.CurrentLocationID)">@loc.LocationName (@loc.LocationCode)</option>
-            }
-        </select>
-        <div class="form-text">Only locations in the chosen branch are listed.</div>
-    </div>
-
-    <div class="mb-3">
-        <label asp-for="DepartmentID" class="form-label">Department</label>
-        <select asp-for="DepartmentID" id="departmentSelect" class="form-select">
-            <option value="">-- Pick a branch first --</option>
-            @foreach (var dept in (List<SchoolInventoryManagement.BLL.DTOs.DepartmentDTO>)ViewBag.DepartmentsByBranch)
-            {
-                <option value="@dept.DepartmentID" data-branch="@dept.BranchID"
-                        selected="@(dept.DepartmentID == Model.DepartmentID)">@dept.DepartmentName</option>
-            }
-        </select>
-        <span asp-validation-for="DepartmentID" class="text-danger"></span>
-        <div class="form-text">Only departments in the chosen branch are listed.</div>
-    </div>
-
-    <div class="mb-3">
-        <div class="form-label">Barcode label</div>
-        <input asp-for="CreateBarcode" type="checkbox" id="createBarcode" class="btn-check" autocomplete="off" />
-        <label for="createBarcode" id="createBarcodeLabel" class="btn btn-outline-primary">Add barcode</label>
-        <div class="form-text">Click to make a barcode when the asset is saved. Leave it off to save without one; you can still add it later from the asset's page.</div>
-        <div id="barcodePreview" class="form-text sab-code"></div>
-    </div>
-
-    <button type="submit" class="btn btn-primary">Create</button>
-    <a asp-action="Index" class="btn btn-secondary">Cancel</a>
 </form>
 
 <partial name="_QuickAddModel" />
@@ -137,7 +225,7 @@
             // Shows the asset code a save would give (AssetCodes.Format) and
             // the barcode it would get (AssetCodes.Barcode: branch letter,
             // location code or XXX, asset code). Picking a model also starts
-            // the name off as the model's name if nothing is typed yet.
+            // the name off from the model if nothing is typed yet.
             var codePreview = document.getElementById('codePreview');
             var barcodePreview = document.getElementById('barcodePreview');
             var assetName = document.getElementById('assetName');
@@ -148,44 +236,52 @@
 
             function pad(n) { var s = String(n); while (s.length < 4) s = '0' + s; return s; }
 
+            var codeNote = document.getElementById('codeNote');
+            var createBarcode = document.getElementById('createBarcode');
+
+            // The big code on the side card. Messages use the small style.
+            function showCode(text, isCode) {
+                codePreview.textContent = text;
+                codePreview.classList.toggle('is-empty', !isCode);
+            }
+
             function updateCode() {
                 barcodePreview.textContent = '';
                 if (!picked) {
-                    codePreview.textContent = 'Pick a model to see its code.';
+                    showCode('Pick a model to see its code.', false);
+                    codeNote.textContent = 'Given automatically when you save, and never changes.';
                     return;
                 }
                 if (picked.next > maxNumber) {
-                    codePreview.textContent = picked.prefix + ' has no numbers left — give the category a new code.';
+                    showCode(picked.prefix + ' has no numbers left — give the category a new code.', false);
                     return;
                 }
                 var code = picked.prefix + '-' + pad(picked.next);
-                codePreview.textContent = code;
+                showCode(code, true);
+                codeNote.textContent = 'Given automatically when you save — from the '
+                    + (picked.category || picked.prefix) + ' prefix and the next free number.';
+
+                if (!createBarcode.checked) return;
 
                 var branchCode = branchCodes[branchSelect.value];
                 if (!branchCode) return;
                 var option = locationSelect.options[locationSelect.selectedIndex];
                 var locationCode = (option && option.getAttribute('data-code')) || '@SchoolInventoryManagement.BLL.Services.AssetCodes.NoLocation';
-                barcodePreview.textContent = 'Barcode if added: ' + branchCode + '-' + locationCode + '-' + code;
+                barcodePreview.textContent = 'Barcode: ' + branchCode + '-' + locationCode + '-' + code;
             }
 
             document.addEventListener('model-picked', function (e) {
                 picked = e.detail;
+                // Named like Bulk register's units: "Model - Unit 13".
                 if (picked && (!assetName.value.trim() || assetName.value === autoName)) {
-                    assetName.value = picked.name;
-                    autoName = picked.name;
+                    autoName = picked.name + (picked.next <= maxNumber ? ' - Unit ' + picked.next : '');
+                    assetName.value = autoName;
                 }
                 updateCode();
             });
 
-            // ---- Add barcode toggle -------------------------------------
-            // The label says what will happen, so "on" isn't just a color.
-            var createBarcode = document.getElementById('createBarcode');
-            var createBarcodeLabel = document.getElementById('createBarcodeLabel');
-            function syncBarcode() {
-                createBarcodeLabel.textContent = createBarcode.checked ? '✓ Barcode will be added' : 'Add barcode';
-            }
-            createBarcode.addEventListener('change', syncBarcode);
-            syncBarcode(); // a failed post keeps the choice
+            // The barcode it would get is shown under the switch while on.
+            createBarcode.addEventListener('change', updateCode);
 
             // ---- Location and department follow branch -----------------
             // Each list only ever holds the chosen branch's entries, and

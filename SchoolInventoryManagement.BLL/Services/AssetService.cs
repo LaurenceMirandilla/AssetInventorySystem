@@ -173,19 +173,25 @@ namespace SchoolInventoryManagement.BLL.Services
 
             EnsureUploadedFile(dto.WarrantyFileURL, WarrantyFolder, current: null);
 
-            // One serial per line, in code order. Blank lines are dropped so
-            // a trailing newline from a spreadsheet paste does not count.
-            var serials = (dto.SerialNumbers ?? string.Empty)
+            // One serial per line, lined up with the codes: line N belongs to
+            // the Nth unit, and a blank line leaves that unit without one (it
+            // can be added later from the asset's page). Trailing blank lines
+            // are dropped so a newline from a spreadsheet paste does not count.
+            var serialLines = (dto.SerialNumbers ?? string.Empty)
+                .Replace("\r", string.Empty)
                 .Split('\n')
                 .Select(s => s.Trim())
-                .Where(s => s.Length > 0)
                 .ToList();
+            while (serialLines.Count > 0 && serialLines[^1].Length == 0)
+                serialLines.RemoveAt(serialLines.Count - 1);
 
-            if (serials.Count > 0 && serials.Count != dto.Quantity)
+            if (serialLines.Count > dto.Quantity)
                 throw new ArgumentException(
-                    $"You entered {serials.Count} serial number{(serials.Count == 1 ? "" : "s")} " +
+                    $"There are {serialLines.Count} serial number lines " +
                     $"for {dto.Quantity} asset{(dto.Quantity == 1 ? "" : "s")}. " +
-                    "Enter exactly one per asset, or leave the box empty.");
+                    "Enter at most one line per asset.");
+
+            var serials = serialLines.Where(s => s.Length > 0).ToList();
 
             var tooLongSerial = serials.FirstOrDefault(s => s.Length > 100);
             if (tooLongSerial is not null)
@@ -226,7 +232,7 @@ namespace SchoolInventoryManagement.BLL.Services
                     {
                         Code = AssetCodes.Format(prefix, number),
                         Name = $"{baseName} - Unit {number}",
-                        Serial = serials.Count > 0 ? serials[i] : null
+                        Serial = i < serialLines.Count && serialLines[i].Length > 0 ? serialLines[i] : null
                     };
                 })
                 .ToList();

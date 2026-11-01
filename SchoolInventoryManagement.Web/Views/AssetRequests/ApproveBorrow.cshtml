@@ -1,100 +1,229 @@
 ﻿@model SchoolInventoryManagement.Web.ViewModels.ApproveBorrowRequestViewModel
+@using SchoolInventoryManagement.BLL.DTOs
+@using SchoolInventoryManagement.Web.ViewModels
 @{
     ViewData["Title"] = "Approve Borrow Request";
-    var request = ViewBag.Request as SchoolInventoryManagement.BLL.DTOs.AssetRequestResponseDTO;
-    var lines = ViewBag.Lines as List<SchoolInventoryManagement.Web.ViewModels.ApprovalLineChoice>
-        ?? new List<SchoolInventoryManagement.Web.ViewModels.ApprovalLineChoice>();
+    AssetRequestResponseDTO? request = ViewBag.Request as AssetRequestResponseDTO;
+    List<ApprovalLineChoice> lines = (ViewBag.Lines as List<ApprovalLineChoice>) ?? new List<ApprovalLineChoice>();
+    var asked = lines.Sum(l => l.Quantity);
+    var name = request?.RequestedByUser.FullName ?? "";
+    var initials = string.Concat(name.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(p => p[0])).ToUpperInvariant();
+    if (initials.Length > 2) { initials = initials[..2]; }
+    var days = request?.NeededFrom is not null && request.ReturnBy is not null
+        ? Math.Max(1, (int)Math.Ceiling((request.ReturnBy.Value - request.NeededFrom.Value).TotalDays))
+        : (int?)null;
 }
 
-<h2>Approve Borrow Request #@Model.RequestID</h2>
-
-@if (request is not null)
-{
-    <p class="text-muted">
-        @request.RequestedByUser.FullName (@request.RequestedByUser.RoleName)
-        asked for <strong>@request.ItemsSummary</strong>.
-    </p>
-    @if (request.NeededFrom is not null)
-    {
-        <p class="text-muted">
-            Needed from <strong>@request.NeededFrom.Value.ToString("MMM d, yyyy h:mm tt")</strong>
-            @if (request.ReturnBy is not null)
-            {
-                <text>until <strong>@request.ReturnBy.Value.ToString("MMM d, yyyy h:mm tt")</strong></text>
-            }
-        </p>
-    }
-    @if (!string.IsNullOrWhiteSpace(request.Reason))
-    {
-        <p class="text-muted">Reason given: @request.Reason</p>
-    }
-}
-
-<div class="alert alert-info">
-    Tick the units to hand over — exactly the amount asked for on each line.
-    The best units are already ticked for you (see Auto-fill below); change any you like.
-    Approving reserves them to the requester and sets them aside at the pickup
-    location. The request is then <strong>In Transit</strong> and stays under
-    Approvals until an Asset Officer or Administrator marks it collected, and
-    later records the return. If any part of the approval fails, none of it is saved.
+<div class="asset-detail-head">
+    <div>
+        <nav class="asset-crumbs" aria-label="Breadcrumb">
+            <a asp-action="Pending">Approvals</a>
+            <span aria-hidden="true">&rsaquo;</span>
+            <span>Borrow #@Model.RequestID</span>
+        </nav>
+        <h2 class="asset-detail-title">Approve borrow #@Model.RequestID <span class="md-tag ">Borrow</span></h2>
+    </div>
 </div>
 
-<form asp-action="ApproveBorrow" asp-route-id="@Model.RequestID" method="post">
+<form asp-action="ApproveBorrow" asp-route-id="@Model.RequestID" method="post" class="register-form" id="approveForm">
     @Html.AntiForgeryToken()
     <input type="hidden" asp-for="RequestID" />
     <input type="hidden" asp-for="RowVersionBase64" />
     <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
 
-    <h5 class="mb-2">Units to hand over</h5>
-    <partial name="_ApprovalUnitPicker" model="lines" />
+    <div class="row g-3">
+        <div class="col-lg-8">
+            @if (request is not null)
+            {
+                <div class="asset-card approve-who mb-3">
+                    <span class="md-avatar is-dark">@initials</span>
+                    <div class="flex-grow-1 min-w-0">
+                        <div class="fw-bold">@request.RequestedByUser.FullName</div>
+                        <div class="text-muted small">@request.RequestedByUser.RoleName · @request.DepartmentName</div>
+                    </div>
+                    <div class="text-end">
+                        <div class="text-muted small">Submitted</div>
+                        <div class="fw-bold small">@request.RequestDate.ToString("MMM d · h:mm tt")</div>
+                    </div>
+                </div>
+            }
 
-    @if (request?.RequestedLocationID is not null)
-    {
-        @* The requester named where they want to collect the units, so there
-           is nothing to choose here -- the controller uses their location
-           and their own department. *@
-        <div class="mb-3">
-            <div class="form-label">Department the units go to</div>
-            <div class="fw-semibold">@request.DepartmentName</div>
-            <div class="form-text">The requester's own department, since they chose the pickup location.</div>
-        </div>
-        <div class="mb-3">
-            <div class="form-label">Pickup location</div>
-            <div class="fw-semibold">@request.RequestedLocationName</div>
-            <div class="form-text">Chosen by the requester. They are told this when you approve.</div>
-        </div>
-    }
-    else
-    {
-        <div class="mb-3">
-            <label asp-for="DepartmentID" class="form-label">Department the units go to</label>
-            <select asp-for="DepartmentID" asp-items="ViewBag.Departments" class="form-select">
-                <option value="">-- Select Department --</option>
-            </select>
-            <div class="form-text">Pre-filled from the requester's own department.</div>
-            <span asp-validation-for="DepartmentID" class="text-danger"></span>
-        </div>
-        <div class="mb-3">
-            <label asp-for="PickupLocationID" class="form-label">Pickup location</label>
-            <select asp-for="PickupLocationID" asp-items="ViewBag.PickupLocations" class="form-select">
-                <option value="">-- Select Location --</option>
-            </select>
-            <div class="form-text">The requester left this to you. They are told where to collect the units when you approve.</div>
-            <span asp-validation-for="PickupLocationID" class="text-danger"></span>
-        </div>
-    }
+            @if (lines.Count > 1)
+            {
+                <div class="approve-sub">
+                    <strong>Units to set aside</strong>
+                    <span>· @lines.Count models</span>
+                </div>
+            }
 
-    <div class="mb-3">
-        <label asp-for="Remarks" class="form-label">Remarks <span class="text-muted">(optional)</span></label>
-        <textarea asp-for="Remarks" class="form-control"></textarea>
+            <partial name="_ApprovalUnitPicker" model="lines" />
+
+            @if (request?.RequestedLocationID is null)
+            {
+                @* The requester left the pickup point to the approver: choose
+                   it here, with the department the units go to. *@
+                <div class="asset-card register-step mb-3">
+                    <div class="register-step-head"><div class="register-step-title">Where they go</div></div>
+                    <div class="register-step-body">
+                        @{
+                            List<LocationDTO> pickupList = (ViewBag.PickupLocationList as List<LocationDTO>) ?? new List<LocationDTO>();
+                            List<DepartmentDTO> deptList = (ViewBag.DepartmentList as List<DepartmentDTO>) ?? new List<DepartmentDTO>();
+                            List<(int BranchID, string BranchName)> branchList = (ViewBag.BranchList as List<(int BranchID, string BranchName)>) ?? new List<(int BranchID, string BranchName)>();
+                            // Starts at the branch of the pickup point or department
+                            // already chosen (the requester's own department, at first).
+                            var startBranch = pickupList.FirstOrDefault(l => l.LocationID == Model.PickupLocationID)?.BranchID
+                                ?? deptList.FirstOrDefault(d => d.DepartmentID == Model.DepartmentID)?.BranchID;
+                        }
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                @* Not posted: it only narrows the two lists beside it. *@
+                                <label for="branchSelect" class="form-label">Branch</label>
+                                <select id="branchSelect" class="form-select" data-combobox>
+                                    <option value="">Select a branch</option>
+                                    @foreach (var b in branchList)
+                                    {
+                                        <option value="@b.BranchID" selected="@(b.BranchID == startBranch)">@b.BranchName</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label asp-for="PickupLocationID" class="form-label">Pickup location</label>
+                                <select asp-for="PickupLocationID" class="form-select" data-combobox>
+                                    <option value="">-- Pick a branch first --</option>
+                                    @foreach (var l in pickupList)
+                                    {
+                                        <option value="@l.LocationID" data-branch="@l.BranchID" data-name="@l.LocationName" data-branch-name="@l.BranchName"
+                                                selected="@(l.LocationID == Model.PickupLocationID)">@l.LocationName</option>
+                                    }
+                                </select>
+                                <span asp-validation-for="PickupLocationID" class="text-danger"></span>
+                            </div>
+                            <div class="col-md-4">
+                                <label asp-for="DepartmentID" class="form-label">Department</label>
+                                <select asp-for="DepartmentID" class="form-select" data-combobox>
+                                    <option value="">-- Pick a branch first --</option>
+                                    @foreach (var d in deptList)
+                                    {
+                                        <option value="@d.DepartmentID" data-branch="@d.BranchID"
+                                                selected="@(d.DepartmentID == Model.DepartmentID)">@d.DepartmentName</option>
+                                    }
+                                </select>
+                                <span asp-validation-for="DepartmentID" class="text-danger"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            <div class="asset-card register-step mb-3">
+                <div class="register-step-head"><div class="register-step-title">Notes</div></div>
+                <div class="register-step-body">
+                    <textarea asp-for="Remarks" class="form-control" rows="3" placeholder="Anything they should know when they pick it up." aria-label="Notes"></textarea>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            @if (request is not null)
+            {
+                <div class="asset-card approve-side">
+                    <div class="asset-card-title">The request</div>
+                    <div class="approve-side-body">
+                        <div class="register-side-label mb-2">Pickup at</div>
+                        <div class="approve-place">
+                            <strong id="pickupAt">@(request.RequestedLocationName ?? "Not chosen yet")</strong>
+                        </div>
+                        <dl class="approve-facts">
+                            <div><dt>Needed from</dt><dd>@(request.NeededFrom?.ToString("MMM d · h:mm tt") ?? "—")</dd></div>
+                            <div><dt>Until</dt><dd>@(request.ReturnBy?.ToString("MMM d · h:mm tt") ?? "—")</dd></div>
+                            <div><dt>Borrowing for</dt><dd>@(days is null ? "—" : days == 1 ? "1 day" : days + " days")</dd></div>
+                            <div><dt>Units</dt><dd>@asked</dd></div>
+                        </dl>
+                        @if (!string.IsNullOrWhiteSpace(request.Reason))
+                        {
+                            <div class="approve-reason"><span>Reason</span>@request.Reason</div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
     </div>
 
-    <button type="submit" class="btn btn-success">Approve</button>
-    <a asp-action="Details" asp-route-id="@Model.RequestID" class="btn btn-secondary">Cancel</a>
+    <div class="register-footer approve-footer">
+        <span>Approving reserves the units and sets them aside at the pickup location.</span>
+        <div class="d-flex" style="gap:8px;">
+            <a asp-action="Details" asp-route-id="@Model.RequestID" class="btn btn-outline-secondary">Cancel</a>
+            <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#reject-@Model.RequestID">Reject</button>
+            <button type="submit" class="btn btn-primary" id="approveBtn">Approve</button>
+        </div>
+    </div>
 </form>
+
+@* The Reject confirmation: outside the approve form, which it cannot sit in. *@
+@if (request is not null)
+{
+    <partial name="_RejectRequestModal" model="request" />
+}
 
 @section Scripts {
     @{
         await Html.RenderPartialAsync("_ValidationScriptsPartial");
     }
+    <script>
+        // The button says how many units approving will set aside.
+        (function () {
+            var btn = document.getElementById('approveBtn');
+            function label(total) {
+                btn.textContent = total > 0 ? 'Approve & set aside ' + total + ' unit' + (total === 1 ? '' : 's') : 'Approve';
+            }
+            document.addEventListener('picker-change', function (e) { label(e.detail.total); });
+
+            // "Where they go": the branch narrows pickup locations and
+            // departments (rebuilt, not hidden -- some browsers ignore
+            // "hidden" on <option>), and "Pickup at" follows the choice.
+            var branch = document.getElementById('branchSelect');
+            var pickup = document.getElementById('PickupLocationID');
+            var dept = document.getElementById('DepartmentID');
+            if (!branch || !pickup || !dept) return;
+
+            function snapshot(select) {
+                return Array.from(select.options).filter(function (o) { return o.dataset.branch; }).map(function (o) {
+                    return { value: o.value, text: o.text, data: Object.assign({}, o.dataset) };
+                });
+            }
+            var allPickup = snapshot(pickup);
+            var allDept = snapshot(dept);
+
+            function rebuild(select, all) {
+                var keep = select.value;
+                Array.from(select.options).forEach(function (o) { if (o.dataset.branch) o.remove(); });
+                select.options[0].text = branch.value ? 'Select one' : '-- Pick a branch first --';
+                all.filter(function (x) { return x.data.branch === branch.value; }).forEach(function (x) {
+                    var o = document.createElement('option');
+                    o.value = x.value;
+                    o.text = x.text;
+                    Object.keys(x.data).forEach(function (k) { o.dataset[k] = x.data[k]; });
+                    select.appendChild(o);
+                });
+                select.value = keep;
+                if (select.value !== keep) {
+                    select.value = '';
+                    select.dispatchEvent(new Event('change'));
+                }
+                select.disabled = !branch.value;
+            }
+
+            function showPickup() {
+                var o = pickup.options[pickup.selectedIndex];
+                document.getElementById('pickupAt').textContent = o && o.value ? o.dataset.name : 'Not chosen yet';
+            }
+
+            branch.addEventListener('change', function () { rebuild(pickup, allPickup); rebuild(dept, allDept); showPickup(); });
+            pickup.addEventListener('change', showPickup);
+            rebuild(pickup, allPickup);
+            rebuild(dept, allDept);
+            showPickup();
+            label(document.querySelectorAll('#unitPicker .unit-box:checked').length);
+        })();
+    </script>
 }

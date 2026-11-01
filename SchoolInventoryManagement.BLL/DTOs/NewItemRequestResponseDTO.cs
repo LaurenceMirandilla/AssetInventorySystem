@@ -10,6 +10,7 @@ namespace SchoolInventoryManagement.BLL.DTOs
 
         public int RequestedByUserID { get; set; }
         public string RequestedByUserName { get; set; } = null!;
+        public string? RequestedByRoleName { get; set; }
         public string DepartmentName { get; set; } = null!;
 
         public int DepartmentID { get; set; }

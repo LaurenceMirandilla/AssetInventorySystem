@@ -26,8 +26,10 @@ namespace SchoolInventoryManagement.Web.Controllers
         // GET /Notifications?unreadOnly=true
         public async Task<IActionResult> Index(bool unreadOnly = false)
         {
+            // All of them; the All / Unread tabs switch on the page.
+            // unreadOnly only picks which tab it opens on.
             var notifications =
-                await _notificationService.GetMyNotificationsAsync(CurrentUserId, unreadOnly);
+                await _notificationService.GetMyNotificationsAsync(CurrentUserId);
 
             ViewData["UnreadOnly"] = unreadOnly;
             return View(notifications);

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using SchoolInventoryManagement.DAL.Entities.Enums;
 
@@ -33,6 +33,9 @@ namespace SchoolInventoryManagement.BLL.DTOs
 
         // Across every page of the filtered set.
         public int TotalCount { get; set; }
+
+        // Ignoring the Approved / Rejected choice (every other filter
+        // applies), so the tabs show both numbers whichever is open.
         public int ApprovedCount { get; set; }
         public int RejectedCount { get; set; }
 

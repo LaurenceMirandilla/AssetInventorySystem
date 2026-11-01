@@ -1,45 +1,117 @@
 ﻿@model SchoolInventoryManagement.Web.ViewModels.DisposeAssetViewModel
+@using SchoolInventoryManagement.BLL.DTOs
 @{
     ViewData["Title"] = "Dispose Asset";
+    var asset = (AssetResponseDTO)ViewBag.Asset;
+    var methods = new[] { "Sold", "Scrapped", "Donated", "Returned to supplier" };
 }
 
-<h2>Dispose Asset</h2>
-<p class="text-muted">@ViewBag.AssetCode — @ViewBag.AssetName</p>
+<div class="asset-detail-head">
+    <div>
+        <nav class="asset-crumbs" aria-label="Breadcrumb">
+            <a asp-action="Index">Assets</a>
+            <span aria-hidden="true">&rsaquo;</span>
+            <a asp-action="Details" asp-route-id="@asset.AssetID">@asset.AssetCode</a>
+            <span aria-hidden="true">&rsaquo;</span>
+            <span>Dispose</span>
+        </nav>
+        <h2 class="asset-detail-title">Dispose asset</h2>
+        <div class="asset-detail-sub">Remove this unit from service.</div>
+    </div>
+</div>
 
-<form asp-action="Dispose" asp-route-id="@Model.AssetID" method="post">
+<partial name="_AssetStrip" model="asset" />
+
+<form asp-action="Dispose" asp-route-id="@Model.AssetID" method="post" class="register-form">
     @Html.AntiForgeryToken()
     <input type="hidden" asp-for="AssetID" />
     <input type="hidden" asp-for="AssetRowVersionBase64" />
     <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
 
-    <div class="mb-3">
-        <label asp-for="ReasonForDisposal" class="form-label"></label>
-        <textarea asp-for="ReasonForDisposal" class="form-control"></textarea>
-        <span asp-validation-for="ReasonForDisposal" class="text-danger"></span>
+    <div class="row g-3">
+        <div class="col-lg-8">
+            <div class="danger-callout mb-3">
+                <span class="danger-callout-icon" aria-hidden="true">!</span>
+                <div>
+                    <div class="danger-callout-title">This takes the unit out of service</div>
+                    <div>It will be hidden from the Assets list and can't be requested or assigned. The record stays in the history, and it can be restored later if this was a mistake.</div>
+                </div>
+            </div>
+
+            <div class="asset-card register-step">
+                <div class="register-step-head">
+                    <span class="register-step-num">1</span>
+                    <div>
+                        <div class="register-step-title">Disposal details</div>
+                        <div class="register-step-sub">Recorded under History › Disposals.</div>
+                    </div>
+                </div>
+                <div class="register-step-body">
+                    <div class="mb-3">
+                        <label asp-for="ReasonForDisposal" class="form-label">Reason for disposal</label>
+                        <textarea asp-for="ReasonForDisposal" class="form-control" rows="2" placeholder="e.g. Motor burned out; repair costs more than a new unit."></textarea>
+                        <span asp-validation-for="ReasonForDisposal" class="text-danger"></span>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="DisposalMethod" class="form-label">Disposal method</label>
+                        @* The chips fill the box; anything else can be typed. *@
+                        <div class="method-chips mb-2">
+                            @foreach (var m in methods)
+                            {
+                                <button type="button" class="method-chip" data-method="@m">@m</button>
+                            }
+                        </div>
+                        <input asp-for="DisposalMethod" id="disposalMethod" class="form-control" placeholder="e.g. Sold, Scrapped, Donated" />
+                        <div class="form-text">Pick one or type your own.</div>
+                        <span asp-validation-for="DisposalMethod" class="text-danger"></span>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="SupportingDocumentationURL" class="form-label">Supporting documentation <span class="register-optional">(optional)</span></label>
+                        <div class="input-icon">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1" /><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" /></svg>
+                            <input asp-for="SupportingDocumentationURL" class="form-control" placeholder="Link to a receipt, report or photo" />
+                        </div>
+                    </div>
+
+                    <div>
+                        <label asp-for="Notes" class="form-label">Notes <span class="register-optional">(optional)</span></label>
+                        <textarea asp-for="Notes" class="form-control" rows="2" placeholder="Anything else for the record."></textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <div class="mb-3">
-        <label asp-for="DisposalMethod" class="form-label">Disposal Method</label>
-        <input asp-for="DisposalMethod" class="form-control" placeholder="e.g. Sold, Scrapped, Donated" />
-        <span asp-validation-for="DisposalMethod" class="text-danger"></span>
+    <div class="register-footer">
+        <span>Reason and method are required.</span>
+        <div class="d-flex" style="gap:8px;">
+            <a asp-action="Details" asp-route-id="@Model.AssetID" class="btn btn-outline-secondary">Cancel</a>
+            <button type="submit" class="btn btn-danger">Confirm disposal</button>
+        </div>
     </div>
-
-    <div class="mb-3">
-        <label asp-for="SupportingDocumentationURL" class="form-label">Supporting Documentation <span class="text-muted">(optional)</span></label>
-        <input asp-for="SupportingDocumentationURL" class="form-control" />
-    </div>
-
-    <div class="mb-3">
-        <label asp-for="Notes" class="form-label">Notes <span class="text-muted">(optional)</span></label>
-        <textarea asp-for="Notes" class="form-control"></textarea>
-    </div>
-
-    <button type="submit" class="btn btn-danger">Confirm Disposal</button>
-    <a asp-action="Details" asp-route-id="@Model.AssetID" class="btn btn-secondary">Cancel</a>
 </form>
 
 @section Scripts {
     @{
         await Html.RenderPartialAsync("_ValidationScriptsPartial");
     }
+    <script>
+        (function () {
+            var input = document.getElementById('disposalMethod');
+            var chips = Array.from(document.querySelectorAll('.method-chip'));
+
+            // The chip matching what is in the box is shown as picked.
+            function sync() {
+                var value = input.value.trim().toLowerCase();
+                chips.forEach(function (c) { c.classList.toggle('is-picked', c.dataset.method.toLowerCase() === value); });
+            }
+            chips.forEach(function (c) {
+                c.addEventListener('click', function () { input.value = c.dataset.method; sync(); input.dispatchEvent(new Event('change')); });
+            });
+            input.addEventListener('input', sync);
+            sync();
+        })();
+    </script>
 }

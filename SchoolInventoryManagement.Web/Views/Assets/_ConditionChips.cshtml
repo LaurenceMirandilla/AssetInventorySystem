@@ -1,0 +1,24 @@
+@model SchoolInventoryManagement.DAL.Entities.Enums.ConditionStatus?
+@* Condition as a row of pill radios, shared by the register, edit, assign
+   and transfer forms. Posts as ViewData["ChipName"] (default "Condition").
+   ViewData["ChipNoneLabel"], when given, adds a first choice that posts an
+   empty value -- Transfer's "Leave unchanged". *@
+@{
+    var conditions = Enum.GetValues<SchoolInventoryManagement.DAL.Entities.Enums.ConditionStatus>();
+    var name = ViewData["ChipName"] as string ?? "Condition";
+    var noneLabel = ViewData["ChipNoneLabel"] as string;
+}
+
+<div class="condition-chips" role="radiogroup" aria-label="Condition">
+    @if (noneLabel != null)
+    {
+        <input type="radio" class="btn-check" name="@name" id="@(name)None" value="" autocomplete="off" checked="@(Model == null)" />
+        <label class="condition-chip cond-dot-none" for="@(name)None">@noneLabel</label>
+    }
+    @foreach (var c in conditions)
+    {
+        var id = name + c;
+        <input type="radio" class="btn-check" name="@name" id="@id" value="@c" autocomplete="off" checked="@(c == Model)" />
+        <label class="condition-chip cond-dot-@c.ToString().ToLowerInvariant()" for="@id">@DisplayText.Humanize(c.ToString())</label>
+    }
+</div>

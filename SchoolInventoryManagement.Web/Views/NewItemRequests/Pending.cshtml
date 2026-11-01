@@ -1,119 +1,177 @@
 ﻿@model List<SchoolInventoryManagement.BLL.DTOs.NewItemRequestResponseDTO>
+@using SchoolInventoryManagement.BLL.DTOs
 @using SchoolInventoryManagement.DAL.Entities.Enums
+@using SchoolInventoryManagement.Web.Helpers
 @{
-    ViewData["Title"] = "New-Item Requests to Act On";
+    ViewData["Title"] = "New-Item Approvals";
 
     // What waits on whom, for the sub-heading.
     var queueFor = User.IsInRole("Administrator")
-        ? "department head and Principal approvals (as backup), items to procure and deliveries to confirm"
+        ? "department head and Principal approvals (as backup), procurement and arrival"
         : User.IsInRole("Principal")
-            ? "requests waiting for your budget and reason check"
+            ? "budget and reason checks"
             : User.IsInRole("Asset Officer")
-                ? "approved items to procure, and deliveries waiting for you to confirm"
-                : "requests from your department waiting for your approval";
+                ? "procurement and arrival"
+                : "requests from your department";
+
+    // Grouped by stage, in the order the service already sorts them
+    // (earliest stage first, then soonest needed).
+    var groupLabel = new Dictionary<NewItemStatus, (string Label, string Key)>
+    {
+        [NewItemStatus.AwaitingDeptHead] = ("Department head approval", "late"),
+        [NewItemStatus.AwaitingBudget] = ("Budget check", "late"),
+        [NewItemStatus.Procuring] = ("To procure", "transit"),
+        [NewItemStatus.AwaitingArrival] = ("Waiting for arrival", "use")
+    };
+    var groups = Model.GroupBy(r => r.RequestStatus).ToList();
+    var ordered = groups.SelectMany(g => g).ToList();
 }
 @if (TempData["ErrorMessage"] != null)
 {
     <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
 }
 
-<div class="sab-page-head">
+<div class="asset-detail-head">
     <div>
-        <h2>New-Item Requests</h2>
-        <p class="sab-page-sub">
-            @Model.Count waiting on you: @queueFor. Earliest stage first, then soonest needed.
-        </p>
+        <h2 class="asset-detail-title">New-Item Approvals</h2>
+        <div class="asset-detail-sub">@Model.Count waiting on you: @queueFor. Earliest stage first, then soonest needed.</div>
     </div>
 </div>
 
-@if (Model.Any())
+@if (!Model.Any())
 {
     <div class="sab-table-card">
-        <table class="table table-striped">
-            <thead>
-                <tr>
-                    <th>#</th>
-                    <th>Item</th>
-                    <th class="text-end">Quantity</th>
-                    <th class="text-end">Est. total</th>
-                    <th>Needed by</th>
-                    <th>Requested by</th>
-                    <th>Stage</th>
-                    <th style="width:34%;">Action</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var request in Model)
-                {
-                    var late = request.NeededBy is not null && request.NeededBy.Value.Date < DateTime.Today;
-                    var canReject = request.RequestStatus is NewItemStatus.AwaitingDeptHead or NewItemStatus.AwaitingBudget;
-
-                    <tr>
-                        <td><a asp-action="Details" asp-route-id="@request.NewItemRequestID">@request.NewItemRequestID</a></td>
-                        <td>
-                            <a asp-action="Details" asp-route-id="@request.NewItemRequestID" class="fw-semibold">@request.ItemName</a>
-                            @if (!string.IsNullOrWhiteSpace(request.Reason))
-                            {
-                                <div class="text-muted small"><em>@request.Reason</em></div>
-                            }
-                        </td>
-                        <td class="text-end">@request.Quantity</td>
-                        <td class="text-end text-nowrap">@DisplayText.Peso(request.EstimatedTotal)</td>
-                        <td class="@(late ? "text-danger fw-semibold" : "")">
-                            @(request.NeededBy?.ToString("MMM d, yyyy") ?? "—")
-                            @if (late)
-                            {
-                                <div class="small">Date has passed</div>
-                            }
-                        </td>
-                        <td>
-                            <div>@request.RequestedByUserName</div>
-                            <div class="text-muted small">@request.DepartmentName · @request.RequestDate.ToString("MMM d, yyyy")</div>
-                        </td>
-                        <td>
-                            <span class="status-pill status-@request.RequestStatus.ToString().ToLowerInvariant()">
-                                @DisplayText.Stage(request.RequestStatus)
-                            </span>
-                        </td>
-                        <td>
-                            @if (request.CanAct)
-                            {
-                                @* One form: the main button moves it on, Reject
-                                   overrides the action via formaction so both
-                                   share the remarks box. *@
-                                <form asp-action="Advance" asp-route-id="@request.NewItemRequestID" method="post">
-                                    @Html.AntiForgeryToken()
-                                    <input type="hidden" name="rowVersionBase64"
-                                           value="@RowVersionHelper.ToBase64(request.RowVersion)" />
-                                    <input type="text" name="remarks" maxlength="500" class="form-control form-control-sm mb-2"
-                                           placeholder="Remarks (optional — shown in the history)" />
-                                    <button type="submit" class="btn btn-success btn-sm">@DisplayText.AdvanceButton(request.RequestStatus)</button>
-                                    @if (canReject)
-                                    {
-                                        <button type="submit" class="btn btn-outline-danger btn-sm"
-                                                formaction="@Url.Action("Reject", new { id = request.NewItemRequestID })">
-                                            Reject
-                                        </button>
-                                    }
-                                </form>
-                            }
-                            else
-                            {
-                                <span class="text-muted small">Not yours to act on at this stage.</span>
-                            }
-                        </td>
-                    </tr>
-                }
-            </tbody>
-        </table>
-    </div>
-}
-else
-{
-    <div class="card">
         <div class="sab-empty">
             <div class="sab-empty-title">Nothing waiting on you</div>
             <p>New-item requests show up here when they reach a step you handle.</p>
         </div>
+    </div>
+}
+else
+{
+    <div class="sab-table-card myassets" data-md data-page-size="6">
+        <aside class="myassets-list" aria-label="New-item requests waiting on you">
+            <div class="md-toolbar">
+                <label class="asset-search">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+                    <input type="text" data-md-search autocomplete="off" placeholder="Item, requester or #..." aria-label="Search new-item requests" />
+                </label>
+            </div>
+
+            @foreach (var g in groups)
+            {
+                var label = groupLabel.TryGetValue(g.Key, out var gl) ? gl : (Label: DisplayText.Stage(g.Key), Key: "use");
+                <div class="myassets-group" data-md-group>
+                    <div class="myassets-group-label group-@label.Key">@label.Label · <span data-md-count>@g.Count()</span></div>
+                    @foreach (var r in g)
+                    {
+                        var late = r.NeededBy is not null && r.NeededBy.Value.Date < DateTime.Today;
+                        <button type="button" class="myassets-item" data-entry="n-@r.NewItemRequestID"
+                                data-search="@($"#{r.NewItemRequestID} {r.NewItemRequestID} {r.ItemName} {r.Reason} {r.RequestedByUserName} {r.DepartmentName}".ToLowerInvariant())">
+                            <span class="md-avatar">@NewItemProgress.Initials(r.RequestedByUserName)</span>
+                            <span class="myassets-item-main">
+                                <span class="myassets-item-title">@r.ItemName@(r.Quantity > 1 ? $" ×{r.Quantity}" : "")</span>
+                                <span class="myassets-item-sub">@r.RequestedByUserName · @r.DepartmentName</span>
+                                <span class="myassets-item-sub @(late ? "text-danger" : "")">@DisplayText.Peso(r.EstimatedTotal)@(r.NeededBy is not null ? " · needed " + r.NeededBy.Value.ToString("MMM d") : "")</span>
+                            </span>
+                            <span class="asset-pill asset-status md-pill @NewItemProgress.Pill(r.RequestStatus)">@NewItemProgress.Short(r.RequestStatus)</span>
+                        </button>
+                    }
+                </div>
+            }
+            <div class="myassets-nomatch" data-md-empty hidden>Nothing matches your search.</div>
+
+            <div class="md-foot">
+                <span data-md-range></span>
+                <div data-md-pager></div>
+            </div>
+        </aside>
+
+        <section class="myassets-detail">
+            @foreach (var r in ordered)
+            {
+                var canReject = r.RequestStatus is NewItemStatus.AwaitingDeptHead or NewItemStatus.AwaitingBudget;
+                var steps = NewItemProgress.Steps(r, r.CanAct ? "you" : "waiting");
+                var late = r.NeededBy is not null && r.NeededBy.Value.Date < DateTime.Today;
+
+                <article class="myassets-panel" data-panel="n-@r.NewItemRequestID" hidden>
+                    <button type="button" class="myassets-back" data-back>&larr; All requests</button>
+
+                    <div class="myassets-panel-head">
+                        <div class="min-w-0">
+                            <div class="myassets-panel-meta"><span>New-item request #@r.NewItemRequestID · @r.RequestedByUserName · @r.DepartmentName</span></div>
+                            <h3 class="myassets-panel-title">@r.ItemName</h3>
+                        </div>
+                        <div class="myassets-panel-actions">
+                            <span class="asset-pill asset-status @NewItemProgress.Pill(r.RequestStatus)">@NewItemProgress.Short(r.RequestStatus)</span>
+                            <a asp-action="Details" asp-route-id="@r.NewItemRequestID" class="btn btn-outline-secondary">Open &rarr;</a>
+                        </div>
+                    </div>
+
+                    <partial name="_RequestSteps" model="steps" />
+
+                    <div class="myassets-units mt-3">
+                        <table class="table myassets-table nir-table">
+                            <thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Est. each</th><th class="num">Est. total</th></tr></thead>
+                            <tbody>
+                                <tr>
+                                    <td data-label="Item">@r.ItemName</td>
+                                    <td data-label="Qty" class="num">@r.Quantity</td>
+                                    <td data-label="Est. each" class="num">@DisplayText.Peso(r.EstimatedUnitPrice)</td>
+                                    <td data-label="Est. total" class="num">@DisplayText.Peso(r.EstimatedTotal)</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="nir-cols">
+                        <div>
+                            <h4 class="md-section-title">Reason</h4>
+                            <div class="req-note mt-0">
+                                @(string.IsNullOrWhiteSpace(r.Reason) ? "—" : r.Reason)
+                                @if (r.NeededBy is not null)
+                                {
+                                    <strong class="@(late ? "text-danger" : "")">Needed by @r.NeededBy.Value.ToString("MMM d")@(late ? " (date has passed)" : "").</strong>
+                                }
+                            </div>
+                        </div>
+                        <div>
+                            <h4 class="md-section-title">Steps so far</h4>
+                            <partial name="_NewItemStepsFeed" model="r" />
+                        </div>
+                    </div>
+
+                    @if (r.CanAct)
+                    {
+                        @* One form: the main button moves it on; Reject swaps the
+                           action with formaction, so both share the remarks. *@
+                        <form asp-action="Advance" asp-route-id="@r.NewItemRequestID" method="post" class="req-decision">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="rowVersionBase64" value="@RowVersionHelper.ToBase64(r.RowVersion)" />
+                            <textarea name="remarks" maxlength="500" rows="2" class="form-control"
+                                      placeholder="Remarks (optional) — shown in the history."></textarea>
+                            <div class="req-decision-row">
+                                <div class="req-action-buttons">
+                                    <button type="submit" class="btn btn-primary">&#10003; @DisplayText.AdvanceButton(r.RequestStatus)</button>
+                                    @if (canReject)
+                                    {
+                                        <button type="submit" class="btn btn-outline-danger"
+                                                formaction="@Url.Action("Reject", new { id = r.NewItemRequestID })">Reject</button>
+                                    }
+                                </div>
+                                <span class="req-action-note">@NewItemProgress.NextNote(r.RequestStatus)</span>
+                            </div>
+                        </form>
+                    }
+                    else
+                    {
+                        <div class="req-waiting mt-3">
+                            <span>Not yours</span>
+                            <span>This stage is for @NewItemProgress.WaitingOn(r.RequestStatus).</span>
+                        </div>
+                    }
+                </article>
+            }
+        </section>
     </div>
 }

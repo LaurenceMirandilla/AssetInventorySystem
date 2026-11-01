@@ -1,14 +1,61 @@
 ﻿@model SchoolInventoryManagement.Web.ViewModels.AssetIndexViewModel
 @using Microsoft.AspNetCore.Mvc.Rendering
+@using SchoolInventoryManagement.DAL.Constants
+@using SchoolInventoryManagement.DAL.Entities.Enums
 @{
     ViewData["Title"] = "Assets";
-    var canManage = User.IsInRole("Asset Officer") || User.IsInRole("Administrator");
-    var activeStatus = Model.Status?.ToString();
 
-    // Rides along on every link (tiles, pager, export) so the "Include
-    // disposed" choice survives clicking around. Null leaves it out of
-    // the URL entirely when unticked.
-    string? includeDisposedRoute = Model.IncludeDisposed ? "true" : null;
+    // Teachers and Staff never reach this page (they get the catalogue), so
+    // everyone here may see the units. Only these two may change them.
+    var canManage = User.IsInRole(RoleNames.AssetOfficer) || User.IsInRole(RoleNames.Administrator);
+    // Mirrors the [Authorize] on AssetsController.History.
+    var canViewHistory = canManage || User.IsInRole(RoleNames.Principal);
+
+    // The current filters as route values, so the pager, the export link and
+    // the page-size picker all carry the search along. Empty values are left
+    // out of the URL entirely.
+    var exportRoute = new Dictionary<string, string>();
+    void AddRoute(string key, object? value)
+    {
+        if (value != null) { exportRoute[key] = value.ToString()!; }
+    }
+    AddRoute("keyword", string.IsNullOrWhiteSpace(Model.Keyword) ? null : Model.Keyword);
+    AddRoute("categoryId", Model.CategoryId);
+    AddRoute("modelId", Model.ModelId);
+    AddRoute("branchId", Model.BranchId);
+    AddRoute("locationId", Model.LocationId);
+    AddRoute("departmentId", Model.DepartmentId);
+    AddRoute("status", Model.Status);
+    AddRoute("condition", Model.Condition);
+    AddRoute("includeDisposed", Model.IncludeDisposed ? "true" : null);
+
+    Func<int, Dictionary<string, string>> pageRoute = n =>
+    {
+        var r = new Dictionary<string, string>(exportRoute) { ["page"] = n.ToString() };
+        if (Model.PageSize != 20) { r["pageSize"] = Model.PageSize.ToString(); }
+        return r;
+    };
+
+    // Pager window: first, last, and the pages either side of the current
+    // one -- "1 2 3 … 14" on page one, as in the mockup.
+    var lastPage = Model.TotalPages;
+    var windowStart = Math.Max(1, Model.Page - 1);
+    var windowEnd = Math.Min(lastPage, Model.Page + 1);
+    if (Model.Page <= 2) { windowEnd = Math.Min(lastPage, 3); }
+    if (Model.Page >= lastPage - 1) { windowStart = Math.Max(1, lastPage - 2); }
+
+    var filtersOpen = Model.ActiveFilterCount > 0;
+}
+
+@functions {
+    static string StatusLabel(AssetStatus s) =>
+        s == AssetStatus.UnderMaintenance ? "Maintenance" : DisplayText.Humanize(s.ToString());
+
+    static string Initials(string name)
+    {
+        var initials = string.Concat(name.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(p => p[0])).ToUpperInvariant();
+        return initials.Length > 2 ? initials[..2] : initials;
+    }
 }
 
 @if (TempData["ErrorMessage"] != null)
@@ -19,276 +66,332 @@
 <div class="sab-page-head">
     <div>
         <h2>Assets</h2>
-        @if (Model.HasFilters)
-        {
-            <p class="sab-page-sub">@Model.TotalFilteredCount of @Model.GrandTotalCount registered unit@(Model.GrandTotalCount == 1 ? "" : "s") match@(Model.TotalFilteredCount == 1 ? "es" : "") your filters.</p>
-        }
-        else
-        {
-            <p class="sab-page-sub">@Model.TotalFilteredCount registered unit@(Model.TotalFilteredCount == 1 ? "" : "s").</p>
-        }
-        @if (!Model.ShowsDisposed && Model.DisposedCount > 0)
-        {
-            <p class="sab-page-sub mt-0">@Model.DisposedCount disposed unit@(Model.DisposedCount == 1 ? " is" : "s are") hidden — tick "Include disposed" to show @(Model.DisposedCount == 1 ? "it" : "them").</p>
-        }
-    </div>
-    <div class="sab-page-actions">
-        @* A USB barcode scanner types the code and presses Enter, which
-           submits this and opens the asset. *@
-        <form asp-action="Scan" method="get" class="d-flex" style="gap:6px;" role="search">
-            <input name="code" class="form-control" style="max-width:200px;" autocomplete="off"
-                   placeholder="Scan barcode…" aria-label="Scan a barcode or type an asset code" />
-            <button type="submit" class="btn btn-outline-secondary">Open</button>
-        </form>
-
-        <a asp-action="ExportAssets"
-           asp-route-keyword="@Model.Keyword"
-           asp-route-categoryId="@Model.CategoryId"
-           asp-route-departmentId="@Model.DepartmentId"
-           asp-route-status="@Model.Status"
-           asp-route-condition="@Model.Condition" asp-route-locationId="@Model.LocationId" asp-route-modelId="@Model.ModelId" asp-route-branchId="@Model.BranchId" asp-route-includeDisposed="@includeDisposedRoute"
-           class="btn btn-outline-secondary">Export CSV</a>
-
-        @if (canManage)
-        {
-            <a asp-action="BulkCreate" class="btn btn-outline-primary">+ Bulk register</a>
-            <a asp-action="Create" class="btn btn-primary">+ Register asset</a>
-        }
-    </div>
-</div>
-
-@* KPI tiles -- a live breakdown of the rows below, so they always add up
-   to what the table is showing. The one exception is Disposed while
-   disposed units are hidden: it then counts the hidden ones, and
-   clicking it shows them. Every filter narrows them, status
-   included, which means selecting a status zeroes the others. That is
-   the honest count, so the highlighted tile doubles as the way out:
-   clicking it drops the status and restores the full breakdown, as does
-   "All assets". The other filters ride along on every tile, so you never
-   lose your search by clicking one. *@
-<div class="report-tiles mb-3">
-    <a asp-action="Index"
-       asp-route-keyword="@Model.Keyword" asp-route-categoryId="@Model.CategoryId"
-       asp-route-departmentId="@Model.DepartmentId" asp-route-condition="@Model.Condition" asp-route-locationId="@Model.LocationId" asp-route-modelId="@Model.ModelId" asp-route-branchId="@Model.BranchId" asp-route-includeDisposed="@includeDisposedRoute"
-       class="report-tile text-decoration-none @(activeStatus == null ? "active" : "")">
-        <span class="report-tile-value">@Model.TotalFilteredCount</span>
-        <span class="report-tile-label">@(Model.HasFilters ? "All matches" : "All assets")</span>
-    </a>
-    <a asp-action="Index"
-       asp-route-status="@(activeStatus == "Available" ? null : "Available")"
-       asp-route-keyword="@Model.Keyword" asp-route-categoryId="@Model.CategoryId"
-       asp-route-departmentId="@Model.DepartmentId" asp-route-condition="@Model.Condition" asp-route-locationId="@Model.LocationId" asp-route-modelId="@Model.ModelId" asp-route-branchId="@Model.BranchId" asp-route-includeDisposed="@includeDisposedRoute"
-       class="report-tile text-decoration-none @(activeStatus == "Available" ? "active" : "")">
-        <span class="report-tile-value">@Model.AvailableCount</span>
-        <span class="report-tile-label">Available</span>
-    </a>
-    <a asp-action="Index"
-       asp-route-status="@(activeStatus == "Assigned" ? null : "Assigned")"
-       asp-route-keyword="@Model.Keyword" asp-route-categoryId="@Model.CategoryId"
-       asp-route-departmentId="@Model.DepartmentId" asp-route-condition="@Model.Condition" asp-route-locationId="@Model.LocationId" asp-route-modelId="@Model.ModelId" asp-route-branchId="@Model.BranchId" asp-route-includeDisposed="@includeDisposedRoute"
-       class="report-tile text-decoration-none @(activeStatus == "Assigned" ? "active" : "")">
-        <span class="report-tile-value">@Model.AssignedCount</span>
-        <span class="report-tile-label">Assigned</span>
-    </a>
-    <a asp-action="Index"
-       asp-route-status="@(activeStatus == "InTransit" ? null : "InTransit")"
-       asp-route-keyword="@Model.Keyword" asp-route-categoryId="@Model.CategoryId"
-       asp-route-departmentId="@Model.DepartmentId" asp-route-condition="@Model.Condition" asp-route-locationId="@Model.LocationId" asp-route-modelId="@Model.ModelId" asp-route-branchId="@Model.BranchId" asp-route-includeDisposed="@includeDisposedRoute"
-       class="report-tile text-decoration-none @(activeStatus == "InTransit" ? "active" : "")">
-        <span class="report-tile-value">@Model.InTransitCount</span>
-        <span class="report-tile-label">In transit</span>
-    </a>
-    <a asp-action="Index"
-       asp-route-status="@(activeStatus == "Overdue" ? null : "Overdue")"
-       asp-route-keyword="@Model.Keyword" asp-route-categoryId="@Model.CategoryId"
-       asp-route-departmentId="@Model.DepartmentId" asp-route-condition="@Model.Condition" asp-route-locationId="@Model.LocationId" asp-route-modelId="@Model.ModelId" asp-route-branchId="@Model.BranchId" asp-route-includeDisposed="@includeDisposedRoute"
-       class="report-tile text-decoration-none @(activeStatus == "Overdue" ? "active" : "")">
-        <span class="report-tile-value @(Model.OverdueCount > 0 ? "text-danger" : "")">@Model.OverdueCount</span>
-        <span class="report-tile-label">Overdue</span>
-    </a>
-    <a asp-action="Index"
-       asp-route-status="@(activeStatus == "UnderMaintenance" ? null : "UnderMaintenance")"
-       asp-route-keyword="@Model.Keyword" asp-route-categoryId="@Model.CategoryId"
-       asp-route-departmentId="@Model.DepartmentId" asp-route-condition="@Model.Condition" asp-route-locationId="@Model.LocationId" asp-route-modelId="@Model.ModelId" asp-route-branchId="@Model.BranchId" asp-route-includeDisposed="@includeDisposedRoute"
-       class="report-tile text-decoration-none @(activeStatus == "UnderMaintenance" ? "active" : "")">
-        <span class="report-tile-value">@Model.UnderMaintenanceCount</span>
-        <span class="report-tile-label">Under maintenance</span>
-    </a>
-    <a asp-action="Index"
-       asp-route-status="@(activeStatus == "Disposed" ? null : "Disposed")"
-       asp-route-keyword="@Model.Keyword" asp-route-categoryId="@Model.CategoryId"
-       asp-route-departmentId="@Model.DepartmentId" asp-route-condition="@Model.Condition" asp-route-locationId="@Model.LocationId" asp-route-modelId="@Model.ModelId" asp-route-branchId="@Model.BranchId" asp-route-includeDisposed="@includeDisposedRoute"
-       class="report-tile text-decoration-none @(activeStatus == "Disposed" ? "active" : "")">
-        <span class="report-tile-value @(Model.ShowsDisposed ? "" : "text-muted")">@Model.DisposedCount</span>
-        <span class="report-tile-label">Disposed@(Model.ShowsDisposed ? "" : " (hidden)")</span>
-    </a>
-</div>
-
-@* Filters, rows and the pager are one raised surface, as in the mockup --
-   the filter row is a toolbar on the card rather than a detached form. *@
-<div class="sab-table-card">
-    <form method="get" class="sab-table-toolbar">
-        <div class="sab-table-filters">
-            <input type="text" name="keyword" class="form-control" style="width:190px;"
-                   placeholder="Name, code, serial…" value="@Model.Keyword" />
-            @* Order follows the hierarchy: Category > Model, then
-               Branch > Location / Department. Every list is usable on its
-               own; picking a parent narrows its children, and picking a
-               child selects its parent. The script at the bottom does it. *@
-            <select name="categoryId" id="fCategory" class="form-select" style="width:auto;">
-                <option value="">All categories</option>
-                @foreach (var c in Model.CategoryOptions)
-                {
-                    <option value="@c.CategoryID" selected="@(Model.CategoryId == c.CategoryID)">@c.CategoryName</option>
-                }
-            </select>
-
-            <select name="modelId" id="fModel" class="form-select" style="width:auto;">
-                <option value="">All models</option>
-                @foreach (var g in Model.ModelOptions.GroupBy(m => m.CategoryName))
-                {
-                    <optgroup label="@g.Key">
-                        @foreach (var m in g)
-                        {
-                            <option value="@m.ModelID" data-parent="@m.CategoryID" selected="@(Model.ModelId == m.ModelID)">@m.ModelName</option>
-                        }
-                    </optgroup>
-                }
-            </select>
-
-            <select name="branchId" id="fBranch" class="form-select" style="width:auto;">
-                <option value="">All branches</option>
-                @foreach (var b in Model.BranchOptions)
-                {
-                    <option value="@b.BranchID" selected="@(Model.BranchId == b.BranchID)">@b.BranchName</option>
-                }
-            </select>
-
-            <select name="locationId" id="fLocation" class="form-select" style="width:auto;">
-                <option value="">All locations</option>
-                @foreach (var g in Model.LocationOptions.GroupBy(l => l.BranchName))
-                {
-                    <optgroup label="@g.Key">
-                        @foreach (var l in g)
-                        {
-                            <option value="@l.LocationID" data-parent="@l.BranchID" selected="@(Model.LocationId == l.LocationID)">@l.LocationName</option>
-                        }
-                    </optgroup>
-                }
-            </select>
-
-            <select name="departmentId" id="fDepartment" class="form-select" style="width:auto;">
-                <option value="">All departments</option>
-                @foreach (var g in Model.DepartmentOptions.GroupBy(d => d.BranchName))
-                {
-                    <optgroup label="@g.Key">
-                        @foreach (var d in g)
-                        {
-                            <option value="@d.DepartmentID" data-parent="@d.BranchID" selected="@(Model.DepartmentId == d.DepartmentID)">@d.DepartmentName</option>
-                        }
-                    </optgroup>
-                }
-            </select>
-
-            @Html.DropDownList("status", (IEnumerable<SelectListItem>)ViewBag.StatusFilter,
-                 "All statuses", new { @class = "form-select", style = "width:auto;" })
-            @Html.DropDownList("condition", (IEnumerable<SelectListItem>)ViewBag.ConditionFilter,
-                 "All conditions", new { @class = "form-select", style = "width:auto;" })
-            @* Off by default: the list is what the school still has. Ticking
-               it applies straight away. Choosing Disposed under status
-               shows them either way. *@
-            <div class="form-check mb-0 align-self-center">
-                <input class="form-check-input" type="checkbox" name="includeDisposed" value="true" id="fIncludeDisposed"
-                       checked="@Model.IncludeDisposed" onchange="this.form.submit()" />
-                <label class="form-check-label small text-nowrap" for="fIncludeDisposed">Include disposed</label>
-            </div>
-            <button type="submit" class="btn btn-secondary">Apply</button>
-            <a asp-action="Index" class="btn btn-outline-secondary">Reset</a>
-        </div>
-
-        <span class="sab-table-count">
-            @if (Model.TotalFilteredCount == 0)
+        <p class="sab-page-sub">
+            @if (Model.HasFilters)
             {
-                <text>No matches</text>
+                <text>@Model.TotalFilteredCount of @Model.GrandTotalCount registered unit@(Model.GrandTotalCount == 1 ? "" : "s") match@(Model.TotalFilteredCount == 1 ? "es" : "") your filters</text>
             }
             else
             {
-                <text>Showing @Model.FirstRowNumber–@Model.LastRowNumber of @Model.TotalFilteredCount</text>
+                <text>@Model.GrandTotalCount registered unit@(Model.GrandTotalCount == 1 ? "" : "s") across all branches</text>
             }
-        </span>
+            @if (!Model.ShowsDisposed && Model.DisposedCount > 0)
+            {
+                <text> &middot; @Model.DisposedCount disposed hidden</text>
+            }
+        </p>
+    </div>
+    <div class="sab-page-actions">
+        <a asp-action="ExportAssets" asp-all-route-data="exportRoute" class="btn btn-outline-secondary">Export CSV</a>
+
+        @if (canManage)
+        {
+            <a asp-action="BulkCreate" class="btn btn-outline-secondary">+ Bulk register</a>
+            <a asp-action="Create" class="btn btn-primary">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+                Register asset
+            </a>
+        }
+    </div>
+</div>
+
+@* The barcode box submits on its own; its inputs point at this form with
+   the form attribute, so it can sit inside the filter toolbar without
+   nesting one form in another. *@
+<form id="assetScan" asp-action="Scan" method="get"></form>
+
+<div class="sab-table-card asset-list">
+    <form id="assetFilters" method="get">
+        <div class="asset-toolbar">
+            <label class="asset-search">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+                <input type="text" name="keyword" id="assetKeyword" value="@Model.Keyword" autocomplete="off"
+                       placeholder="Search name, code, serial..." aria-label="Search assets by name, code or serial" />
+                <kbd>/</kbd>
+            </label>
+
+            @* A USB barcode scanner types the code and presses Enter, which
+               opens the asset. *@
+            <div class="dropdown">
+                <button type="button" class="asset-tool-btn" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" id="scanToggle">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 6v12M7 6v12M11 6v12M14 6v12M18 6v12M20 6v12" /></svg>
+                    Scan barcode
+                </button>
+                <div class="dropdown-menu asset-scan-menu" aria-labelledby="scanToggle">
+                    <label for="scanCode" class="form-label small text-muted mb-1">Scan or type an asset code</label>
+                    <div class="d-flex" style="gap:6px;">
+                        <input name="code" id="scanCode" form="assetScan" class="form-control form-control-sm" autocomplete="off" placeholder="FAN-0001" />
+                        <button type="submit" form="assetScan" class="btn btn-primary btn-sm">Open</button>
+                    </div>
+                </div>
+            </div>
+
+            <button type="button" class="asset-tool-btn @(filtersOpen ? "active" : "")" data-bs-toggle="collapse"
+                    data-bs-target="#assetFilterPanel" aria-expanded="@(filtersOpen ? "true" : "false")" aria-controls="assetFilterPanel">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18l-7 8.5V19l-4 2v-7.5z" /></svg>
+                Filters
+                @if (Model.ActiveFilterCount > 0)
+                {
+                    <span class="asset-filter-count">@Model.ActiveFilterCount</span>
+                }
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 9l6 6 6-6z" /></svg>
+            </button>
+
+            <span class="asset-count">
+                @if (Model.TotalFilteredCount == 0)
+                {
+                    <text>No matches</text>
+                }
+                else
+                {
+                    <text>Showing <strong>@Model.FirstRowNumber–@Model.LastRowNumber</strong> of @Model.TotalFilteredCount</text>
+                }
+            </span>
+        </div>
+
+        <div class="collapse @(filtersOpen ? "show" : "")" id="assetFilterPanel">
+            <div class="asset-filter-panel">
+                @* Order follows the hierarchy: Category > Model, then
+                   Branch > Location / Department. Every list is usable on its
+                   own; picking a parent narrows its children, and picking a
+                   child selects its parent. The script at the bottom does it. *@
+                <div>
+                    <label for="fCategory" class="form-label">Category</label>
+                    <select name="categoryId" id="fCategory" class="form-select form-select-sm">
+                        <option value="">All categories</option>
+                        @foreach (var c in Model.CategoryOptions)
+                        {
+                            <option value="@c.CategoryID" selected="@(Model.CategoryId == c.CategoryID)">@c.CategoryName</option>
+                        }
+                    </select>
+                </div>
+
+                <div>
+                    <label for="fModel" class="form-label">Model</label>
+                    <select name="modelId" id="fModel" class="form-select form-select-sm">
+                        <option value="">All models</option>
+                        @foreach (var g in Model.ModelOptions.GroupBy(m => m.CategoryName))
+                        {
+                            <optgroup label="@g.Key">
+                                @foreach (var m in g)
+                                {
+                                    <option value="@m.ModelID" data-parent="@m.CategoryID" selected="@(Model.ModelId == m.ModelID)">@m.ModelName</option>
+                                }
+                            </optgroup>
+                        }
+                    </select>
+                </div>
+
+                <div>
+                    <label for="fBranch" class="form-label">Branch</label>
+                    <select name="branchId" id="fBranch" class="form-select form-select-sm">
+                        <option value="">All branches</option>
+                        @foreach (var b in Model.BranchOptions)
+                        {
+                            <option value="@b.BranchID" selected="@(Model.BranchId == b.BranchID)">@b.BranchName</option>
+                        }
+                    </select>
+                </div>
+
+                <div>
+                    <label for="fLocation" class="form-label">Location</label>
+                    <select name="locationId" id="fLocation" class="form-select form-select-sm">
+                        <option value="">All locations</option>
+                        @foreach (var g in Model.LocationOptions.GroupBy(l => l.BranchName))
+                        {
+                            <optgroup label="@g.Key">
+                                @foreach (var l in g)
+                                {
+                                    <option value="@l.LocationID" data-parent="@l.BranchID" selected="@(Model.LocationId == l.LocationID)">@l.LocationName</option>
+                                }
+                            </optgroup>
+                        }
+                    </select>
+                </div>
+
+                <div>
+                    <label for="fDepartment" class="form-label">Department</label>
+                    <select name="departmentId" id="fDepartment" class="form-select form-select-sm">
+                        <option value="">All departments</option>
+                        @foreach (var g in Model.DepartmentOptions.GroupBy(d => d.BranchName))
+                        {
+                            <optgroup label="@g.Key">
+                                @foreach (var d in g)
+                                {
+                                    <option value="@d.DepartmentID" data-parent="@d.BranchID" selected="@(Model.DepartmentId == d.DepartmentID)">@d.DepartmentName</option>
+                                }
+                            </optgroup>
+                        }
+                    </select>
+                </div>
+
+                <div>
+                    <label for="fStatus" class="form-label">Status</label>
+                    @Html.DropDownList("status", (IEnumerable<SelectListItem>)ViewBag.StatusFilter,
+                         "All statuses", new { @class = "form-select form-select-sm", id = "fStatus" })
+                </div>
+
+                <div>
+                    <label for="fCondition" class="form-label">Condition</label>
+                    @Html.DropDownList("condition", (IEnumerable<SelectListItem>)ViewBag.ConditionFilter,
+                         "All conditions", new { @class = "form-select form-select-sm", id = "fCondition" })
+                </div>
+
+                <div class="asset-filter-actions">
+                    @* Off by default: the list is what the school still has.
+                       Choosing Disposed under status shows them either way. *@
+                    <div class="form-check mb-0">
+                        <input class="form-check-input" type="checkbox" name="includeDisposed" value="true" id="fIncludeDisposed"
+                               checked="@Model.IncludeDisposed" />
+                        <label class="form-check-label small text-nowrap" for="fIncludeDisposed">Include disposed</label>
+                    </div>
+                    <a asp-action="Index" class="btn btn-outline-secondary btn-sm">Reset</a>
+                    <button type="submit" class="btn btn-primary btn-sm">Apply</button>
+                </div>
+            </div>
+        </div>
     </form>
 
     @if (Model.TotalFilteredCount > 0)
     {
-        <table class="table table-striped">
-            <thead>
-                <tr>
-                    <th>Code</th>
-                    <th>Asset</th>
-                    <th>Category</th>
-                    <th>Condition</th>
-                    <th>Status</th>
-                    <th>Holder / Location</th>
-                    <th></th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var asset in Model.Assets)
-                {
+        <div class="table-responsive">
+            <table class="table asset-table">
+                <thead>
                     <tr>
-                        <td><a asp-action="Details" asp-route-id="@asset.AssetID" class="sab-code">@asset.AssetCode</a></td>
-                        <td>
-                            <div class="fw-semibold">@asset.AssetName</div>
-                            <div class="text-muted small">
-                                @asset.ModelName
-                                @if (!string.IsNullOrWhiteSpace(asset.SerialNumber))
-                                {
-                                    <text> &middot; SN @asset.SerialNumber</text>
-                                }
-                            </div>
-                        </td>
-                        <td>@asset.CategoryName</td>
-                        <td><span class="status-pill status-@asset.Condition.ToString().ToLowerInvariant()">@DisplayText.Humanize(asset.Condition.ToString())</span></td>
-                        <td><span class="status-pill status-@asset.Status.ToString().ToLowerInvariant()">@DisplayText.Humanize(asset.Status.ToString())</span></td>
-                        <td>
-                            @if (!string.IsNullOrWhiteSpace(asset.AssignedUserName))
-                            {
-                                var initials = string.Concat(asset.AssignedUserName.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(p => p[0])).ToUpperInvariant();
-                                if (initials.Length > 2) { initials = initials[..2]; }
-                                <div class="d-flex align-items-center" style="gap:8px;">
-                                    <span class="sab-avatar sab-avatar-soft sab-avatar-sm">@initials</span>
-                                    <span>@asset.AssignedUserName</span>
-                                </div>
-                            }
-                            else
-                            {
-                                @(asset.CurrentLocationName ?? "—")
-                            }
-                        </td>
-                        <td><a asp-action="Details" asp-route-id="@asset.AssetID">View</a></td>
+                        <th>Code</th>
+                        <th>Asset</th>
+                        <th>Category</th>
+                        <th>Condition</th>
+                        <th>Status</th>
+                        <th>Holder</th>
+                        <th><span class="visually-hidden">Actions</span></th>
                     </tr>
-                }
-            </tbody>
-        </table>
+                </thead>
+                <tbody>
+                    @foreach (var asset in Model.Assets)
+                    {
+                        // Same rule as the Edit button on Details: a unit that
+                        // is out with someone cannot be edited.
+                        var isOut = asset.Status == AssetStatus.Assigned
+                            || asset.Status == AssetStatus.Overdue
+                            || asset.Status == AssetStatus.InTransit;
+                        // Model, serial and location ride along as a hover
+                        // hint, so the row stays one line as in the mockup.
+                        var hint = asset.ModelName
+                            + (string.IsNullOrWhiteSpace(asset.SerialNumber) ? "" : " · SN " + asset.SerialNumber)
+                            + (string.IsNullOrWhiteSpace(asset.CurrentLocationName) ? "" : " · " + asset.CurrentLocationName);
+                        <tr>
+                            <td><a asp-action="Details" asp-route-id="@asset.AssetID" class="asset-code-chip">@asset.AssetCode</a></td>
+                            <td>
+                                <a asp-action="Details" asp-route-id="@asset.AssetID" class="asset-name" title="@hint">@asset.AssetName</a>
+                            </td>
+                            <td class="asset-muted">@asset.CategoryName</td>
+                            <td><span class="asset-pill asset-cond cond-@asset.Condition.ToString().ToLowerInvariant()">@DisplayText.Humanize(asset.Condition.ToString())</span></td>
+                            <td><span class="asset-pill asset-status st-@asset.Status.ToString().ToLowerInvariant()">@StatusLabel(asset.Status)</span></td>
+                            <td>
+                                @if (!string.IsNullOrWhiteSpace(asset.AssignedUserName))
+                                {
+                                    <span class="asset-holder">
+                                        <span class="asset-holder-avatar">@Initials(asset.AssignedUserName)</span>
+                                        @asset.AssignedUserName
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="asset-none">—</span>
+                                }
+                            </td>
+                            <td class="text-end">
+                                <div class="dropdown">
+                                    <button type="button" class="asset-row-menu" data-bs-toggle="dropdown" aria-expanded="false"
+                                            aria-label="Actions for @asset.AssetCode">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="19" cy="12" r="1.6" /></svg>
+                                    </button>
+                                    <ul class="dropdown-menu dropdown-menu-end">
+                                        <li><a class="dropdown-item" asp-action="Details" asp-route-id="@asset.AssetID">View details</a></li>
+                                        @if (canViewHistory)
+                                        {
+                                            <li><a class="dropdown-item" asp-action="History" asp-route-id="@asset.AssetID">History</a></li>
+                                        }
+                                        @if (canManage && !isOut)
+                                        {
+                                            <li><a class="dropdown-item" asp-action="Edit" asp-route-id="@asset.AssetID">Edit</a></li>
+                                        }
+                                        @if (!string.IsNullOrEmpty(asset.BarcodeData))
+                                        {
+                                            <li><a class="dropdown-item" asp-action="Barcode" asp-route-id="@asset.AssetID" target="_blank">Barcode</a></li>
+                                        }
+                                    </ul>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
 
-        @if (Model.TotalPages > 1)
-        {
-            <div class="sab-table-foot">
-                <span class="text-muted small">Page @Model.Page of @Model.TotalPages</span>
-                <div>
-                    <a class="btn btn-outline-secondary btn-sm @(Model.Page <= 1 ? "disabled" : "")"
-                       asp-action="Index"
-                       asp-route-keyword="@Model.Keyword" asp-route-categoryId="@Model.CategoryId"
-                       asp-route-departmentId="@Model.DepartmentId" asp-route-status="@Model.Status"
-                       asp-route-condition="@Model.Condition" asp-route-locationId="@Model.LocationId" asp-route-modelId="@Model.ModelId" asp-route-branchId="@Model.BranchId" asp-route-includeDisposed="@includeDisposedRoute" asp-route-page="@(Model.Page - 1)">Previous</a>
-                    <a class="btn btn-outline-secondary btn-sm @(Model.Page >= Model.TotalPages ? "disabled" : "")"
-                       asp-action="Index"
-                       asp-route-keyword="@Model.Keyword" asp-route-categoryId="@Model.CategoryId"
-                       asp-route-departmentId="@Model.DepartmentId" asp-route-status="@Model.Status"
-                       asp-route-condition="@Model.Condition" asp-route-locationId="@Model.LocationId" asp-route-modelId="@Model.ModelId" asp-route-branchId="@Model.BranchId" asp-route-includeDisposed="@includeDisposedRoute" asp-route-page="@(Model.Page + 1)">Next</a>
-                </div>
+        <div class="asset-foot">
+            <select name="pageSize" form="assetFilters" class="form-select form-select-sm asset-page-size"
+                    aria-label="Rows per page" onchange="this.form.submit()">
+                @foreach (var size in Model.PageSizeOptions)
+                {
+                    <option value="@size" selected="@(size == Model.PageSize)">@size per page</option>
+                }
+            </select>
+
+            <div class="asset-pager">
+                <span class="asset-page-label">Page @Model.Page of @lastPage</span>
+                <nav aria-label="Asset pages" class="d-flex" style="gap:6px;">
+                    @if (Model.Page > 1)
+                    {
+                        <a class="asset-page" asp-action="Index" asp-all-route-data="pageRoute(Model.Page - 1)" aria-label="Previous page">&lsaquo;</a>
+                    }
+                    else
+                    {
+                        <span class="asset-page disabled" aria-hidden="true">&lsaquo;</span>
+                    }
+
+                    @if (windowStart > 1)
+                    {
+                        <a class="asset-page" asp-action="Index" asp-all-route-data="pageRoute(1)">1</a>
+                        if (windowStart > 2)
+                        {
+                            <span class="asset-page-gap">…</span>
+                        }
+                    }
+
+                    @for (var n = windowStart; n <= windowEnd; n++)
+                    {
+                        if (n == Model.Page)
+                        {
+                            <span class="asset-page current" aria-current="page">@n</span>
+                        }
+                        else
+                        {
+                            <a class="asset-page" asp-action="Index" asp-all-route-data="pageRoute(n)">@n</a>
+                        }
+                    }
+
+                    @if (windowEnd < lastPage)
+                    {
+                        if (windowEnd < lastPage - 1)
+                        {
+                            <span class="asset-page-gap">…</span>
+                        }
+                        <a class="asset-page" asp-action="Index" asp-all-route-data="pageRoute(lastPage)">@lastPage</a>
+                    }
+
+                    @if (Model.Page < lastPage)
+                    {
+                        <a class="asset-page" asp-action="Index" asp-all-route-data="pageRoute(Model.Page + 1)" aria-label="Next page">&rsaquo;</a>
+                    }
+                    else
+                    {
+                        <span class="asset-page disabled" aria-hidden="true">&rsaquo;</span>
+                    }
+                </nav>
             </div>
-        }
+        </div>
     }
     else
     {
@@ -421,5 +524,37 @@
             syncModels();
             syncBranchChildren();
         })();
+
+        // "/" jumps to the search box, as the hint in it says.
+        document.addEventListener('keydown', function (e) {
+            if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
+            var t = e.target;
+            if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+            var box = document.getElementById('assetKeyword');
+            if (!box) return;
+            e.preventDefault();
+            box.focus();
+            box.select();
+        });
+
+        // The scan box is ready to receive a scanner's keystrokes as soon as
+        // it opens.
+        (function () {
+            var toggle = document.getElementById('scanToggle');
+            if (!toggle) return;
+            toggle.addEventListener('shown.bs.dropdown', function () {
+                document.getElementById('scanCode').focus();
+            });
+        })();
+
+        // Row menus sit inside the scrolling table wrapper, which would clip
+        // them; a fixed-position popper escapes it.
+        document.querySelectorAll('.asset-row-menu').forEach(function (btn) {
+            new bootstrap.Dropdown(btn, {
+                popperConfig: function (config) {
+                    return Object.assign({}, config, { strategy: 'fixed' });
+                }
+            });
+        });
     </script>
 }

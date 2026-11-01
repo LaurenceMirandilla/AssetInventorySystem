@@ -1,134 +1,213 @@
 ﻿@model SchoolInventoryManagement.Web.ViewModels.AssetEditViewModel
+@using SchoolInventoryManagement.BLL.DTOs
+@using SchoolInventoryManagement.DAL.Entities.Enums
+@using SchoolInventoryManagement.Web.Helpers
 @{
     ViewData["Title"] = "Edit Asset";
+    var asset = (AssetResponseDTO)ViewBag.Asset;
+    var lastEdit = ViewBag.LastEdit as string;
+    var warrantyFileName = string.IsNullOrWhiteSpace(Model.WarrantyFileURL) ? null : System.IO.Path.GetFileName(Model.WarrantyFileURL);
+    var warrantyIsPdf = warrantyFileName?.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) == true;
 }
 
-<h2>Edit Asset</h2>
+<div class="asset-detail-head">
+    <div>
+        <nav class="asset-crumbs" aria-label="Breadcrumb">
+            <a asp-action="Index">Assets</a>
+            <span aria-hidden="true">&rsaquo;</span>
+            <a asp-action="Details" asp-route-id="@asset.AssetID">@asset.AssetCode</a>
+            <span aria-hidden="true">&rsaquo;</span>
+            <span>Edit</span>
+        </nav>
+        <h2 class="asset-detail-title">Edit asset</h2>
+        <div class="asset-detail-sub">Update this unit's details. Changes are saved to its audit log.</div>
+    </div>
+</div>
 
-<form asp-action="Edit" asp-route-id="@Model.AssetID" method="post" enctype="multipart/form-data">
+<partial name="_AssetStrip" model="asset" />
+
+<form asp-action="Edit" asp-route-id="@Model.AssetID" method="post" enctype="multipart/form-data" class="register-form">
     @Html.AntiForgeryToken()
     <input type="hidden" asp-for="AssetID" />
     <input type="hidden" asp-for="RowVersionBase64" />
     <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
 
-    <div class="mb-3">
-        <label asp-for="AssetName" class="form-label"></label>
-        <input asp-for="AssetName" class="form-control" />
-        <span asp-validation-for="AssetName" class="text-danger"></span>
-    </div>
+    <div class="row g-3">
+        <div class="col-lg-8">
+            <div class="asset-card register-step mb-3">
+                <div class="register-step-head">
+                    <span class="register-step-num">1</span>
+                    <div>
+                        <div class="register-step-title">What it is</div>
+                        <div class="register-step-sub">The model and code can't be changed here.</div>
+                    </div>
+                </div>
+                <div class="register-step-body">
+                    <div class="mb-3">
+                        <label asp-for="AssetName" class="form-label">Asset name</label>
+                        <input asp-for="AssetName" class="form-control" />
+                        <span asp-validation-for="AssetName" class="text-danger"></span>
+                    </div>
 
-    <div class="mb-3">
-        <label asp-for="Description" class="form-label"></label>
-        <textarea asp-for="Description" class="form-control"></textarea>
-    </div>
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-5">
+                            <label asp-for="SerialNumber" class="form-label">Serial number <span class="register-optional">(optional)</span></label>
+                            <input asp-for="SerialNumber" class="form-control" />
+                        </div>
+                        <div class="col-md-7">
+                            <div class="form-label">Condition</div>
+                            <partial name="_ConditionChips" model="Model.Condition" />
+                            <div class="form-text">Its physical state right now — e.g. mark it Damaged if a crack is found.</div>
+                        </div>
+                    </div>
 
-    <div class="mb-3">
-        <label asp-for="SerialNumber" class="form-label"></label>
-        <input asp-for="SerialNumber" class="form-control" />
-    </div>
-
-    <div class="mb-3">
-        <label asp-for="Condition" class="form-label"></label>
-        <select asp-for="Condition" class="form-select"
-                asp-items="Html.GetEnumSelectList<SchoolInventoryManagement.DAL.Entities.Enums.ConditionStatus>()"></select>
-        <div class="form-text">Its physical state right now — for example, mark it Damaged if a crack is found on the shelf.</div>
-    </div>
-
-    <div class="mb-3">
-        <label asp-for="AcquisitionCost" class="form-label"></label>
-        <div class="input-group">
-            <span class="input-group-text">₱</span>
-            <input asp-for="AcquisitionCost" type="number" step="0.01" min="0" placeholder="0.00" class="form-control" />
-        </div>
-        <span asp-validation-for="AcquisitionCost" class="text-danger"></span>
-    </div>
-
-    <div class="mb-3">
-        <label asp-for="WarrantyInformation" class="form-label"></label>
-        <input asp-for="WarrantyInformation" class="form-control" placeholder="e.g. 1 year, until Mar 2027" />
-    </div>
-
-    @* The current files are not sent back with the form: the server reads
-       them from the database, so saving without choosing a new file keeps
-       them and nobody can swap in a file of their own. *@
-    <div class="mb-3">
-        <label asp-for="WarrantyFile" class="form-label">Warranty photo or file <span class="text-muted">(optional)</span></label>
-        @if (!string.IsNullOrWhiteSpace(Model.WarrantyFileURL))
-        {
-            <div class="mb-2 d-flex align-items-center" style="gap:12px;">
-                <a href="@Model.WarrantyFileURL" target="_blank" rel="noopener">View current warranty file</a>
-                <div class="form-check mb-0">
-                    <input asp-for="RemoveWarrantyFile" class="form-check-input" />
-                    <label asp-for="RemoveWarrantyFile" class="form-check-label small">Remove it</label>
+                    <div>
+                        <label asp-for="Description" class="form-label">Description <span class="register-optional">(optional)</span></label>
+                        <textarea asp-for="Description" class="form-control" rows="2" placeholder="Colour, accessories, marks..."></textarea>
+                    </div>
                 </div>
             </div>
-        }
-        <input asp-for="WarrantyFile" type="file" accept="@SchoolInventoryManagement.Web.Helpers.FileUploads.DocumentAccept"
-               data-max-bytes="@SchoolInventoryManagement.Web.Helpers.FileUploads.MaxBytes" class="form-control" />
-        <div class="form-text">
-            A photo of the warranty card or receipt, or a PDF. Max @SchoolInventoryManagement.Web.Helpers.FileUploads.MaxMegabytes MB.
-            @if (!string.IsNullOrWhiteSpace(Model.WarrantyFileURL))
-            {
-                <text>Choosing a new file replaces the current one.</text>
-            }
-        </div>
-    </div>
 
-    <div class="mb-3">
-        <label asp-for="ImageFile" class="form-label">Photo <span class="text-muted">(optional)</span></label>
-        @if (!string.IsNullOrWhiteSpace(Model.ImageURL))
-        {
-            <div class="mb-2">
-                <img src="@Model.ImageURL" alt="Current photo" class="rounded border" style="max-height:120px;" />
+            <div class="asset-card register-step mb-3">
+                <div class="register-step-head">
+                    <span class="register-step-num">2</span>
+                    <div>
+                        <div class="register-step-title">Purchase &amp; warranty</div>
+                        <div class="register-step-sub">Cost counts toward the value-in-service total.</div>
+                    </div>
+                </div>
+                <div class="register-step-body">
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label asp-for="AcquisitionCost" class="form-label">Cost <span class="register-optional">(optional)</span></label>
+                            <div class="input-group">
+                                <span class="input-group-text">₱</span>
+                                <input asp-for="AcquisitionCost" type="number" step="0.01" min="0" placeholder="0.00" class="form-control" />
+                            </div>
+                            <span asp-validation-for="AcquisitionCost" class="text-danger"></span>
+                        </div>
+                        <div class="col-md-6">
+                            <label asp-for="WarrantyInformation" class="form-label">Warranty <span class="register-optional">(optional)</span></label>
+                            <input asp-for="WarrantyInformation" class="form-control" placeholder="e.g. 1 year, until Mar 2027" />
+                        </div>
+                    </div>
+
+                    @* The current file is not sent back with the form: the
+                       server reads it from the database, so saving without
+                       choosing a new file keeps it and nobody can swap in a
+                       file of their own. *@
+                    <div class="form-label">Warranty photo or file <span class="register-optional">(optional)</span></div>
+                    @if (warrantyFileName != null)
+                    {
+                        <div class="current-file mb-2">
+                            <span class="current-file-icon @(warrantyIsPdf ? "is-pdf" : "")">@(warrantyIsPdf ? "PDF" : "IMG")</span>
+                            <div class="flex-grow-1 min-w-0">
+                                <a href="@Model.WarrantyFileURL" target="_blank" rel="noopener" class="current-file-link">View current warranty file</a>
+                                <div class="current-file-name">@warrantyFileName</div>
+                            </div>
+                            <div class="form-check mb-0">
+                                <input asp-for="RemoveWarrantyFile" class="form-check-input" />
+                                <label asp-for="RemoveWarrantyFile" class="form-check-label small">Remove it</label>
+                            </div>
+                        </div>
+                    }
+                    <label class="file-drop file-drop-row">
+                        <span class="file-drop-icon">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6v18h12V7z" /><path d="M14 3v4h4" /></svg>
+                        </span>
+                        <span class="flex-grow-1">
+                            @{ var dropText = warrantyFileName != null ? "Choose a new file to replace it" : "Drop the warranty card or receipt here"; }
+                            <span class="file-drop-title" data-empty="@dropText">@dropText</span>
+                            <span class="file-drop-sub">Photo or PDF · up to @FileUploads.MaxMegabytes MB</span>
+                        </span>
+                        <input asp-for="WarrantyFile" type="file" accept="@FileUploads.DocumentAccept"
+                               data-max-bytes="@FileUploads.MaxBytes" class="file-drop-input" />
+                    </label>
+                </div>
             </div>
-        }
-        <input asp-for="ImageFile" type="file" accept="@SchoolInventoryManagement.Web.Helpers.FileUploads.ImageAccept"
-               data-max-bytes="@SchoolInventoryManagement.Web.Helpers.FileUploads.MaxBytes" class="form-control" />
-        <div class="form-text">
-            JPG, PNG or WEBP. Max @SchoolInventoryManagement.Web.Helpers.FileUploads.MaxMegabytes MB.
-            @if (!string.IsNullOrWhiteSpace(Model.ImageURL))
+
+            <div class="asset-card register-step mb-3">
+                <div class="register-step-head">
+                    <span class="register-step-num">3</span>
+                    <div>
+                        <div class="register-step-title">Where it is</div>
+                        <div class="register-step-sub">Choose the branch first — locations and departments follow it.</div>
+                    </div>
+                </div>
+                <div class="register-step-body">
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label asp-for="BranchID" class="form-label">Branch</label>
+                            <select asp-for="BranchID" id="branchSelect" asp-items="ViewBag.Branches" class="form-select">
+                                <option value="">Select a branch</option>
+                            </select>
+                            <span asp-validation-for="BranchID" class="text-danger"></span>
+                        </div>
+                        <div class="col-md-4">
+                            <label asp-for="CurrentLocationID" class="form-label">Location <span class="register-optional">(optional)</span></label>
+                            <select asp-for="CurrentLocationID" id="locationSelect" class="form-select">
+                                <option value="">-- Pick a branch first --</option>
+                                @foreach (var loc in (List<LocationDTO>)ViewBag.LocationsByBranch)
+                                {
+                                    <option value="@loc.LocationID" data-branch="@loc.BranchID"
+                                            selected="@(loc.LocationID == Model.CurrentLocationID)">@loc.LocationName</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label asp-for="DepartmentID" class="form-label">Department</label>
+                            <select asp-for="DepartmentID" id="departmentSelect" class="form-select">
+                                <option value="">-- Pick a branch first --</option>
+                                @foreach (var dept in (List<DepartmentDTO>)ViewBag.DepartmentsByBranch)
+                                {
+                                    <option value="@dept.DepartmentID" data-branch="@dept.BranchID"
+                                            selected="@(dept.DepartmentID == Model.DepartmentID)">@dept.DepartmentName</option>
+                                }
+                            </select>
+                            <span asp-validation-for="DepartmentID" class="text-danger"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="asset-card register-side mb-3">
+                <div class="register-side-title">Photo <span class="register-optional">(optional)</span></div>
+                <label class="file-drop file-drop-tall edit-photo" data-preview="true">
+                    <img class="file-drop-preview @(string.IsNullOrWhiteSpace(Model.ImageURL) ? "d-none" : "")"
+                         src="@(string.IsNullOrWhiteSpace(Model.ImageURL) ? null : Model.ImageURL)" alt="" />
+                    <span class="file-drop-icon">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z" /><circle cx="12" cy="13" r="3.5" /></svg>
+                    </span>
+                    @{ var photoText = string.IsNullOrWhiteSpace(Model.ImageURL) ? "Drop a photo or click to upload" : "Replace photo"; }
+                    <span class="file-drop-title" data-empty="@photoText">@photoText</span>
+                    <span class="file-drop-sub">JPG, PNG or WebP · up to @FileUploads.MaxMegabytes MB</span>
+                    <input asp-for="ImageFile" type="file" accept="@FileUploads.ImageAccept"
+                           data-max-bytes="@FileUploads.MaxBytes" class="file-drop-input" />
+                </label>
+            </div>
+
+            @if (asset.Status == AssetStatus.Available)
             {
-                <text>Leave empty to keep the current photo.</text>
+                <div class="asset-card register-side">
+                    <div class="register-side-title mb-1">Moving it somewhere else?</div>
+                    <div class="register-side-note">
+                        Use <a asp-controller="AssetMovements" asp-action="Transfer" asp-route-id="@asset.AssetID" class="fw-semibold">Transfer</a>
+                        instead of changing the location here — a transfer is recorded in the asset's movement history.
+                    </div>
+                </div>
             }
         </div>
     </div>
-    <div class="mb-3">
-        <label asp-for="BranchID" class="form-label">Branch</label>
-        <select asp-for="BranchID" id="branchSelect" asp-items="ViewBag.Branches" class="form-select">
-            <option value="">-- Select Branch --</option>
-        </select>
-        <span asp-validation-for="BranchID" class="text-danger"></span>
-    </div>
 
-    <div class="mb-3">
-        <label asp-for="CurrentLocationID" class="form-label">Location</label>
-        <select asp-for="CurrentLocationID" id="locationSelect" class="form-select">
-            <option value="">-- Pick a branch first --</option>
-            @foreach (var loc in (List<SchoolInventoryManagement.BLL.DTOs.LocationDTO>)ViewBag.LocationsByBranch)
-            {
-                <option value="@loc.LocationID" data-branch="@loc.BranchID"
-                        selected="@(loc.LocationID == Model.CurrentLocationID)">@loc.LocationName</option>
-            }
-        </select>
-        <div class="form-text">Only locations in the chosen branch are listed.</div>
+    <div class="register-footer">
+        <span>@(lastEdit ?? "Changes are saved to the audit log.")</span>
+        <div class="d-flex" style="gap:8px;">
+            <a asp-action="Details" asp-route-id="@Model.AssetID" class="btn btn-outline-secondary">Cancel</a>
+            <button type="submit" class="btn btn-primary">Save changes</button>
+        </div>
     </div>
-
-    <div class="mb-3">
-        <label asp-for="DepartmentID" class="form-label">Department</label>
-        <select asp-for="DepartmentID" id="departmentSelect" class="form-select">
-            <option value="">-- Pick a branch first --</option>
-            @foreach (var dept in (List<SchoolInventoryManagement.BLL.DTOs.DepartmentDTO>)ViewBag.DepartmentsByBranch)
-            {
-                <option value="@dept.DepartmentID" data-branch="@dept.BranchID"
-                        selected="@(dept.DepartmentID == Model.DepartmentID)">@dept.DepartmentName</option>
-            }
-        </select>
-        <span asp-validation-for="DepartmentID" class="text-danger"></span>
-        <div class="form-text">Only departments in the chosen branch are listed.</div>
-    </div>
-
-    <button type="submit" class="btn btn-primary">Save</button>
-    <a asp-action="Details" asp-route-id="@Model.AssetID" class="btn btn-secondary">Cancel</a>
 </form>
 
 @section Scripts {

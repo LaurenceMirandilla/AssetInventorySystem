@@ -1,4 +1,5 @@
 @model List<SchoolInventoryManagement.BLL.DTOs.AuditReportRowDTO>
+@inject SchoolInventoryManagement.Web.Helpers.AuditText AuditText
 @* The History box on a record's own page. Controllers load it only for
    the roles that can read the audit trail (Administrator, Principal,
    Asset Officer) -- see BaseController.LoadAuditHistoryAsync -- so a
@@ -30,7 +31,7 @@
                             <div class="text-muted small">@row.UserRole</div>
                         </td>
                         <td>@row.ActionPerformed</td>
-                        <td class="small">@(row.Description ?? "—")</td>
+                        <td class="small">@(await AuditText.FormatAsync(row.Description) ?? "—")</td>
                     </tr>
                 }
             </tbody>

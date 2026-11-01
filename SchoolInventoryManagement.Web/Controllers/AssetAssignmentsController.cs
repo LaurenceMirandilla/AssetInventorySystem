@@ -42,21 +42,34 @@ namespace SchoolInventoryManagement.Web.Controllers
             if (asset is null)
                 return NotFound();
 
-            await PopulateDropdownsAsync();
+            await PopulateDropdownsAsync(asset);
+            ViewBag.Asset = asset;
 
-            ViewBag.AssetName = asset.AssetName;
-            ViewBag.AssetCode = asset.AssetCode;
-
-            return View(new AssignAssetViewModel { AssetID = id });
+            // Handed over as it is and left where it is, unless the officer
+            // says otherwise.
+            return View(new AssignAssetViewModel
+            {
+                AssetID = id,
+                ConditionOnAssignment = asset.Condition,
+                BranchID = asset.BranchID,
+                LocationID = asset.CurrentLocationID
+            });
         }
 
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Assign(int id, AssignAssetViewModel model)
         {
+            // For the asset strip at the top if the form is shown again.
+            var asset = await _assetService.GetAssetByIdAsync(id);
+            if (asset is null)
+                return NotFound();
+            ViewBag.Asset = asset;
+            model.AssetID = id;
+
             if (!ModelState.IsValid)
             {
-                await PopulateDropdownsAsync();
+                await PopulateDropdownsAsync(asset);
                 return View(model);
             }
 
@@ -64,14 +77,15 @@ namespace SchoolInventoryManagement.Web.Controllers
             {
                 var assignment = await _assignmentService.AssignAssetAsync(
                     id, model.AssignToUserID, model.ConditionOnAssignment,
-                    model.DepartmentID, CurrentUserId, model.Remarks);
+                    model.DepartmentID, CurrentUserId, model.Remarks,
+                    keptAtLocationId: model.LocationID, branchId: model.BranchID);
 
                 return RedirectToAction("Details", "Assets", new { id });
             }
             catch (Exception ex)
             {
                 HandleServiceException(ex);
-                await PopulateDropdownsAsync();
+                await PopulateDropdownsAsync(asset);
                 return View(model);
             }
         }
@@ -88,14 +102,19 @@ namespace SchoolInventoryManagement.Web.Controllers
             if (assignment.ReturnDate is not null)
                 return RedirectToAction("Details", "Assets", new { id = assignment.AssetID });
 
+            var asset = await PopulateReturnViewAsync(assignment);
+
+            // Starts as it was handed out and back where it is kept (if it
+            // has a room); staff change either as needed.
             var model = new ReturnAssetViewModel
             {
                 AssignmentID = id,
                 RequestID = requestId,
+                ConditionOnReturn = assignment.ConditionOnAssignment,
+                ReturnLocationID = asset?.CurrentLocationID,
                 RowVersionBase64 = RowVersionHelper.ToBase64(assignment.RowVersion)
             };
 
-            await PopulateReturnViewAsync(assignment);
             return View(model);
         }
 
@@ -137,36 +156,80 @@ namespace SchoolInventoryManagement.Web.Controllers
             }
         }
 
-        // The return form's header and its location list. Needed on every
-        // render -- including a failed post, which used to lose the header.
-        private async Task PopulateReturnViewAsync(AssetAssignmentResponseDTO assignment)
+        // The return form's asset strip, "currently with" card and location
+        // tiles. Needed on every render -- including a failed post, which
+        // used to lose the header.
+        private async Task<AssetResponseDTO?> PopulateReturnViewAsync(AssetAssignmentResponseDTO assignment)
         {
-            ViewBag.AssetName = assignment.AssetName;
-            ViewBag.AssetCode = assignment.AssetCode;
-            ViewBag.AssignedTo = assignment.AssignedToUser.FullName;
+            var asset = await _assetService.GetAssetByIdAsync(assignment.AssetID);
+            ViewBag.Asset = asset;
+            ViewBag.Assignment = assignment;
 
-            ViewBag.Locations = new SelectList(
-                await _context.Locations
-                    .OrderBy(l => l.Branch.BranchName).ThenBy(l => l.LocationName)
-                    .Select(l => new { l.LocationID, Label = l.Branch.BranchName + " — " + l.LocationName })
-                    .ToListAsync(),
-                "LocationID", "Label");
-        }
-
-        private async Task PopulateDropdownsAsync()
-        {
-            var users = await _context.Users
-                .Where(u => u.Status == "Active")
-                .OrderBy(u => u.FirstName)
+            // The asset's own branch first, then the rest.
+            var branchId = asset?.BranchID;
+            ViewBag.ReturnLocations = await _context.Locations
+                .OrderBy(l => l.BranchID == branchId ? 0 : 1)
+                .ThenBy(l => l.Branch.BranchName).ThenBy(l => l.LocationName)
+                .Select(l => new LocationDTO
+                {
+                    LocationID = l.LocationID,
+                    LocationName = l.LocationName,
+                    LocationCode = l.LocationCode,
+                    BranchID = l.BranchID,
+                    BranchName = l.Branch.BranchName
+                })
                 .ToListAsync();
 
-            ViewBag.Users = new SelectList(
-                users.Select(u => new { u.UserID, FullName = $"{u.FirstName} {u.LastName}" }),
-                "UserID", "FullName");
+            return asset;
+        }
 
-            ViewBag.Departments = new SelectList(
-                await _context.Departments.OrderBy(d => d.DepartmentName).ToListAsync(),
-                "DepartmentID", "DepartmentName");
+        private async Task PopulateDropdownsAsync(AssetResponseDTO asset)
+        {
+            // Branch, and the rooms and departments it narrows (the page
+            // shows only the picked branch's).
+            ViewBag.Branches = new SelectList(
+                await _context.Branches.OrderBy(b => b.BranchName).ToListAsync(),
+                "BranchID", "BranchName");
+
+            ViewBag.KeptAtLocations = await _context.Locations
+                .OrderBy(l => l.LocationName)
+                .Select(l => new LocationDTO
+                {
+                    LocationID = l.LocationID,
+                    LocationName = l.LocationName,
+                    LocationCode = l.LocationCode,
+                    BranchID = l.BranchID,
+                    BranchName = l.Branch.BranchName
+                })
+                .ToListAsync();
+
+            // The "Assign to" picker: each active user with their role and
+            // department, so the officer can tell two Marias apart and the
+            // borrower's department can follow the person picked.
+            ViewBag.People = await _context.Users
+                .Where(u => u.Status == "Active")
+                .OrderBy(u => u.FirstName).ThenBy(u => u.LastName)
+                .Select(u => new AssignPersonOption
+                {
+                    UserID = u.UserID,
+                    FullName = u.FirstName + " " + u.LastName,
+                    RoleName = u.Role.RoleName,
+                    DepartmentID = u.DepartmentID,
+                    DepartmentName = u.Department.DepartmentName,
+                    BranchID = u.Department.BranchID
+                })
+                .ToListAsync();
+
+            ViewBag.Departments = await _context.Departments
+                .OrderBy(d => d.DepartmentName)
+                .Select(d => new DepartmentDTO
+                {
+                    DepartmentID = d.DepartmentID,
+                    DepartmentName = d.DepartmentName,
+                    BranchID = d.BranchID,
+                    BranchName = d.Branch.BranchName
+                })
+                .ToListAsync();
         }
     }
 }

@@ -13,6 +13,7 @@
 
 <label for="modelSearch" class="form-label">Model</label>
 <div class="model-picker position-relative">
+    <svg class="model-picker-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
     <input id="modelSearch" class="form-select" autocomplete="off"
            role="combobox" aria-expanded="false" aria-controls="modelList" aria-autocomplete="list"
            placeholder="Select a model, or type to search…" value="@(selected?.Label)" />
@@ -22,7 +23,7 @@
             <li>
                 <button type="button" class="dropdown-item" role="option" tabindex="-1"
                         data-label="@m.Label" data-id="@m.ModelID" data-name="@m.ModelName"
-                        data-prefix="@m.CodePrefix" data-next="@m.NextNumber">
+                        data-category="@m.CategoryName" data-prefix="@m.CodePrefix" data-next="@m.NextNumber">
                     @m.ModelName <span class="text-muted small">— @m.CategoryName</span>
                 </button>
             </li>
@@ -32,13 +33,13 @@
 </div>
 <input type="hidden" name="ModelID" id="modelId" value="@selectedId" />
 <div class="d-flex justify-content-between align-items-start" style="gap:12px;">
-    <div class="form-text" id="modelHint">Pick from the list, or type part of the name to narrow it.</div>
+    <div class="form-text" id="modelHint">Type to search, or pick from the list.</div>
     @* Only the register forms fill QuickAddCategories, and only they
        render the popup this opens (_QuickAddModel). *@
     @if (ViewBag.QuickAddCategories != null)
     {
-        <button type="button" class="btn btn-link btn-sm p-0 mt-1 text-nowrap"
-                data-bs-toggle="modal" data-bs-target="#quickAddModel">+ New model</button>
+        <button type="button" class="btn btn-link btn-sm p-0 mt-1 text-nowrap model-picker-add"
+                data-bs-toggle="modal" data-bs-target="#quickAddModel">+ Add a new model</button>
     }
 </div>
 
@@ -118,13 +119,14 @@
             hidden.value = match ? match.dataset.id : '';
             hint.textContent = match
                 ? 'Category code: ' + match.dataset.prefix + '.'
-                : (search.value ? 'No model picked yet — choose one from the list.' : 'Pick from the list, or type part of the name to narrow it.');
+                : (search.value ? 'No model picked yet — choose one from the list.' : 'Type to search, or pick from the list.');
             hint.className = 'form-text' + (search.value && !match ? ' text-danger' : '');
 
             document.dispatchEvent(new CustomEvent('model-picked', {
                 detail: match ? {
                     id: match.dataset.id,
                     name: match.dataset.name,
+                    category: match.dataset.category,
                     prefix: match.dataset.prefix,
                     next: parseInt(match.dataset.next, 10)
                 } : null
@@ -179,6 +181,7 @@
             button.dataset.label = m.modelName + ' \u2014 ' + m.categoryName; // same as ModelCodeOption.Label
             button.dataset.id = m.modelId;
             button.dataset.name = m.modelName;
+            button.dataset.category = m.categoryName;
             button.dataset.prefix = m.prefix;
             button.dataset.next = sibling ? sibling.dataset.next : '1';
             button.textContent = m.modelName + ' ';

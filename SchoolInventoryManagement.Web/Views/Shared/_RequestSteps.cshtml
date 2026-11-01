@@ -1,0 +1,42 @@
+@model IEnumerable<SchoolInventoryManagement.Web.ViewModels.RequestStep>
+@using SchoolInventoryManagement.Web.ViewModels
+@* A request's progress as a row of numbered stages, ticked when done.
+   Stacks into a list on phones (see .req-steps in site.css). *@
+@{ var n = 0; }
+<ol class="req-steps list-unstyled mb-0">
+    @foreach (var step in Model)
+    {
+        n++;
+        var css = step.State switch
+        {
+            RequestStepState.Done => "is-done",
+            RequestStepState.Current => "is-current",
+            RequestStepState.Late => "is-late",
+            RequestStepState.Stopped => "is-stopped",
+            _ => "is-todo"
+        };
+        <li class="req-step @css">
+            <span class="req-step-dot" aria-hidden="true">
+                @if (step.State == RequestStepState.Done)
+                {
+                    <text>&#10003;</text>
+                }
+                else if (step.State == RequestStepState.Late || step.State == RequestStepState.Stopped)
+                {
+                    <text>!</text>
+                }
+                else
+                {
+                    @n
+                }
+            </span>
+            <span class="req-step-text">
+                <span class="req-step-label d-block">@step.Label</span>
+                @if (!string.IsNullOrEmpty(step.Note))
+                {
+                    <span class="req-step-date d-block">@step.Note</span>
+                }
+            </span>
+        </li>
+    }
+</ol>

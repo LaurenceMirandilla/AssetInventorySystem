@@ -78,8 +78,14 @@ namespace SchoolInventoryManagement.Web.Controllers
         public async Task<IActionResult> MyRequests()
         {
             var requests = await _requestService.GetMyRequestsAsync(CurrentUserId);
+            ViewBag.ModelCategories = await ModelCategoriesAsync();
             return View(requests);
         }
+
+        // Model id -> category name, for the "Audio-visual" line under each
+        // item on the request lists.
+        private async Task<Dictionary<int, string>> ModelCategoriesAsync() =>
+            (await _modelService.GetAllModelsAsync()).ToDictionary(m => m.ModelID, m => m.CategoryName);
 
         // GET /AssetRequests/Pending
         // Two lists: requests waiting for a decision, and approved ones that
@@ -89,6 +95,21 @@ namespace SchoolInventoryManagement.Web.Controllers
         {
             var requests = await _requestService.GetPendingRequestsAsync(CurrentUserId);
             ViewBag.InProgress = await _requestService.GetInProgressRequestsAsync(CurrentUserId);
+            ViewBag.ModelCategories = await ModelCategoriesAsync();
+
+            // What is free right now, per model and per room, so the approver
+            // sees "5 available, 3 at the IT Room" before picking units.
+            var available = await _assetService.SearchAssetsAsync(
+                null, null, null, null, null, AssetStatus.Available, null);
+            ViewBag.Stock = available
+                .GroupBy(a => a.ModelID)
+                .ToDictionary(g => g.Key, g => new ModelStock
+                {
+                    Total = g.Count(),
+                    ByLocation = g.Where(a => a.CurrentLocationName != null)
+                        .GroupBy(a => a.CurrentLocationName!)
+                        .ToDictionary(l => l.Key, l => l.Count())
+                });
             return View(requests);
         }
 
@@ -124,7 +145,11 @@ namespace SchoolInventoryManagement.Web.Controllers
         }
 
         // GET /AssetRequests/Details/5
-        public async Task<IActionResult> Details(int id)
+        // from = mine | approvals | history: the list the request was opened
+        // from, which stays lit in the sidebar and is where "back" goes.
+        // Without it (a notification, a bookmark): your own request belongs
+        // to My Requests, anyone else's to Approvals.
+        public async Task<IActionResult> Details(int id, string? from)
         {
             var request = await _requestService.GetRequestByIdAsync(id);
             if (request is null)
@@ -138,15 +163,27 @@ namespace SchoolInventoryManagement.Web.Controllers
 
             // Status changes, the ticket's lines and the units handed out.
             await LoadAuditHistoryAsync("AssetRequest", id);
+            ViewBag.ModelCategories = await ModelCategoriesAsync(); // items' categories, and the Reject confirmation
+
+            var section = from is "mine" or "approvals" or "history" ? from
+                : request.RequestedByUser.UserID == CurrentUserId ? "mine" : "approvals";
+            if (section == "history" && !IsAssetManager) section = IsApprover ? "approvals" : "mine";
+            if (section == "approvals" && !IsApprover) section = "mine";
+            ViewData["NavSection"] = section;
 
             return View(request);
         }
 
         // GET /AssetRequests/Create
-        public async Task<IActionResult> Create()
+        // ?modelId= comes from the Request button on Browse items and fills
+        // in the first row. An id that is not on the list just leaves the
+        // row empty.
+        public async Task<IActionResult> Create(int? modelId)
         {
             await PopulateRequestDropdownsAsync();
-            return View(new CreateAssetRequestViewModel());
+            var model = new CreateAssetRequestViewModel();
+            model.Items[0].ModelID = modelId;
+            return View(model);
         }
 
         // POST /AssetRequests/Create
@@ -231,6 +268,7 @@ namespace SchoolInventoryManagement.Web.Controllers
             }
 
             ViewBag.Request = request;
+            ViewBag.ModelCategories = await ModelCategoriesAsync(); // for the Reject confirmation
 
             // Nothing is ticked here: the page runs Auto-fill as it loads
             // (see _ApprovalUnitPicker), so the common case is still just
@@ -708,17 +746,18 @@ namespace SchoolInventoryManagement.Web.Controllers
 
         private async Task PopulateBorrowApprovalDropdownsAsync()
         {
-            var departments = await _departmentService.GetAllDepartmentsAsync();
-            ViewBag.Departments = new SelectList(
-                departments.Select(d => new { d.DepartmentID, Label = $"{d.BranchName} — {d.DepartmentName}" }),
-                "DepartmentID", "Label");
-
-            var locations = await _locationService.GetAllLocationsAsync();
-            ViewBag.PickupLocations = new SelectList(
-                locations
-                    .Select(l => new { l.LocationID, Label = $"{l.BranchName} — {l.LocationName}" })
-                    .OrderBy(l => l.Label),
-                "LocationID", "Label");
+            // "Where they go": a branch first, then that branch's rooms and
+            // departments (the page narrows the lists).
+            ViewBag.DepartmentList = (await _departmentService.GetAllDepartmentsAsync())
+                .OrderBy(d => d.DepartmentName).ToList();
+            ViewBag.PickupLocationList = (await _locationService.GetAllLocationsAsync())
+                .OrderBy(l => l.LocationName).ToList();
+            ViewBag.BranchList = ((List<DepartmentDTO>)ViewBag.DepartmentList)
+                .Select(d => (d.BranchID, d.BranchName))
+                .Concat(((List<LocationDTO>)ViewBag.PickupLocationList).Select(l => (l.BranchID, l.BranchName)))
+                .Distinct()
+                .OrderBy(b => b.BranchName)
+                .ToList();
         }
 
         private async Task PopulateReturnLocationsAsync()
@@ -740,6 +779,7 @@ namespace SchoolInventoryManagement.Web.Controllers
             ViewBag.Request = request;
             await BuildApprovalLinesAsync(request, model.AssetIDs);
             await PopulateBorrowApprovalDropdownsAsync();
+            ViewBag.ModelCategories = await ModelCategoriesAsync();
             return View("ApproveBorrow", model);
         }
 
@@ -751,6 +791,7 @@ namespace SchoolInventoryManagement.Web.Controllers
 
             ViewBag.Request = request;
             await BuildApprovalLinesAsync(request, model.AssetIDs);
+            ViewBag.ModelCategories = await ModelCategoriesAsync();
             return View("ApproveTransfer", model);
         }
     }

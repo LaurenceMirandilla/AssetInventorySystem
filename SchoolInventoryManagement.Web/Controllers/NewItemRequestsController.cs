@@ -53,19 +53,21 @@ namespace SchoolInventoryManagement.Web.Controllers
 
         // GET /NewItemRequests/All?status=Procuring&q=chair&sort=oldest
         // Every request, whoever raised it and wherever it has got to.
-        // Reuses the MyRequests page, which adds the requester column, a
-        // search box, the stage filter and the order in this mode.
+        // Its own table page (Views/NewItemRequests/All): requester
+        // column, search box, stage filter and order.
         [Authorize(Roles = ViewAllRoles)]
         public async Task<IActionResult> All(NewItemStatus? status, string? q, string? sort)
         {
+            // Every request is loaded; the stage chips and the search box
+            // narrow the list on the page. status and q from a link (or an
+            // old bookmark) set where the page starts.
             var oldestFirst = sort == "oldest";
-            var requests = await _requestService.GetAllRequestsAsync(CurrentUserId, status, q, oldestFirst);
+            var requests = await _requestService.GetAllRequestsAsync(CurrentUserId, null, null, oldestFirst);
 
-            ViewBag.ShowAll = true;
             ViewBag.Status = status;
             ViewBag.Search = q?.Trim();
             ViewBag.Sort = oldestFirst ? "oldest" : "newest";
-            return View(nameof(MyRequests), requests);
+            return View(requests);
         }
 
         // GET /NewItemRequests/Pending

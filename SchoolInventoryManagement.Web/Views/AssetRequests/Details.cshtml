@@ -1,6 +1,9 @@
 ﻿@model SchoolInventoryManagement.BLL.DTOs.AssetRequestResponseDTO
+@using System.Text.RegularExpressions
+@using SchoolInventoryManagement.BLL.DTOs
 @using SchoolInventoryManagement.DAL.Constants
 @using SchoolInventoryManagement.DAL.Entities.Enums
+@inject SchoolInventoryManagement.Web.Helpers.AuditText AuditText
 @{
     ViewData["Title"] = $"Request #{Model.RequestID}";
 
@@ -19,30 +22,91 @@
     var isPending = Model.RequestStatus == RequestStatus.Pending;
     var isInTransit = Model.RequestStatus == RequestStatus.InTransit;
     var isAssigned = Model.RequestStatus == RequestStatus.Assigned;
-    var isOut = isInTransit || isAssigned;
     var isCancelled = Model.RequestStatus == RequestStatus.Cancelled;
+    var isRejected = Model.RequestStatus == RequestStatus.Rejected;
     var isBorrow = Model.RequestType == RequestType.Borrow;
+    var overdue = isAssigned && Model.ReturnBy < DateTime.Now;
 
     // Pending: the requester can withdraw it. In Transit: an Officer or
     // Administrator can call it off before pickup or delivery. Both ask
     // for a reason first (AssetRequests/Cancel).
     var canCancel = (isPending && isMine) || (isInTransit && canManageAssets);
 
-    // Remarks hold the rejection or cancellation reason, so label them by
-    // what happened.
-    var remarksLabel = Model.RequestStatus switch
+    // The list it was opened from: breadcrumb, back button, and the
+    // sidebar item kept lit (see AssetRequestsController.Details).
+    var section = ViewData["NavSection"] as string ?? (isMine ? "mine" : "approvals");
+    var (backLabel, backAction) = section switch
     {
-        RequestStatus.Cancelled => "Reason for cancelling",
-        RequestStatus.Rejected => "Reason for rejection",
-        _ => "Remarks"
+        "approvals" => ("Approvals", "Pending"),
+        "history" => ("Request History", "History"),
+        _ => ("My Requests", "MyRequests")
     };
 
     // Borrow: where the units are (or will be) collected. The approver's
     // pickup point once approved; before that, the requester's preference.
-    string? borrowLocation = Model.PickupLocationName ?? Model.RequestedLocationName;
-    string borrowLocationNote = Model.PickupLocationName is not null
-        ? ""
-        : Model.RequestedLocationName is not null ? "requested" : "chosen when approved";
+    var where = isBorrow ? Model.PickupLocationName ?? Model.RequestedLocationName : Model.RequestedLocationName;
+
+    var statusLine = Model.RequestStatus switch
+    {
+        RequestStatus.Pending => "Waiting for an approver",
+        RequestStatus.InTransit => isBorrow
+            ? $"Approved · {Model.UnitsOut} unit{(Model.UnitsOut == 1 ? "" : "s")} waiting to be collected at {Model.PickupLocationName ?? "the pickup point"}"
+            : $"Approved · {Model.UnitsOut} unit{(Model.UnitsOut == 1 ? "" : "s")} on the way to {Model.RequestedLocationName}",
+        RequestStatus.Assigned => overdue
+            ? $"Overdue · {Model.UnitsOut} unit{(Model.UnitsOut == 1 ? "" : "s")} still out, due back {Model.ReturnBy:MMM d}"
+            : $"{(isBorrow ? "With the requester" : "Delivered")} · due back {Model.ReturnBy:MMM d}",
+        RequestStatus.Returned => "Everything has come back",
+        RequestStatus.Rejected => "Rejected",
+        RequestStatus.Cancelled => "Cancelled",
+        _ => DisplayText.Humanize(Model.RequestStatus.ToString())
+    };
+    var statusCss = overdue || isRejected ? "is-red" : isPending || isCancelled ? "is-gray" : isInTransit ? "is-teal" : "is-green";
+
+    var categories = ViewBag.ModelCategories as Dictionary<int, string>;
+    var history = ViewBag.AuditHistory as List<AuditReportRowDTO>;
+}
+
+@functions {
+    // A history entry's headline, from the raw audit text (the line under
+    // it is the readable version from AuditText).
+    static string Headline(AuditReportRowDTO row, AssetRequestResponseDTO r)
+    {
+        var raw = row.Description ?? "";
+        var isBorrow = r.RequestType == RequestType.Borrow;
+        switch (row.ActionPerformed)
+        {
+            case "AssetRequest Created":
+                return $"Submitted the {r.RequestType.ToString().ToLowerInvariant()} request";
+            case "AssetRequestItem Created":
+                var m = Regex.Match(raw, @"Model: '([^']*)'; Quantity: '(\d+)'");
+                return m.Success ? $"Added {m.Groups[1].Value} ×{m.Groups[2].Value}" : "Added an item";
+            case "AssetAssignment Created":
+                return $"Set aside {row.TargetAssetCode ?? "a unit"} for {r.RequestedByUser.FullName}";
+            case "AssetAssignment Updated":
+                return raw.Contains("ReturnDate") ? $"Returned {row.TargetAssetCode ?? "a unit"}" : $"Updated {row.TargetAssetCode ?? "a unit"}";
+            case "AssetRequest Updated":
+                var s = Regex.Match(raw, @"RequestStatus: '\w*' -> '(\w+)'");
+                if (!s.Success) return "Updated the request";
+                return s.Groups[1].Value switch
+                {
+                    "Approved" => "Approved",
+                    "InTransit" => isBorrow ? "Sent for pickup — now In transit" : "Sent — now In transit",
+                    "Assigned" => isBorrow ? "Picked up" : "Delivered",
+                    "Returned" => "Everything returned",
+                    "Rejected" => "Rejected",
+                    "Cancelled" => "Cancelled",
+                    var other => DisplayText.Humanize(other)
+                };
+            default:
+                return row.ActionPerformed;
+        }
+    }
+
+    static string Kind(string action)
+    {
+        var last = action.Split(' ').LastOrDefault() ?? action;
+        return last is "Created" or "Updated" or "Deleted" ? last : "Event";
+    }
 }
 
 @if (TempData["ErrorMessage"] != null)
@@ -50,237 +114,235 @@
     <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
 }
 
-@* The whole request as one ticket: header, details, items, units, and the
-   actions along the bottom. *@
-<div class="card" style="max-width:1100px;">
+<div class="asset-detail-head">
+    <div>
+        <nav class="asset-crumbs" aria-label="Breadcrumb">
+            <a asp-action="@backAction">@backLabel</a>
+            <span aria-hidden="true">&rsaquo;</span>
+            <span>#@Model.RequestID</span>
+        </nav>
+        <h2 class="asset-detail-title">@Model.RequestType request #@Model.RequestID</h2>
+    </div>
+</div>
 
-    @* ---- Header ---- *@
-    <div class="d-flex justify-content-between align-items-start flex-wrap p-3 border-bottom" style="gap:12px;">
-        <div>
-            <div class="text-muted small" style="text-transform:uppercase; letter-spacing:.06em;">@Model.RequestType request</div>
-            <h3 class="mb-0">#@Model.RequestID</h3>
-            <div class="text-muted small mt-1">
-                Submitted @Model.RequestDate.ToString("dddd, MMM d, yyyy 'at' h:mm tt")
-            </div>
+<div class="asset-card rq-summary mb-3">
+    <div class="rq-summary-top">
+        <div class="rq-summary-pills">
+            <span class="md-tag @(isBorrow ? "" : "is-transfer")">@Model.RequestType</span>
+            <span class="asset-pill asset-status md-pill @(overdue ? "st-overdue" : isRejected ? "st-overdue" : isPending || isCancelled ? "st-disposed" : isInTransit ? "st-intransit" : "st-available")">@(overdue ? "Overdue" : DisplayText.Humanize(Model.RequestStatus.ToString()))</span>
+            <span class="rq-status-line @statusCss">@statusLine</span>
         </div>
-        <div class="text-end">
-            <span class="status-pill status-@Model.RequestType.ToString().ToLowerInvariant()">@Model.RequestType</span>
-            <span class="status-pill status-@Model.RequestStatus.ToString().ToLowerInvariant()">@DisplayText.Humanize(Model.RequestStatus.ToString())</span>
-            @if (Model.RequestStatus == RequestStatus.Assigned && Model.ReturnBy < DateTime.Now)
-            {
-                <span class="status-pill status-overdue">Overdue</span>
-            }
-            <div class="small mt-2">
-                <strong>@Model.RequestedByUser.FullName</strong>
-                <span class="text-muted">&middot; @Model.RequestedByUser.RoleName &middot; @Model.DepartmentName</span>
-            </div>
+        <div class="rq-requester">
+            <strong>@Model.RequestedByUser.FullName</strong>
+            <span>· @Model.RequestedByUser.RoleName · @Model.DepartmentName</span>
         </div>
     </div>
-
-    @if (isInTransit)
+    <dl class="rq-grid">
+        <div><dt>@(isBorrow ? "Pickup location" : "Destination")</dt><dd>@(where ?? "Chosen when approved")</dd></div>
+        <div><dt>Needed from</dt><dd>@(Model.NeededFrom?.ToString("MMM d, yyyy · h:mm tt") ?? "—")</dd></div>
+        <div class="@(overdue ? "is-late" : "")"><dt>@(isBorrow ? "Return by" : "Comes back by")</dt><dd>@(Model.ReturnBy?.ToString("MMM d, yyyy · h:mm tt") ?? "—")</dd></div>
+        <div><dt>Reason</dt><dd class="@(string.IsNullOrWhiteSpace(Model.Reason) ? "is-empty" : "")">@(string.IsNullOrWhiteSpace(Model.Reason) ? "None given" : Model.Reason)</dd></div>
+    </dl>
+    <dl class="rq-grid">
+        <div><dt>Decided by</dt><dd class="@(Model.ApprovedByUser is null ? "is-empty" : "")">@(Model.ApprovedByUser?.FullName ?? "Not yet")</dd></div>
+        <div><dt>Decided on</dt><dd class="@(Model.ApprovalDate is null ? "is-empty" : "")">@(Model.ApprovalDate?.ToString("MMM d, yyyy · h:mm tt") ?? "Not yet")</dd></div>
+        <div><dt>@(isBorrow ? "Collected on" : "Delivered on")</dt><dd class="@(Model.AssignedDate is null ? "is-empty" : "")">@(Model.AssignedDate?.ToString("MMM d, yyyy · h:mm tt") ?? "Not yet")</dd></div>
+        <div><dt>Returned on</dt><dd class="@(Model.ReturnedDate is null ? "is-empty" : "")">@(Model.ReturnedDate?.ToString("MMM d, yyyy · h:mm tt") ?? "Not yet")</dd></div>
+    </dl>
+    @if (!string.IsNullOrWhiteSpace(Model.Remarks))
     {
-        <div class="alert alert-info rounded-0 border-0 border-bottom mb-0">
-            @if (isBorrow)
-            {
-                <text>Approved. @Model.UnitsOut unit@(Model.UnitsOut == 1 ? " is" : "s are") waiting to be collected at <strong>@(Model.PickupLocationName ?? "the pickup point")</strong>.</text>
-            }
-            else
-            {
-                <text>Approved. @Model.UnitsOut unit@(Model.UnitsOut == 1 ? " is" : "s are") on the way to <strong>@Model.RequestedLocationName</strong>.</text>
-            }
+        <div class="rq-remarks @(isRejected || isCancelled ? "is-red" : "")">
+            <span>@(isCancelled ? "Reason for cancelling" : isRejected ? "Reason for rejection" : "Remarks")</span>
+            @Model.Remarks
         </div>
     }
+</div>
 
-    @if (isCancelled)
+@* ---- Items requested ---- *@
+<div class="asset-card mb-3" data-pager data-page-size="6" data-noun="@(Model.Items.Count == 1 ? "model" : "models") · @Model.TotalQuantity unit@(Model.TotalQuantity == 1 ? "" : "s") in all">
+    <div class="rq-card-head">
+        <h3>Items requested</h3>
+        <span>@Model.Items.Count model@(Model.Items.Count == 1 ? "" : "s") · @Model.TotalQuantity unit@(Model.TotalQuantity == 1 ? "" : "s")</span>
+    </div>
+    @if (Model.Items.Any())
     {
-        <div class="alert alert-secondary rounded-0 border-0 border-bottom mb-0">
-            <strong>This request was cancelled.</strong>
-            @if (Model.Units.Any())
+        <div class="rq-items">
+            @foreach (var item in Model.Items)
             {
-                <text>The reservation on @(Model.Units.Count == 1 ? "its unit" : $"its {Model.Units.Count} units") was cancelled, and @(Model.Units.Count == 1 ? "it is" : "they are") available again.</text>
-            }
-            @if (!string.IsNullOrWhiteSpace(Model.Remarks))
-            {
-                <div class="small mt-1">Reason: @Model.Remarks</div>
+                var units = Model.Units.Where(u => u.ModelID == item.ModelID).ToList();
+                var note = isPending ? "waiting for approval"
+                    : isRejected ? "not approved"
+                    : isCancelled ? "cancelled"
+                    : units.Count == 0 ? "no units yet"
+                    : units.All(u => u.ReturnDate != null) ? "returned"
+                    : isInTransit ? (isBorrow ? "not collected yet" : "on the way")
+                    : $"{units.Count(u => u.ReturnDate == null)} out";
+                <div class="rq-item" data-pager-item>
+                    <div class="min-w-0">
+                        <div class="req-item-name fw-semibold">@item.ModelName</div>
+                        @if (categories != null && categories.TryGetValue(item.ModelID, out var cat))
+                        {
+                            <div class="req-item-meta">@cat</div>
+                        }
+                    </div>
+                    <div class="rq-item-qty">
+                        <span>×@item.Quantity</span>
+                        <small>@note</small>
+                    </div>
+                </div>
             }
         </div>
+        <div class="rq-card-foot">
+            <span data-pager-range></span>
+            <div class="d-flex align-items-center" style="gap:8px;">
+                <span class="text-muted">Show</span>
+                <select class="form-select form-select-sm rq-size" data-pager-size aria-label="Items per page">
+                    <option value="6" selected>6</option>
+                    <option value="12">12</option>
+                    <option value="24">24</option>
+                </select>
+                <span class="text-muted">per page</span>
+                <div class="d-flex" style="gap:6px;" data-pager-buttons></div>
+            </div>
+        </div>
     }
+    else
+    {
+        <div class="p-3">@Model.ItemsSummary</div>
+    }
+</div>
 
-    <div class="card-body">
-        <div class="row g-4">
-
-            @* ---- Left: when, where, why ---- *@
-            <div class="col-lg-6">
-                <dl class="row mb-0">
-                    @if (isBorrow)
+@* ---- Units handed out (from approval onwards) ---- *@
+@if (Model.Units.Any())
+{
+    var waiting = Model.Units.Count(u => u.ReturnDate == null && isInTransit);
+    var outNow = Model.Units.Count(u => u.ReturnDate == null && !isInTransit);
+    var back = Model.Units.Count(u => u.ReturnDate != null);
+    <div class="asset-card mb-3">
+        <div class="rq-card-head">
+            <h3>Units handed out
+                @if (waiting > 0)
+                {
+                    <span class="rq-badge is-teal">@waiting waiting for @(isBorrow ? "pickup" : "delivery")</span>
+                }
+                @if (outNow > 0)
+                {
+                    <span class="rq-badge @(overdue ? "is-red" : "is-green")">@outNow out</span>
+                }
+                @if (back > 0)
+                {
+                    <span class="rq-badge is-gray">@back @(isCancelled ? "reservation cancelled" : "returned")</span>
+                }
+            </h3>
+        </div>
+        <div class="rq-units">
+            @foreach (var unit in Model.Units)
+            {
+                <div class="rq-unit">
+                    <a asp-controller="Assets" asp-action="Details" asp-route-id="@unit.AssetID" class="asset-code-chip">@unit.AssetCode</a>
+                    <span class="rq-unit-name">@unit.AssetName</span>
+                    @if (unit.ReturnDate is not null && isCancelled)
                     {
-                        <dt class="col-sm-5">Pickup Location</dt>
-                        <dd class="col-sm-7">
-                            @(borrowLocation ?? "—")
-                            @if (!string.IsNullOrEmpty(borrowLocationNote))
-                            {
-                                <span class="text-muted small">(@borrowLocationNote)</span>
-                            }
-                        </dd>
+                        <span class="asset-pill asset-status md-pill st-disposed" title="@unit.ReturnDate.Value.ToString("MMM d, yyyy h:mm tt")">Cancelled</span>
+                    }
+                    else if (unit.ReturnDate is not null)
+                    {
+                        <span class="asset-pill asset-status md-pill st-available" title="@unit.ReturnDate.Value.ToString("MMM d, yyyy h:mm tt")">Returned</span>
                     }
                     else
                     {
-                        <dt class="col-sm-5">Destination</dt>
-                        <dd class="col-sm-7">@(Model.RequestedLocationName ?? "—")</dd>
+                        <span class="asset-pill asset-status md-pill st-@unit.AssetStatus.ToString().ToLowerInvariant()">@DisplayText.Humanize(unit.AssetStatus.ToString())</span>
                     }
-
-                    <dt class="col-sm-5">Needed From</dt>
-                    <dd class="col-sm-7">@(Model.NeededFrom?.ToString("MMM d, yyyy h:mm tt") ?? "—")</dd>
-
-                    <dt class="col-sm-5">@(isBorrow ? "Return By" : "Comes Back By")</dt>
-                    <dd class="col-sm-7">@(Model.ReturnBy?.ToString("MMM d, yyyy h:mm tt") ?? "—")</dd>
-
-                    <dt class="col-sm-5">Reason</dt>
-                    <dd class="col-sm-7">@(Model.Reason ?? "—")</dd>
-                </dl>
-            </div>
-
-            @* ---- Right: what was asked for ---- *@
-            <div class="col-lg-6">
-                <div class="text-muted small mb-1" style="text-transform:uppercase; letter-spacing:.04em;">Items requested</div>
-                @if (Model.Items.Any())
-                {
-                    <table class="table table-sm mb-0">
-                        <thead><tr><th>Model</th><th class="text-end">Amount</th></tr></thead>
-                        <tbody>
-                            @foreach (var item in Model.Items)
-                            {
-                                <tr>
-                                    <td>@item.ModelName</td>
-                                    <td class="text-end">@item.Quantity</td>
-                                </tr>
-                            }
-                        </tbody>
-                        @if (Model.Items.Count > 1)
-                        {
-                            <tfoot>
-                                <tr><th>Total</th><th class="text-end">@Model.TotalQuantity</th></tr>
-                            </tfoot>
-                        }
-                    </table>
-                }
-                else
-                {
-                    <div>@Model.ItemsSummary</div>
-                }
-            </div>
+                </div>
+            }
         </div>
+    </div>
+}
 
-        @* ---- Units handed out (from approval onwards) ---- *@
-        @if (Model.Units.Any())
+@* ---- History (only for the roles that can read the audit trail) ---- *@
+@if (history != null)
+{
+    <div class="asset-card mb-3" data-pager data-page-size="10" data-noun="entr@(history.Count == 1 ? "y" : "ies")">
+        <div class="rq-card-head">
+            <h3>History</h3>
+            <span>@history.Count entr@(history.Count == 1 ? "y" : "ies") · newest first</span>
+        </div>
+        @if (history.Any())
         {
-            <hr />
-            <div class="text-muted small mb-2" style="text-transform:uppercase; letter-spacing:.04em;">
-                Units handed out
-                @if (isOut)
+            <div class="rq-history">
+                <div class="rq-history-row rq-history-head" aria-hidden="true">
+                    <span>When</span><span>By</span><span>What happened</span>
+                </div>
+                @foreach (var row in history)
                 {
-                    <span class="ms-1 text-lowercase">(@Model.UnitsOut still out)</span>
-                }
-            </div>
-            <div class="row row-cols-1 row-cols-md-2 g-2">
-                @foreach (var unit in Model.Units)
-                {
-                    <div class="col">
-                        <div class="d-flex justify-content-between align-items-center border rounded px-2 py-1">
-                            <div>
-                                <a asp-controller="Assets" asp-action="Details" asp-route-id="@unit.AssetID" class="sab-code">@unit.AssetCode</a>
-                                <span class="text-muted small ms-1">@unit.AssetName</span>
-                            </div>
-                            @if (unit.ReturnDate is not null && isCancelled)
+                    var kind = Kind(row.ActionPerformed);
+                    <div class="rq-history-row" data-pager-item>
+                        <span class="rq-when">@row.LogDateTime.ToString("MMM d · h:mm tt")</span>
+                        <span class="rq-by">@row.UserName<small>@row.UserRole</small></span>
+                        <span class="rq-what">
+                            <span class="rq-what-title"><span class="rq-kind is-@kind.ToLowerInvariant()">@kind</span> @Headline(row, Model)</span>
+                            @if (!string.IsNullOrWhiteSpace(row.Description))
                             {
-                                @* Never handed over -- reservation cancelled with the request. *@
-                                <span class="status-pill status-cancelled" title="@unit.ReturnDate.Value.ToString("MMM d, yyyy h:mm tt")">Reservation Cancelled</span>
+                                <small>@(await AuditText.FormatAsync(row.Description))</small>
                             }
-                            else if (unit.ReturnDate is not null)
-                            {
-                                <span class="status-pill status-returned" title="@unit.ReturnDate.Value.ToString("MMM d, yyyy h:mm tt")">Returned</span>
-                            }
-                            else
-                            {
-                                <span class="status-pill status-@unit.AssetStatus.ToString().ToLowerInvariant()">@DisplayText.Humanize(unit.AssetStatus.ToString())</span>
-                            }
-                        </div>
+                        </span>
                     </div>
                 }
             </div>
+            <div class="rq-card-foot">
+                <span data-pager-range></span>
+                <div class="d-flex align-items-center" style="gap:8px;">
+                    <span class="text-muted">Show</span>
+                    <select class="form-select form-select-sm rq-size" data-pager-size aria-label="Entries per page">
+                        <option value="10" selected>10</option>
+                        <option value="25">25</option>
+                        <option value="50">50</option>
+                    </select>
+                    <span class="text-muted">per page</span>
+                    <div class="d-flex" style="gap:6px;" data-pager-buttons></div>
+                </div>
+            </div>
         }
-
-        @* ---- Decision and progress ---- *@
-        <hr />
-        <div class="row row-cols-2 row-cols-md-4 g-3 small">
-            <div class="col">
-                <div class="text-muted">Decided by</div>
-                <div class="fw-semibold">@(Model.ApprovedByUser?.FullName ?? "—")</div>
-            </div>
-            <div class="col">
-                <div class="text-muted">Decided on</div>
-                <div class="fw-semibold">@(Model.ApprovalDate?.ToString("MMM d, yyyy h:mm tt") ?? "—")</div>
-            </div>
-            <div class="col">
-                <div class="text-muted">@(isBorrow ? "Collected on" : "Delivered on")</div>
-                <div class="fw-semibold">@(Model.AssignedDate?.ToString("MMM d, yyyy h:mm tt") ?? "—")</div>
-            </div>
-            <div class="col">
-                <div class="text-muted">Returned on</div>
-                <div class="fw-semibold">@(Model.ReturnedDate?.ToString("MMM d, yyyy h:mm tt") ?? "—")</div>
-            </div>
-        </div>
-
-        @if (!string.IsNullOrWhiteSpace(Model.Remarks))
+        else
         {
-            <div class="mt-3 small">
-                <div class="text-muted">@remarksLabel</div>
-                <div>@Model.Remarks</div>
-            </div>
+            <div class="sab-empty"><p class="mb-0">No recorded changes yet.</p></div>
         }
     </div>
+}
 
-    @* ---- Actions ---- *@
-    <div class="d-flex flex-wrap p-3 border-top" style="gap:8px;">
+@* ---- Actions ---- *@
+<div class="register-footer rq-footer">
+    <a asp-action="@backAction" class="btn btn-outline-secondary rq-back">&larr; @backLabel</a>
+    <div class="d-flex flex-wrap" style="gap:8px;">
+        @if (canCancel)
+        {
+            <a asp-action="Cancel" asp-route-id="@Model.RequestID" class="btn btn-outline-danger">Cancel request</a>
+        }
         @if (isPending && isApprover)
         {
-            <a asp-action="Approve" asp-route-id="@Model.RequestID" class="btn btn-success">Approve</a>
-            <a asp-action="Reject" asp-route-id="@Model.RequestID" class="btn btn-danger">Reject</a>
+            <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#reject-@Model.RequestID">Reject</button>
+            <a asp-action="Approve" asp-route-id="@Model.RequestID" class="btn btn-primary">Approve</a>
         }
-
         @if (isInTransit && canManageAssets)
         {
             <form asp-action="MarkAssigned" asp-route-id="@Model.RequestID" method="post" class="d-inline"
                   onsubmit="return confirm('@(isBorrow ? "Confirm the requester has collected all the units?" : "Confirm all the units have arrived at the destination?")');">
                 @Html.AntiForgeryToken()
                 <input type="hidden" name="rowVersionBase64" value="@Convert.ToBase64String(Model.RowVersion)" />
-                <button type="submit" class="btn btn-primary">@(isBorrow ? "Mark as Picked Up" : "Mark as Delivered")</button>
+                <button type="submit" class="btn btn-primary">@(isBorrow ? "Mark as picked up" : "Mark as delivered")</button>
             </form>
         }
-
         @* Only what was picked up or delivered can come back. Before that,
            the request is cancelled instead. *@
         @if (isAssigned && canManageAssets && Model.UnitsOut > 0)
         {
-            <a asp-action="RecordReturn" asp-route-id="@Model.RequestID" class="btn btn-outline-primary">Record Return</a>
-        }
-
-        @if (canCancel)
-        {
-            <a asp-action="Cancel" asp-route-id="@Model.RequestID" class="btn btn-outline-danger">Cancel Request</a>
-        }
-
-        <span class="flex-grow-1"></span>
-
-        <a asp-action="MyRequests" class="btn btn-secondary">My Requests</a>
-        @if (isApprover)
-        {
-            <a asp-action="Pending" class="btn btn-outline-secondary">Approvals</a>
+            <a asp-action="RecordReturn" asp-route-id="@Model.RequestID" class="btn btn-primary">Record return</a>
         }
     </div>
 </div>
 
-@if (ViewBag.AuditHistory is List<SchoolInventoryManagement.BLL.DTOs.AuditReportRowDTO> history)
+@* The Reject confirmation, outside the page's other forms. *@
+@if (isPending)
 {
-    <partial name="_AuditHistory" model="history" />
+    <partial name="_RejectRequestModal" model="Model" />
 }

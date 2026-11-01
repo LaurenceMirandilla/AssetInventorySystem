@@ -23,6 +23,7 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         options.SlidingExpiration = true;
     });
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<SchoolInventoryManagement.Web.Helpers.AuditText>();
 builder.Services.AddScoped<IAssetService, AssetService>();
 builder.Services.AddScoped<IAssetRequestService, AssetRequestService>();
 builder.Services.AddScoped<IAssetAssignmentService, AssetAssignmentService>();

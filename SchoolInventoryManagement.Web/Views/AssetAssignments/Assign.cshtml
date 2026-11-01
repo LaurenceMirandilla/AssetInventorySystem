@@ -1,48 +1,307 @@
 ﻿@model SchoolInventoryManagement.Web.ViewModels.AssignAssetViewModel
+@using SchoolInventoryManagement.BLL.DTOs
+@using SchoolInventoryManagement.Web.ViewModels
 @{
     ViewData["Title"] = "Assign Asset";
+    var asset = (AssetResponseDTO)ViewBag.Asset;
+    var people = (List<AssignPersonOption>)ViewBag.People;
+    var picked = people.FirstOrDefault(p => p.UserID == Model.AssignToUserID);
+    var keptAt = (List<LocationDTO>)ViewBag.KeptAtLocations;
+    var departments = (List<DepartmentDTO>)ViewBag.Departments;
+    var keptAtName = keptAt.FirstOrDefault(l => l.LocationID == Model.LocationID)?.LocationName;
+    var nowAt = asset.CurrentLocationName ?? "No room";
+    ViewData["ChipName"] = "ConditionOnAssignment";
 }
 
-<h2>Assign Asset</h2>
-<p class="text-muted">@ViewBag.AssetCode — @ViewBag.AssetName</p>
+@functions {
+    static string Initials(string name)
+    {
+        var initials = string.Concat(name.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(p => p[0])).ToUpperInvariant();
+        return initials.Length > 2 ? initials[..2] : initials;
+    }
+}
 
-<form asp-action="Assign" asp-route-id="@Model.AssetID" method="post">
+<div class="asset-detail-head">
+    <div>
+        <nav class="asset-crumbs" aria-label="Breadcrumb">
+            <a asp-controller="Assets" asp-action="Index">Assets</a>
+            <span aria-hidden="true">&rsaquo;</span>
+            <a asp-controller="Assets" asp-action="Details" asp-route-id="@asset.AssetID">@asset.AssetCode</a>
+            <span aria-hidden="true">&rsaquo;</span>
+            <span>Assign</span>
+        </nav>
+        <h2 class="asset-detail-title">Assign asset</h2>
+        <div class="asset-detail-sub">Give this unit to a person.</div>
+    </div>
+</div>
+
+<partial name="_AssetStrip" model="asset" />
+
+<form asp-action="Assign" asp-route-id="@Model.AssetID" method="post" class="register-form">
     @Html.AntiForgeryToken()
     <input type="hidden" asp-for="AssetID" />
     <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
 
-    <div class="mb-3">
-        <label asp-for="AssignToUserID" class="form-label">Assign To</label>
-        <select asp-for="AssignToUserID" asp-items="ViewBag.Users" class="form-select">
-            <option value="">-- Select User --</option>
-        </select>
-        <span asp-validation-for="AssignToUserID" class="text-danger"></span>
+    <div class="row g-3">
+        <div class="col-lg-8">
+            <div class="asset-card register-step mb-3">
+                <div class="register-step-head">
+                    <span class="register-step-num">1</span>
+                    <div>
+                        <div class="register-step-title">Who gets it</div>
+                        <div class="register-step-sub">Search by name; they'll see it under My Assets.</div>
+                    </div>
+                </div>
+                <div class="register-step-body">
+                    <label for="personSearch" class="form-label">Assign to</label>
+                    <label class="asset-search person-search">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+                        <input type="text" id="personSearch" autocomplete="off" placeholder="Type a name, role or department..." />
+                    </label>
+
+                    @* Every active user, as radios. The search box only hides
+                       rows; the picked one always posts. *@
+                    <div class="person-list" role="radiogroup" aria-label="Assign to">
+                        @foreach (var p in people)
+                        {
+                            <label class="person-row" data-search="@((p.FullName + " " + p.RoleName + " " + p.DepartmentName).ToLowerInvariant())">
+                                <span class="history-avatar person-avatar">@Initials(p.FullName)</span>
+                                <span class="flex-grow-1 min-w-0">
+                                    <span class="person-name">@p.FullName</span>
+                                    <span class="person-meta">@p.RoleName · @p.DepartmentName</span>
+                                </span>
+                                <input type="radio" name="AssignToUserID" value="@p.UserID" class="person-radio"
+                                       data-name="@p.FullName" data-dept="@p.DepartmentID" data-dept-name="@p.DepartmentName" data-branch="@p.BranchID"
+                                       data-initials="@Initials(p.FullName)" checked="@(p.UserID == Model.AssignToUserID)" />
+                            </label>
+                        }
+                        <div class="person-empty d-none" id="personEmpty">No one matches what you typed.</div>
+                    </div>
+                    <span asp-validation-for="AssignToUserID" class="text-danger"></span>
+
+                    @* Branch narrows the department and location lists below.
+                       Picking a person picks their department's branch. *@
+                    <div class="mt-3">
+                        <label asp-for="BranchID" class="form-label">Branch</label>
+                        <select asp-for="BranchID" id="branchSelect" asp-items="ViewBag.Branches" class="form-select" data-combobox>
+                            <option value="">Select a branch</option>
+                        </select>
+                        <div class="form-text" id="branchNote">
+                            @if (Model.BranchID != asset.BranchID && Model.BranchID != null)
+                            {
+                                <text>Moves the asset from @asset.BranchName to this branch.</text>
+                            }
+                            else
+                            {
+                                <text>The asset is in @asset.BranchName. Picking another branch moves it there.</text>
+                            }
+                        </div>
+                        <span asp-validation-for="BranchID" class="text-danger"></span>
+                    </div>
+
+                    <div class="mt-3">
+                        <label asp-for="DepartmentID" class="form-label">Borrower's department</label>
+                        <select asp-for="DepartmentID" id="departmentSelect" class="form-select" data-combobox>
+                            <option value="">Select a department</option>
+                            @foreach (var d in departments)
+                            {
+                                <option value="@d.DepartmentID" data-branch="@d.BranchID"
+                                        selected="@(d.DepartmentID == Model.DepartmentID)">@d.DepartmentName</option>
+                            }
+                        </select>
+                        <div class="form-text">Fills in from the person picked; change it if they borrow for another department.</div>
+                        <span asp-validation-for="DepartmentID" class="text-danger"></span>
+                    </div>
+
+                    <div class="mt-3">
+                        <label asp-for="LocationID" class="form-label">Location</label>
+                        <div class="input-icon">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 21s-7-6.2-7-12a7 7 0 0 1 14 0c0 5.8-7 12-7 12z" /><circle cx="12" cy="9" r="2.5" /></svg>
+                            <select asp-for="LocationID" id="keptAtSelect" class="form-select" data-combobox>
+                                <option value="" data-name="With the borrower">No fixed room — it goes with the borrower</option>
+                                @foreach (var l in keptAt)
+                                {
+                                    <option value="@l.LocationID" data-name="@l.LocationName" data-branch="@l.BranchID"
+                                            selected="@(l.LocationID == Model.LocationID)">@l.LocationName</option>
+                                }
+                            </select>
+                        </div>
+                        @* Where it is now, and where it will be kept. *@
+                        <div class="move-strip" id="moveStrip">
+                            <span>@nowAt</span>
+                            <span class="move-strip-arrow" aria-hidden="true">&rarr;</span>
+                            <strong id="moveTo">@(keptAtName ?? "With the borrower")</strong>
+                        </div>
+                        <div class="form-text">Where it will be kept while assigned, e.g. the borrower's classroom. Only rooms in the chosen branch are listed.</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="asset-card register-step mb-3">
+                <div class="register-step-head">
+                    <span class="register-step-num">2</span>
+                    <div>
+                        <div class="register-step-title">Hand-over</div>
+                        <div class="register-step-sub">Recorded under History › Assignments.</div>
+                    </div>
+                </div>
+                <div class="register-step-body">
+                    <div class="mb-3">
+                        <div class="form-label">Condition</div>
+                        <partial name="_ConditionChips" model="Model.ConditionOnAssignment" />
+                    </div>
+                    <div>
+                        <label asp-for="Remarks" class="form-label">Remarks <span class="register-optional">(optional)</span></label>
+                        <textarea asp-for="Remarks" class="form-control" rows="2" placeholder="e.g. comes with the remote, keep away from water."></textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="handover-card">
+                <div class="bulk-summary-label">Hand-over summary</div>
+                <div class="handover-person">
+                    <span class="handover-avatar" id="sumInitials">@(picked != null ? Initials(picked.FullName) : "?")</span>
+                    <div class="min-w-0">
+                        <div class="handover-name" id="sumName">@(picked?.FullName ?? "No one picked yet")</div>
+                        <div class="handover-dept" id="sumDept">@(picked?.DepartmentName ?? "Pick a person on the left")</div>
+                    </div>
+                </div>
+                <dl class="handover-rows">
+                    <div><dt>Unit</dt><dd>@asset.AssetCode</dd></div>
+                    <div><dt>Condition</dt><dd id="sumCondition">@DisplayText.Humanize(Model.ConditionOnAssignment.ToString())</dd></div>
+                    <div><dt>Branch</dt><dd id="sumBranch">@(((IEnumerable<SelectListItem>)ViewBag.Branches).FirstOrDefault(b => b.Value == Model.BranchID?.ToString())?.Text ?? "—")</dd></div>
+                    <div><dt>Kept at</dt><dd id="sumKeptAt">@(keptAtName ?? "With the borrower")</dd></div>
+                    <div><dt>Status after</dt><dd>Assigned</dd></div>
+                </dl>
+            </div>
+        </div>
     </div>
 
-    <div class="mb-3">
-        <label asp-for="ConditionOnAssignment" class="form-label">Condition</label>
-        <select asp-for="ConditionOnAssignment" asp-items="Html.GetEnumSelectList<SchoolInventoryManagement.DAL.Entities.Enums.ConditionStatus>()" class="form-select"></select>
+    <div class="register-footer">
+        <span>Person and department are required.</span>
+        <div class="d-flex" style="gap:8px;">
+            <a asp-controller="Assets" asp-action="Details" asp-route-id="@Model.AssetID" class="btn btn-outline-secondary">Cancel</a>
+            <button type="submit" class="btn btn-primary" id="assignBtn">Assign</button>
+        </div>
     </div>
-
-    <div class="mb-3">
-        <label asp-for="Remarks" class="form-label">Remarks <span class="text-muted">(optional)</span></label>
-        <textarea asp-for="Remarks" class="form-control"></textarea>
-    </div>
-    <div class="mb-3">
-        <label asp-for="DepartmentID" class="form-label">Borrower's Department</label>
-        <select asp-for="DepartmentID" asp-items="ViewBag.Departments" class="form-select">
-            <option value="">-- Select Department --</option>
-        </select>
-        <span asp-validation-for="DepartmentID" class="text-danger"></span>
-    </div>
-
-
-    <button type="submit" class="btn btn-primary">Assign</button>
-    <a asp-controller="Assets" asp-action="Details" asp-route-id="@Model.AssetID" class="btn btn-secondary">Cancel</a>
 </form>
 
 @section Scripts {
     @{
         await Html.RenderPartialAsync("_ValidationScriptsPartial");
     }
+    <script>
+        (function () {
+            var search = document.getElementById('personSearch');
+            var rows = Array.from(document.querySelectorAll('.person-row'));
+            var empty = document.getElementById('personEmpty');
+            var dept = document.getElementById('departmentSelect');
+            var btn = document.getElementById('assignBtn');
+            var deptTouched = false;
+
+            // Search narrows the list; the picked person stays visible.
+            search.addEventListener('input', function () {
+                var q = search.value.trim().toLowerCase();
+                var shown = 0;
+                rows.forEach(function (r) {
+                    var hit = !q || r.dataset.search.indexOf(q) !== -1 || r.querySelector('input').checked;
+                    r.hidden = !hit;
+                    if (hit) shown++;
+                });
+                empty.classList.toggle('d-none', shown > 0);
+            });
+
+            // Picking a person fills the summary and the button, and the
+            // department -- unless the officer already chose one by hand.
+            function sync() {
+                var radio = document.querySelector('.person-radio:checked');
+                rows.forEach(function (r) { r.classList.toggle('is-picked', r.querySelector('input') === radio); });
+                document.getElementById('sumName').textContent = radio ? radio.dataset.name : 'No one picked yet';
+                document.getElementById('sumDept').textContent = radio ? radio.dataset.deptName : 'Pick a person on the left';
+                document.getElementById('sumInitials').textContent = radio ? radio.dataset.initials : '?';
+                btn.textContent = radio ? 'Assign to ' + radio.dataset.name : 'Assign';
+                return radio;
+            }
+
+            // ---- Branch narrows department and location -----------------
+            // Each list holds only the picked branch's entries. Options are
+            // rebuilt rather than hidden (some browsers ignore "hidden" on
+            // <option>); the typeable boxes pick up the change themselves.
+            var branch = document.getElementById('branchSelect');
+            var keptAtSel = document.getElementById('keptAtSelect');
+            var assetBranch = '@asset.BranchID';
+            var assetBranchName = @Json.Serialize(asset.BranchName);
+
+            function snapshot(select) {
+                return Array.from(select.options).filter(function (o) { return o.dataset.branch; })
+                    .map(function (o) { return { value: o.value, text: o.text, branch: o.dataset.branch, name: o.dataset.name }; });
+            }
+            var allDepts = snapshot(dept);
+            var allRooms = snapshot(keptAtSel);
+
+            function rebuild(select, all) {
+                var keep = select.value;
+                Array.from(select.options).forEach(function (o) { if (o.dataset.branch) o.remove(); });
+                all.filter(function (x) { return x.branch === branch.value; }).forEach(function (x) {
+                    var o = document.createElement('option');
+                    o.value = x.value;
+                    o.text = x.text;
+                    o.dataset.branch = x.branch;
+                    if (x.name) o.dataset.name = x.name;
+                    select.appendChild(o);
+                });
+                select.value = keep;
+                if (select.value !== keep) select.value = ''; // not in this branch
+            }
+
+            function onBranch() {
+                rebuild(dept, allDepts);
+                rebuild(keptAtSel, allRooms);
+                var opt = branch.options[branch.selectedIndex];
+                document.getElementById('sumBranch').textContent = opt && opt.value ? opt.text : '—';
+                document.getElementById('branchNote').textContent = !branch.value || branch.value === assetBranch
+                    ? 'The asset is in ' + assetBranchName + '. Picking another branch moves it there.'
+                    : 'Moves the asset from ' + assetBranchName + ' to ' + opt.text + '.';
+                syncKeptAt();
+            }
+            branch.addEventListener('change', onBranch);
+
+            document.querySelectorAll('.person-radio').forEach(function (r) {
+                r.addEventListener('change', function () {
+                    var radio = sync();
+                    if (radio && !deptTouched) {
+                        // Their department, in its branch.
+                        if (branch.value !== radio.dataset.branch) {
+                            branch.value = radio.dataset.branch;
+                            onBranch();
+                            branch.dispatchEvent(new Event('combo-sync'));
+                        }
+                        dept.value = radio.dataset.dept;
+                        dept.dispatchEvent(new Event('combo-sync')); // refresh the typeable box
+                    }
+                });
+            });
+            dept.addEventListener('change', function () { deptTouched = true; });
+
+            document.querySelectorAll('input[name="ConditionOnAssignment"]').forEach(function (r) {
+                r.addEventListener('change', function () {
+                    document.getElementById('sumCondition').textContent = r.nextElementSibling.textContent;
+                });
+            });
+
+            // "Kept at": the summary and the from → to line follow it.
+            var keptAt = document.getElementById('keptAtSelect');
+            function syncKeptAt() {
+                var name = keptAt.options[keptAt.selectedIndex].dataset.name;
+                document.getElementById('sumKeptAt').textContent = name;
+                document.getElementById('moveTo').textContent = name;
+            }
+            keptAt.addEventListener('change', syncKeptAt);
+
+            sync();
+            onBranch();
+        })();
+    </script>
 }
