@@ -118,7 +118,7 @@ document.addEventListener('change', function (e) {
         // "-- Pick a branch first --" or "Select a location": a hint, not a
         // choice. A real blank choice ("No fixed room") is neither.
         function isHint(opt) {
-            return opt.value === '' && (opt.text.indexOf('--') === 0 || /^select /i.test(opt.text));
+            return opt.value === '' && (opt.text.indexOf('--') === 0 || /^(select|search) /i.test(opt.text));
         }
 
         // The box shows the picked option's text; with a hint picked it is
@@ -140,7 +140,9 @@ document.addEventListener('change', function (e) {
 
             function addOption(opt, group) {
                 var text = opt.text;
-                if (q && text.toLowerCase().indexOf(q) === -1 && (!group || group.toLowerCase().indexOf(q) === -1)) return false;
+                var sub = opt.dataset.sub || '';
+                if (q && text.toLowerCase().indexOf(q) === -1 && sub.toLowerCase().indexOf(q) === -1
+                    && (!group || group.toLowerCase().indexOf(q) === -1)) return false;
                 var li = document.createElement('li');
                 var b = document.createElement('button');
                 b.type = 'button';
@@ -148,7 +150,27 @@ document.addEventListener('change', function (e) {
                 b.setAttribute('role', 'option');
                 b.tabIndex = -1;
                 b.dataset.value = opt.value;
-                b.textContent = text;
+                // The typed letters in bold, and an option's data-sub (say
+                // the building and floor) on a second line.
+                var at = q ? text.toLowerCase().indexOf(q) : -1;
+                var main = document.createElement('span');
+                main.className = 'combo-main';
+                if (at >= 0) {
+                    main.appendChild(document.createTextNode(text.slice(0, at)));
+                    var strong = document.createElement('strong');
+                    strong.textContent = text.slice(at, at + q.length);
+                    main.appendChild(strong);
+                    main.appendChild(document.createTextNode(text.slice(at + q.length)));
+                } else {
+                    main.textContent = text;
+                }
+                b.appendChild(main);
+                if (sub) {
+                    var small = document.createElement('small');
+                    small.className = 'combo-sub';
+                    small.textContent = sub;
+                    b.appendChild(small);
+                }
                 b.addEventListener('mousedown', function (e) { e.preventDefault(); pick(opt.value); });
                 li.appendChild(b);
                 list.appendChild(li);

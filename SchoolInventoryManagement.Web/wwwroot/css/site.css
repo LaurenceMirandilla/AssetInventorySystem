@@ -3381,3 +3381,15 @@ a.dash-kpi:hover { background: rgba(255, 255, 255, 0.14); color: #fff; text-deco
   .rq-footer > div .btn, .rq-footer > div form { flex: 1 1 0; white-space: nowrap; }
 }
 .rq-footer > div form .btn { height: 100%; }
+
+/* Approve borrow: "Pickup at" -- a branch, then one of its rooms. */
+.pickup-picker { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+.pickup-picker .combo-input { font-weight: 600; }
+.pickup-picker .input-icon .combo-input { border-color: var(--sab-green-border); }
+
+/* Typeable dropdowns: the typed letters in bold, a second line if given. */
+.combo-list .dropdown-item { display: block; }
+.combo-main { display: block; }
+.combo-main strong { font-weight: 800; color: var(--sab-text); }
+.combo-sub { display: block; color: var(--sab-text-muted); font-size: 0.76rem; line-height: 1.2; }
+.combo-list .dropdown-item.active .combo-sub { color: var(--sab-green-dark); opacity: 0.8; }

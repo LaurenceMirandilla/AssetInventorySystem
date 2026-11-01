@@ -18,7 +18,7 @@
         (Key: "late", Label: "Waiting for approval", Items: Model.Where(r => r.RequestStatus == RequestStatus.Pending).ToList()),
         (Key: "transit", Label: "Ready to collect", Items: Model.Where(r => r.RequestStatus == RequestStatus.InTransit).ToList()),
         (Key: "use", Label: "With you", Items: Model.Where(r => r.RequestStatus == RequestStatus.Assigned).OrderBy(r => r.ReturnBy ?? DateTime.MaxValue).ToList()),
-        (Key: "done", Label: "Done", Items: Model.Where(r => r.RequestStatus is not (RequestStatus.Pending or RequestStatus.InTransit or RequestStatus.Assigned)).ToList())
+        (Key: "done", Label: "Finished", Items: Model.Where(r => r.RequestStatus is not (RequestStatus.Pending or RequestStatus.InTransit or RequestStatus.Assigned)).ToList())
     };
     var ordered = groups.SelectMany(g => g.Items).ToList();
 }
@@ -83,6 +83,14 @@ else
                         Filters
                     </button>
                     <div class="dropdown-menu dropdown-menu-end md-filter-menu">
+                        <label class="form-label">Status</label>
+                        <select class="form-select form-select-sm mb-2" data-md-filter="stage">
+                            <option value="">Any</option>
+                            <option value="late">Waiting for approval</option>
+                            <option value="transit">Ready to collect</option>
+                            <option value="use">With you</option>
+                            <option value="done">Finished</option>
+                        </select>
                         <label class="form-label">Type</label>
                         <select class="form-select form-select-sm" data-md-filter="type">
                             <option value="">Any</option>
@@ -118,6 +126,7 @@ else
                             : r.RequestStatus == RequestStatus.InTransit ? "item-transit" : "";
                         <button type="button" class="myassets-item @tone" data-entry="r-@r.RequestID"
                                 data-type="@r.RequestType.ToString().ToLowerInvariant()"
+                                data-stage="@g.Key"
                                 data-search="@($"#{r.RequestID} {r.RequestID} {Title(r)} {r.RequestType} {Status(r.RequestStatus)}".ToLowerInvariant())">
                             <span class="myassets-badge">
                                 <strong>#@r.RequestID</strong>
