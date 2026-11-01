@@ -5,11 +5,13 @@
 @{
     // Everyone's new-item requests (NewItemRequestsController.All), as a
     // read-only overview: decisions happen on New-Item Approvals. Every
-    // request is on the page; the stage chips and the search narrow it.
+    // request is on the page; the search box and the Filters menu narrow it.
     ViewData["Title"] = "All New-Item Requests";
     NewItemStatus? status = ViewBag.Status as NewItemStatus?;
     string search = ViewBag.Search as string ?? "";
     string sort = ViewBag.Sort as string ?? "newest";
+    Dictionary<int, string> deptBranches = (ViewBag.DepartmentBranches as Dictionary<int, string>) ?? new Dictionary<int, string>();
+    string BranchOf(NewItemRequestResponseDTO r) => deptBranches.TryGetValue(r.DepartmentID, out var b) ? b : "";
     var stages = new[] { NewItemStatus.AwaitingDeptHead, NewItemStatus.AwaitingBudget, NewItemStatus.Procuring,
                          NewItemStatus.AwaitingArrival, NewItemStatus.Arrived, NewItemStatus.Rejected,
                          NewItemStatus.Cancelled };
@@ -34,17 +36,6 @@
         <h2 class="asset-detail-title">All New-Item Requests</h2>
         <div class="asset-detail-sub">@Model.Count request@(Model.Count == 1 ? "" : "s") from everyone, @sort first, wherever they have got to.</div>
     </div>
-    <div class="asset-detail-actions">
-        <div class="dropdown">
-            <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
-                @(sort == "oldest" ? "Oldest first" : "Newest first")
-            </button>
-            <ul class="dropdown-menu dropdown-menu-end">
-                <li><a class="dropdown-item @(sort != "oldest" ? "active" : "")" asp-action="All" asp-route-sort="newest">Newest first</a></li>
-                <li><a class="dropdown-item @(sort == "oldest" ? "active" : "")" asp-action="All" asp-route-sort="oldest">Oldest first</a></li>
-            </ul>
-        </div>
-    </div>
 </div>
 
 @if (!Model.Any())
@@ -59,24 +50,6 @@
 else
 {
     <div data-md id="allNewItems" data-page-size="6">
-        @* Stage chips: they set the hidden filter below, which the shared
-           list script (site.js) applies. *@
-        <div class="stage-chips" role="group" aria-label="Stage">
-            <button type="button" class="stage-chip @(status == null ? "active" : "")" data-chip="">All <span>@Model.Count</span></button>
-            @foreach (var s in stages)
-            {
-                var count = Model.Count(r => r.RequestStatus == s);
-                <button type="button" class="stage-chip @(status == s ? "active" : "")" data-chip="@s.ToString().ToLowerInvariant()">@chipLabel[s] <span>@count</span></button>
-            }
-            <select data-md-filter="stage" class="d-none" aria-hidden="true" tabindex="-1">
-                <option value=""></option>
-                @foreach (var s in stages)
-                {
-                    <option value="@s.ToString().ToLowerInvariant()" selected="@(status == s)"></option>
-                }
-            </select>
-        </div>
-
         <div class="sab-table-card myassets">
             <aside class="myassets-list" aria-label="New-item requests">
                 <div class="md-toolbar">
@@ -84,6 +57,45 @@ else
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
                         <input type="text" data-md-search value="@search" autocomplete="off" placeholder="Item, reason, requester, department or #..." aria-label="Search new-item requests" />
                     </label>
+                    <div class="dropdown">
+                        <button type="button" class="asset-tool-btn" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18l-7 8.5V19l-4 2v-7.5z" /></svg>
+                            Filters
+                        </button>
+                        <div class="dropdown-menu dropdown-menu-end md-filter-menu">
+                            <label class="form-label">Stage</label>
+                            <select class="form-select form-select-sm mb-2" data-md-filter="stage">
+                                <option value="">Any (@Model.Count)</option>
+                                @foreach (var s in stages)
+                                {
+                                    <option value="@s.ToString().ToLowerInvariant()" selected="@(status == s)">@chipLabel[s] (@Model.Count(r => r.RequestStatus == s))</option>
+                                }
+                            </select>
+                            <label class="form-label">Branch</label>
+                            <div class="mb-2">
+                            <select class="form-select form-select-sm" data-md-filter="branch" data-combobox>
+                                <option value="">Any</option>
+                                @foreach (var d in Model.Select(BranchOf).Where(d => !string.IsNullOrEmpty(d)).Distinct().OrderBy(d => d))
+                                {
+                                    <option value="@d.ToLowerInvariant()">@d</option>
+                                }
+                            </select>
+                            </div>
+                            <label class="form-label">Department</label>
+                            <select class="form-select form-select-sm" data-md-filter="dept" data-combobox>
+                                <option value="">Any</option>
+                                @foreach (var d in Model.Select(r => r.DepartmentName).Where(d => !string.IsNullOrEmpty(d)).Distinct().OrderBy(d => d))
+                                {
+                                    <option value="@d.ToLowerInvariant()">@d</option>
+                                }
+                            </select>
+                            <label class="form-label mt-2">Order</label>
+                            <select class="form-select form-select-sm" id="sortSelect" aria-label="Order">
+                                <option value="newest" selected="@(sort != "oldest")">Newest first</option>
+                                <option value="oldest" selected="@(sort == "oldest")">Oldest first</option>
+                            </select>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="myassets-group" data-md-group>
@@ -92,6 +104,7 @@ else
                         var stopped = NewItemProgress.IsStopped(r);
                         <button type="button" class="myassets-item" data-entry="n-@r.NewItemRequestID"
                                 data-stage="@r.RequestStatus.ToString().ToLowerInvariant()"
+                                data-dept="@r.DepartmentName.ToLowerInvariant()" data-branch="@BranchOf(r).ToLowerInvariant()"
                                 data-search="@($"#{r.NewItemRequestID} {r.NewItemRequestID} {r.ItemName} {r.Reason} {r.RequestedByUserName} {r.DepartmentName}".ToLowerInvariant())">
                             <span class="md-avatar @(stopped ? "is-dark" : "")">@NewItemProgress.Initials(r.RequestedByUserName)</span>
                             <span class="myassets-item-main">
@@ -172,17 +185,16 @@ else
 
 @section Scripts {
     <script>
-        // Stage chips drive the hidden stage filter the list script watches.
+        // Order is a server sort: reload with it, keeping the search.
         (function () {
-            var root = document.getElementById('allNewItems');
-            if (!root) return;
-            var select = root.querySelector('[data-md-filter="stage"]');
-            root.querySelectorAll('[data-chip]').forEach(function (chip) {
-                chip.addEventListener('click', function () {
-                    root.querySelectorAll('[data-chip]').forEach(function (c) { c.classList.toggle('active', c === chip); });
-                    select.value = chip.dataset.chip;
-                    select.dispatchEvent(new Event('change'));
-                });
+            var sel = document.getElementById('sortSelect');
+            if (!sel) return;
+            sel.addEventListener('change', function () {
+                var url = new URL(window.location.href);
+                url.searchParams.set('sort', sel.value);
+                var q = document.querySelector('[data-md-search]');
+                if (q && q.value) url.searchParams.set('q', q.value); else url.searchParams.delete('q');
+                window.location.href = url.toString();
             });
         })();
     </script>

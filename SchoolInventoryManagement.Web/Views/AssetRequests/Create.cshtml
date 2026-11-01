@@ -1,22 +1,32 @@
 ﻿@model SchoolInventoryManagement.Web.ViewModels.CreateAssetRequestViewModel
+@using SchoolInventoryManagement.BLL.DTOs
+@using SchoolInventoryManagement.DAL.Entities.Enums
 @using SchoolInventoryManagement.Web.ViewModels
 @{
     ViewData["Title"] = "New Request";
 
-    var modelOptions = (List<RequestModelOption>)ViewBag.ModelOptions;
+    // Explicit types: a var from ViewBag would stay dynamic and break the
+    // lambdas below.
+    List<RequestModelOption> modelOptions = (ViewBag.ModelOptions as List<RequestModelOption>) ?? new List<RequestModelOption>();
+    List<LocationDTO> locations = (ViewBag.LocationList as List<LocationDTO>) ?? new List<LocationDTO>();
     var modelGroups = modelOptions.GroupBy(m => m.CategoryName).ToList();
+    var branches = locations.GroupBy(l => l.BranchID)
+        .Select(g => (BranchID: g.Key, BranchName: g.First().BranchName, Rooms: g.Count()))
+        .OrderBy(b => b.BranchName).ToList();
 
     // Always at least one row, even after a post that removed them all.
     var rows = Model.Items.Count > 0 ? Model.Items : new List<RequestItemInput> { new RequestItemInput() };
 
     // Teachers and Staff see model names only -- no counts, nothing greyed
     // out, no cap on the amount. Everyone else sees how many are free.
-    var showAvailability = (bool)ViewBag.ShowAvailability;
+    var showAvailability = ViewBag.ShowAvailability is bool b && b;
 
-    string OptionLabel(RequestModelOption m) =>
-        !showAvailability ? m.ModelName
-        : m.Available > 0 ? $"{m.ModelName} — {m.Available} available"
-        : $"{m.ModelName} — none available";
+    var isTransfer = Model.RequestType == RequestType.Transfer;
+    var startBranch = locations.FirstOrDefault(l => l.LocationID == Model.RequestedLocationID)?.BranchID;
+
+    string Sub(RequestModelOption m) =>
+        !showAvailability ? m.CategoryName
+        : m.CategoryName + " · " + (m.Available > 0 ? $"{m.Available} available" : "none available");
 
     // Available units per location, read by the script to leave out the
     // ones already at a Transfer's destination.
@@ -24,162 +34,264 @@
         System.Text.Json.JsonSerializer.Serialize(m.AvailableByLocation);
 }
 
-<h2>New Request</h2>
+@* One model <select> per row, typeable (data-combobox). The template row
+   below is the same markup without a name or a selection. *@
+@functions {
+    static string Fmt(DateTime? d) => d?.ToString("yyyy-MM-ddTHH:mm") ?? "";
+}
 
-<form asp-action="Create" method="post" id="requestForm">
+<div class="asset-detail-head">
+    <div>
+        <nav class="asset-crumbs" aria-label="Breadcrumb">
+            <a asp-action="MyRequests">My Requests</a>
+            <span aria-hidden="true">&rsaquo;</span>
+            <span>New request</span>
+        </nav>
+        <h2 class="asset-detail-title">New request</h2>
+    </div>
+</div>
+
+<form asp-action="Create" method="post" id="requestForm" class="register-form">
     @Html.AntiForgeryToken()
     <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
 
-    <div class="mb-3">
-        <label asp-for="RequestType" class="form-label">Request Type</label>
-        <select asp-for="RequestType" id="requestType"
-                asp-items="Html.GetEnumSelectList<SchoolInventoryManagement.DAL.Entities.Enums.RequestType>()"
-                class="form-select"></select>
-        <div class="form-text">
-            <strong>Borrow</strong> — ask for models to use; staff pick the actual units when they approve.<br />
-            <strong>Transfer</strong> — ask for models to be moved to another location; staff pick the units that go.
-        </div>
-    </div>
+    <div class="row g-3">
+        <div class="col-lg-8">
 
-    @* Header and rows share one grid -- model | amount | remove -- so the
-       Amount label always sits over the amount boxes. *@
-    <div class="mb-3">
-        <div class="item-grid mb-1">
-            <label class="form-label mb-0">Model</label>
-            <label class="form-label mb-0">Amount</label>
-            <span></span>
-        </div>
-
-        <div id="itemRows">
-            @for (var i = 0; i < rows.Count; i++)
-            {
-                var row = rows[i];
-                <div class="item-grid mb-2 item-row">
-                    <select name="Items[@i].ModelID" class="form-select model-select">
-                        <option value="">-- Select Model --</option>
-                        @foreach (var group in modelGroups)
-                        {
-                            <optgroup label="@group.Key">
-                                @foreach (var m in group)
-                                {
-                                    <option value="@m.ModelID" data-name="@m.ModelName"
-                                            data-total="@(showAvailability ? m.Available : null)"
-                                            data-at="@(showAvailability ? AtJson(m) : null)"
-                                            data-available="@(showAvailability ? m.Available : null)"
-                                            disabled="@(showAvailability && m.Available == 0)"
-                                            selected="@(row.ModelID == m.ModelID)">@OptionLabel(m)</option>
-                                }
-                            </optgroup>
-                        }
-                    </select>
-                    <input type="number" name="Items[@i].Quantity" value="@(row.Quantity ?? 1)" min="1"
-                           class="form-control qty-input text-center" />
-                    <button type="button" class="btn btn-outline-danger remove-row" title="Remove this item">&times;</button>
+            @* ---- Kind ---- *@
+            <div class="asset-card register-step mb-3">
+                <div class="register-step-head"><div class="register-step-title">What kind of request?</div></div>
+                <div class="register-step-body">
+                    <div class="nr-kinds" role="radiogroup" aria-label="Request type">
+                        <label class="nr-kind">
+                            <input type="radio" name="RequestType" value="Borrow" checked="@(!isTransfer)" />
+                            <span class="nr-kind-dot" aria-hidden="true"></span>
+                            <span>
+                                <strong>Borrow</strong>
+                                <small>Use items for a while. Staff set them aside and you collect them at a pickup point.</small>
+                            </span>
+                        </label>
+                        <label class="nr-kind">
+                            <input type="radio" name="RequestType" value="Transfer" checked="@isTransfer" />
+                            <span class="nr-kind-dot" aria-hidden="true"></span>
+                            <span>
+                                <strong>Transfer</strong>
+                                <small>Move items to a room. Staff deliver them to the location you choose.</small>
+                            </span>
+                        </label>
+                    </div>
                 </div>
-            }
-        </div>
-
-        @* A clean row to copy when "+ Add another item" is clicked. *@
-        <template id="rowTemplate">
-            <div class="item-grid mb-2 item-row">
-                <select class="form-select model-select">
-                    <option value="">-- Select Model --</option>
-                    @foreach (var group in modelGroups)
-                    {
-                        <optgroup label="@group.Key">
-                            @foreach (var m in group)
-                            {
-                                <option value="@m.ModelID" data-name="@m.ModelName"
-                                        data-total="@(showAvailability ? m.Available : null)"
-                                        data-at="@(showAvailability ? AtJson(m) : null)"
-                                        data-available="@(showAvailability ? m.Available : null)"
-                                        disabled="@(showAvailability && m.Available == 0)">@OptionLabel(m)</option>
-                            }
-                        </optgroup>
-                    }
-                </select>
-                <input type="number" value="1" min="1" class="form-control qty-input text-center" />
-                <button type="button" class="btn btn-outline-danger remove-row" title="Remove this item">&times;</button>
             </div>
-        </template>
 
-        <button type="button" id="addRow" class="btn btn-outline-primary btn-sm">+ Add another item</button>
-        <span asp-validation-for="Items" class="text-danger d-block"></span>
+            @* ---- Items ---- *@
+            <div class="asset-card register-step mb-3">
+                <div class="register-step-head">
+                    <div class="register-step-title flex-grow-1">Items</div>
+                    <span class="nr-head-note" id="itemsCount"></span>
+                </div>
+                <div class="register-step-body">
+                    <div id="itemRows">
+                        @for (var i = 0; i < rows.Count; i++)
+                        {
+                            var row = rows[i];
+                            <div class="nr-row item-row">
+                                <span class="nr-row-num"></span>
+                                <div class="nr-row-model">
+                                    <select name="Items[@i].ModelID" class="form-select model-select" data-combobox aria-label="Model">
+                                        <option value="">Search a model...</option>
+                                        @foreach (var group in modelGroups)
+                                        {
+                                            <optgroup label="@group.Key">
+                                                @foreach (var m in group)
+                                                {
+                                                    <option value="@m.ModelID" data-name="@m.ModelName" data-cat="@m.CategoryName" data-sub="@Sub(m)"
+                                                            data-total="@(showAvailability ? m.Available : null)"
+                                                            data-at="@(showAvailability ? AtJson(m) : null)"
+                                                            data-available="@(showAvailability ? m.Available : null)"
+                                                            disabled="@(showAvailability && m.Available == 0)"
+                                                            selected="@(row.ModelID == m.ModelID)">@m.ModelName</option>
+                                                }
+                                            </optgroup>
+                                        }
+                                    </select>
+                                </div>
+                                <div class="qty-stepper nr-qty">
+                                    <button type="button" class="qty-btn" data-step="-1" aria-label="Fewer">&minus;</button>
+                                    <input type="number" name="Items[@i].Quantity" value="@(row.Quantity ?? 1)" min="1" class="form-control qty-input" aria-label="Amount" />
+                                    <button type="button" class="qty-btn" data-step="1" aria-label="More">+</button>
+                                </div>
+                                <button type="button" class="nr-remove remove-row" title="Remove this item" aria-label="Remove this item">&times;</button>
+                            </div>
+                        }
+                    </div>
 
-        @* Greyed-out entries have no units on the shelf right now, so they
-           cannot be requested. The link covers the other dead end: the
-           thing needed is not in the catalogue at all. *@
-        <div class="form-text">
-            All items go in one request.
-            @if (showAvailability)
-            {
-                <text>The amount can't be more than is available. Greyed-out models have none available right now.
-                For a Transfer, units already at the destination are not counted.</text>
-            }
-            else
-            {
-                <text>Staff check what is free when they approve your request.</text>
-            }
-            Not on the list?
-            <a asp-controller="NewItemRequests" asp-action="Create">Request a new item</a>
-        </div>
-    </div>
+                    @* A clean row to copy when "+ Add another item" is clicked. *@
+                    <template id="rowTemplate">
+                        <div class="nr-row item-row">
+                            <span class="nr-row-num"></span>
+                            <div class="nr-row-model">
+                                <select class="form-select model-select" aria-label="Model">
+                                    <option value="">Search a model...</option>
+                                    @foreach (var group in modelGroups)
+                                    {
+                                        <optgroup label="@group.Key">
+                                            @foreach (var m in group)
+                                            {
+                                                <option value="@m.ModelID" data-name="@m.ModelName" data-cat="@m.CategoryName" data-sub="@Sub(m)"
+                                                        data-total="@(showAvailability ? m.Available : null)"
+                                                        data-at="@(showAvailability ? AtJson(m) : null)"
+                                                        data-available="@(showAvailability ? m.Available : null)"
+                                                        disabled="@(showAvailability && m.Available == 0)">@m.ModelName</option>
+                                            }
+                                        </optgroup>
+                                    }
+                                </select>
+                            </div>
+                            <div class="qty-stepper nr-qty">
+                                <button type="button" class="qty-btn" data-step="-1" aria-label="Fewer">&minus;</button>
+                                <input type="number" value="1" min="1" class="form-control qty-input" aria-label="Amount" />
+                                <button type="button" class="qty-btn" data-step="1" aria-label="More">+</button>
+                            </div>
+                            <button type="button" class="nr-remove remove-row" title="Remove this item" aria-label="Remove this item">&times;</button>
+                        </div>
+                    </template>
 
-    @* One location field for both types; the script rewords it.
-       Borrow: preferred pickup spot, optional -- if given, the approver
-       does not have to choose one. Transfer: the destination, required. *@
-    <div class="mb-3">
-        <label asp-for="RequestedLocationID" class="form-label" id="locationLabel">Location</label>
-        <select asp-for="RequestedLocationID" asp-items="ViewBag.Locations" class="form-select">
-            <option value="" id="locationEmpty">-- Select Location --</option>
-        </select>
-        <div class="form-text" id="locationHint"></div>
-        <span asp-validation-for="RequestedLocationID" class="text-danger"></span>
-    </div>
+                    <button type="button" id="addRow" class="nr-add">+ Add another item</button>
+                    <span asp-validation-for="Items" class="text-danger d-block"></span>
 
-    <div class="row g-3 mb-3">
-        <div class="col-md-6">
-            <label asp-for="NeededFrom" class="form-label">When do you need it?</label>
-            <input asp-for="NeededFrom" id="neededFrom" type="datetime-local" class="form-control" />
-            <span asp-validation-for="NeededFrom" class="text-danger"></span>
-        </div>
-        <div class="col-md-6">
-            <label asp-for="ReturnBy" class="form-label">
-                <span id="returnByLabel">When will you return it?</span>
-            </label>
-            @* Transfer only: move the units for good, with no return date.
-               Hidden for Borrow by the script below. *@
-            <div class="btn-group w-100 mb-2" role="group" id="untilChoice" aria-label="Until when">
-                <input type="radio" class="btn-check" name="Permanent" id="untilDate" value="false" checked="@(!Model.Permanent)" />
-                <label class="btn btn-outline-success" for="untilDate">Until a date</label>
-                <input type="radio" class="btn-check" name="Permanent" id="untilPermanent" value="true" checked="@Model.Permanent" />
-                <label class="btn btn-outline-success" for="untilPermanent">&infin; Permanent</label>
+                    <div class="nr-hint">
+                        All items go in one request.
+                        @if (showAvailability)
+                        {
+                            <text>The amount can't be more than is available; greyed-out models have none right now. For a Transfer, units already at the destination don't count.</text>
+                        }
+                        else
+                        {
+                            <text>Staff check what's free when they approve.</text>
+                        }
+                        Not on the list? <a asp-controller="NewItemRequests" asp-action="Create" class="nr-link">Request a new item &rarr;</a>
+                    </div>
+                </div>
             </div>
-            <input asp-for="ReturnBy" id="returnBy" type="datetime-local" class="form-control" />
-            <div class="form-text" id="permanentHint" hidden>
-                No return date. Once delivered, the units stay at the destination for good and are never marked overdue.
+
+            @* ---- When ---- *@
+            <div class="asset-card register-step mb-3">
+                <div class="register-step-head">
+                    <div class="register-step-title flex-grow-1">When</div>
+                    <span class="nr-badge" id="whenBadge" hidden></span>
+                </div>
+                <div class="register-step-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label for="neededFrom" class="register-side-label d-block mb-2">When do you need it?</label>
+                            <div class="input-icon">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></svg>
+                                <input name="NeededFrom" id="neededFrom" type="datetime-local" class="form-control" value="@Fmt(Model.NeededFrom)" />
+                            </div>
+                            <span asp-validation-for="NeededFrom" class="text-danger"></span>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="returnBy" class="register-side-label d-block mb-2" id="returnByLabel">When will you return it?</label>
+                            @* Transfer only: move the units for good, with no return
+                               date. Hidden for Borrow by the script below. *@
+                            <div class="nr-seg mb-2" role="radiogroup" id="untilChoice" aria-label="Until when">
+                                <input type="radio" name="Permanent" id="untilDate" value="false" checked="@(!Model.Permanent)" />
+                                <label for="untilDate">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></svg>
+                                    Until a date
+                                </label>
+                                <input type="radio" name="Permanent" id="untilPermanent" value="true" checked="@Model.Permanent" />
+                                <label for="untilPermanent">&infin; Permanent</label>
+                            </div>
+                            <div class="input-icon" id="returnByWrap">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></svg>
+                                <input name="ReturnBy" id="returnBy" type="datetime-local" class="form-control" value="@Fmt(Model.ReturnBy)" />
+                            </div>
+                            <div class="nr-hint mt-1" id="permanentHint" hidden></div>
+                            <span asp-validation-for="ReturnBy" class="text-danger"></span>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <span asp-validation-for="ReturnBy" class="text-danger"></span>
+
+            @* ---- Where ----
+               One location for both types. Borrow: the preferred pickup point,
+               optional (blank lets staff choose). Transfer: the destination,
+               required. A branch first, then one of its rooms; the branch is
+               not posted, it only narrows the rooms. *@
+            <div class="asset-card register-step mb-3">
+                <div class="register-step-head">
+                    <div class="register-step-title flex-grow-1" id="whereTitle">Pickup location</div>
+                    <span class="nr-head-note" id="whereNote">optional</span>
+                </div>
+                <div class="register-step-body">
+                    <div class="row g-3">
+                        <div class="col-md-5">
+                            <label for="branchSelect" class="register-side-label d-block mb-2">Branch</label>
+                            <select id="branchSelect" class="form-select" data-combobox>
+                                <option value="">Select a branch</option>
+                                @foreach (var br in branches)
+                                {
+                                    <option value="@br.BranchID" data-name="@br.BranchName" selected="@(br.BranchID == startBranch)">@br.BranchName · @br.Rooms location@(br.Rooms == 1 ? "" : "s")</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-7">
+                            <label for="RequestedLocationID" class="register-side-label d-block mb-2">Location <span class="nr-label-note">· type to search</span></label>
+                            <div class="input-icon">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 21s-7-6.2-7-12a7 7 0 0 1 14 0c0 5.8-7 12-7 12z" /><circle cx="12" cy="9" r="2.5" /></svg>
+                                <select name="RequestedLocationID" id="RequestedLocationID" class="form-select" data-combobox>
+                                    <option value="">Let staff choose</option>
+                                    @foreach (var l in locations)
+                                    {
+                                        <option value="@l.LocationID" data-branch="@l.BranchID" data-name="@l.LocationName" data-sub="@l.Description"
+                                                selected="@(l.LocationID == Model.RequestedLocationID)">@l.LocationName</option>
+                                    }
+                                </select>
+                            </div>
+                            <span asp-validation-for="RequestedLocationID" class="text-danger"></span>
+                        </div>
+                    </div>
+                    <div class="nr-hint mt-2" id="whereHint"></div>
+                </div>
+            </div>
+
+            @* ---- Reason ---- *@
+            <div class="asset-card register-step mb-3">
+                <div class="register-step-head">
+                    <div class="register-step-title flex-grow-1">Reason</div>
+                    <span class="nr-head-note">optional · approvers see this</span>
+                </div>
+                <div class="register-step-body">
+                    <textarea asp-for="Reason" class="form-control" rows="3" maxlength="500" aria-label="Reason" id="reasonBox"
+                              placeholder="e.g. Parents' orientation in the Grade 5 rooms."></textarea>
+                </div>
+            </div>
+        </div>
+
+        @* ---- Summary ---- *@
+        <div class="col-lg-4">
+            <div class="asset-card nr-summary">
+                <div class="asset-card-title">Your request</div>
+                <dl class="approve-facts nr-summary-body">
+                    <div><dt>Type</dt><dd id="sumType">Borrow</dd></div>
+                    <div><dt>Items</dt><dd id="sumItems">—</dd></div>
+                    <div><dt>Needed</dt><dd id="sumNeeded">—</dd></div>
+                    <div><dt id="sumUntilLabel">Return by</dt><dd id="sumUntil">—</dd></div>
+                    <div class="nr-summary-wide"><dt id="sumWhereLabel">Pickup</dt><dd id="sumWhere">—</dd></div>
+                </dl>
+            </div>
         </div>
     </div>
 
-    <div class="mb-3">
-        <label asp-for="Reason" class="form-label">Reason <span class="text-muted">(optional)</span></label>
-        <textarea asp-for="Reason" class="form-control"></textarea>
+    <div class="register-footer">
+        <span class="d-none d-md-inline" id="footNote"></span>
+        <div class="d-flex ms-auto" style="gap:8px;">
+            <a asp-action="MyRequests" class="btn btn-outline-secondary">Cancel</a>
+            <button type="submit" class="btn btn-primary">Submit request</button>
+        </div>
     </div>
-
-    <button type="submit" class="btn btn-primary">Submit Request</button>
-    <a asp-action="MyRequests" class="btn btn-secondary">Cancel</a>
 </form>
-
-<style>
-    .item-grid {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) 110px 42px;
-        gap: 8px;
-        align-items: center;
-    }
-</style>
 
 @section Scripts {
     @{
@@ -187,90 +299,125 @@
     }
     <script>
         (function () {
-            // The location field means different things per type: a
-            // preferred pickup spot (optional) for Borrow, the destination
-            // (required) for Transfer. Only the wording changes here.
-            var typeSelect = document.getElementById('requestType');
-            var locationLabel = document.getElementById('locationLabel');
-            var locationHint = document.getElementById('locationHint');
-            var locationEmpty = document.getElementById('locationEmpty');
+            var form = document.getElementById('requestForm');
+            var kinds = Array.from(form.querySelectorAll('input[name="RequestType"]'));
+            function isBorrow() { return (kinds.find(function (k) { return k.checked; }) || kinds[0]).value === 'Borrow'; }
+
+            var neededFrom = document.getElementById('neededFrom');
+            var returnBy = document.getElementById('returnBy');
+            var returnByWrap = document.getElementById('returnByWrap');
             var returnByLabel = document.getElementById('returnByLabel');
-
-            // Html.GetEnumSelectList renders the enum's numeric value, so
-            // match on that rather than the name — both are accepted here
-            // so the toggle survives either rendering.
-            var borrowValues = ['@((int)SchoolInventoryManagement.DAL.Entities.Enums.RequestType.Borrow)', 'Borrow'];
-
-            function syncType() {
-                var isBorrow = borrowValues.indexOf(typeSelect.value) !== -1;
-                if (isBorrow) {
-                    locationLabel.innerHTML = 'Pickup location <span class="text-muted">(optional)</span>';
-                    locationHint.textContent = 'Where you would like to collect the items. Leave blank and staff will choose.';
-                    locationEmpty.textContent = '-- Let staff choose --';
-                } else {
-                    locationLabel.textContent = 'Destination location';
-                    locationHint.textContent = 'Where the items should be moved to.';
-                    locationEmpty.textContent = '-- Select Location --';
-                }
-                returnByLabel.textContent = isBorrow
-                    ? 'When will you return it?'
-                    : 'Until when?';
-                syncPermanent();
-            }
-
-            // Transfer: "Until a date" shows the date picker, "Permanent"
-            // hides it and clears it. Borrow always has a return date.
             var untilChoice = document.getElementById('untilChoice');
             var untilDate = document.getElementById('untilDate');
             var untilPermanent = document.getElementById('untilPermanent');
             var permanentHint = document.getElementById('permanentHint');
-            var returnByInput = document.getElementById('returnBy');
+            var whenBadge = document.getElementById('whenBadge');
 
-            function syncPermanent() {
-                var isBorrow = borrowValues.indexOf(typeSelect.value) !== -1;
-                if (isBorrow) untilDate.checked = true;
-                untilChoice.hidden = isBorrow;
-                var permanent = !isBorrow && untilPermanent.checked;
-                returnByInput.hidden = permanent;
-                permanentHint.hidden = !permanent;
-                if (permanent) returnByInput.value = '';
+            var branch = document.getElementById('branchSelect');
+            var location = document.getElementById('RequestedLocationID');
+            var whereTitle = document.getElementById('whereTitle');
+            var whereNote = document.getElementById('whereNote');
+            var whereHint = document.getElementById('whereHint');
+
+            function pad(n) { return String(n).padStart(2, '0'); }
+            function nice(v) {
+                if (!v) return '—';
+                var d = new Date(v);
+                if (isNaN(d)) return '—';
+                var h = d.getHours(), ampm = h >= 12 ? 'PM' : 'AM';
+                h = h % 12 || 12;
+                return d.toLocaleString('en-US', { month: 'short' }) + ' ' + d.getDate() + ' · ' + h + ':' + pad(d.getMinutes()) + ' ' + ampm;
             }
 
+            // ---- Where: a branch first, then its rooms -------------------
+            // Rebuilt rather than hidden: some browsers ignore "hidden" on
+            // <option>. The blank first option is "Let staff choose" for a
+            // Borrow (a real choice) and a hint for a Transfer.
+            var allRooms = Array.from(location.options).filter(function (o) { return o.value; }).map(function (o) {
+                return { value: o.value, text: o.text, data: Object.assign({}, o.dataset) };
+            });
+
+            function rebuildRooms() {
+                var keep = location.value;
+                var b = branch.value;
+                location.innerHTML = '';
+                var blank = document.createElement('option');
+                blank.value = '';
+                blank.textContent = isBorrow() ? 'Let staff choose' : (b ? 'Search a location' : '-- Pick a branch first --');
+                location.appendChild(blank);
+                allRooms.forEach(function (r) {
+                    if (!b || r.data.branch !== b) return;
+                    var o = document.createElement('option');
+                    o.value = r.value;
+                    o.textContent = r.text;
+                    Object.keys(r.data).forEach(function (k) { o.dataset[k] = r.data[k]; });
+                    location.appendChild(o);
+                });
+                location.value = Array.from(location.options).some(function (o) { return o.value === keep; }) ? keep : '';
+                location.disabled = !b && !isBorrow();
+                location.dispatchEvent(new Event('combo-sync'));
+            }
+
+            branch.addEventListener('change', function () { rebuildRooms(); refreshAvailability(); summary(); });
+            location.addEventListener('change', function () { refreshAvailability(); summary(); });
+
+            // ---- Type ----------------------------------------------------
+            function syncType() {
+                var borrow = isBorrow();
+                kinds.forEach(function (k) { k.closest('.nr-kind').classList.toggle('is-on', k.checked); });
+
+                whereTitle.textContent = borrow ? 'Pickup location' : 'Move to';
+                whereNote.textContent = borrow ? 'optional' : 'required';
+                whereNote.classList.toggle('is-required', !borrow);
+                whereHint.innerHTML = borrow
+                    ? 'Where you\'d like to collect the items. Leave it and staff will choose. For a Transfer this becomes <strong>Move to</strong>, and it\'s required.'
+                    : 'Where the items should go. Staff deliver them there; units already in that room aren\'t picked.';
+
+                returnByLabel.textContent = borrow ? 'When will you return it?' : 'Until when?';
+                if (borrow) untilDate.checked = true;
+                untilChoice.hidden = borrow;
+                rebuildRooms();
+                syncPermanent();
+                refreshAvailability();
+            }
+            kinds.forEach(function (k) { k.addEventListener('change', syncType); });
+
+            // Transfer: "Until a date" shows the date picker, "Permanent"
+            // hides and clears it. Borrow always has a return date.
+            function syncPermanent() {
+                var permanent = !isBorrow() && untilPermanent.checked;
+                returnByWrap.hidden = permanent;
+                permanentHint.hidden = !permanent;
+                if (permanent) returnBy.value = '';
+                untilChoice.querySelectorAll('input').forEach(function (r) { r.nextElementSibling.classList.toggle('is-on', r.checked); });
+                summary();
+            }
             untilDate.addEventListener('change', syncPermanent);
             untilPermanent.addEventListener('change', syncPermanent);
 
-            typeSelect.addEventListener('change', syncType);
-            syncType();
-
-            // Dates: nothing before today, and the return picker cannot be
-            // set earlier than the start. The service enforces both anyway.
-            var neededFrom = document.getElementById('neededFrom');
-            var returnBy = document.getElementById('returnBy');
-
-            function pad(n) { return String(n).padStart(2, '0'); }
+            // Dates: nothing before today, and the return cannot be before
+            // the start. The service enforces both anyway.
             var today = new Date();
             neededFrom.min = today.getFullYear() + '-' + pad(today.getMonth() + 1) + '-' + pad(today.getDate()) + 'T00:00';
-
             function syncReturnMin() {
                 returnBy.min = neededFrom.value || neededFrom.min;
-                if (returnBy.value && neededFrom.value && returnBy.value <= neededFrom.value) {
-                    returnBy.value = '';
-                }
+                if (returnBy.value && neededFrom.value && returnBy.value <= neededFrom.value) returnBy.value = '';
+                summary();
             }
-
             neededFrom.addEventListener('change', syncReturnMin);
-            syncReturnMin();
+            returnBy.addEventListener('change', summary);
 
             // ---- Item rows ------------------------------------------------
             // Each row: a model and an amount. A model chosen in one row
-            // disappears from every other row, so it can't be listed twice.
-            // The amount is capped at how many of that model are available.
-            // Rows post as Items[0], Items[1], ... -- renumbered after every
-            // add or remove so the list binds without gaps.
+            // disappears from the others, so it can't be listed twice. The
+            // amount is capped at how many are available (not for Teachers
+            // and Staff). Rows post as Items[0], Items[1], ... -- renumbered
+            // after every add or remove so the list binds without gaps.
             var rowsBox = document.getElementById('itemRows');
             var template = document.getElementById('rowTemplate');
             var addButton = document.getElementById('addRow');
             var maxRows = 20; // the service refuses more than this anyway
+            var showAvailability = @(showAvailability ? "true" : "false");
 
             function allRows() { return Array.from(rowsBox.querySelectorAll('.item-row')); }
 
@@ -278,11 +425,10 @@
                 allRows().forEach(function (row, i) {
                     row.querySelector('.model-select').name = 'Items[' + i + '].ModelID';
                     row.querySelector('.qty-input').name = 'Items[' + i + '].Quantity';
+                    row.querySelector('.nr-row-num').textContent = i + 1;
                 });
             }
 
-            // Hide in each row the models picked in the other rows, and cap
-            // each amount at what is available for its model.
             function sync() {
                 var rows = allRows();
                 var picked = rows.map(function (r) { return r.querySelector('.model-select').value; });
@@ -291,85 +437,62 @@
                     var select = row.querySelector('.model-select');
                     Array.from(select.options).forEach(function (opt) {
                         if (!opt.value) return;
-                        var takenElsewhere = picked.some(function (v, j) { return j !== i && v === opt.value; });
-                        opt.hidden = takenElsewhere;
-                        // Hidden is not enough in some browsers -- disable too,
-                        // but never re-enable a model that has none available.
-                        opt.disabled = takenElsewhere || opt.getAttribute('data-available') === '0';
+                        opt.hidden = picked.some(function (v, j) { return j !== i && v === opt.value; });
+                        opt.disabled = showAvailability && opt.getAttribute('data-available') === '0' && !opt.selected;
                     });
 
                     var qty = row.querySelector('.qty-input');
                     var chosen = select.options[select.selectedIndex];
-                    var max = chosen && chosen.value ? parseInt(chosen.getAttribute('data-available'), 10) : 0;
+                    var max = showAvailability && chosen && chosen.value ? parseInt(chosen.getAttribute('data-available'), 10) : 0;
+                    var n = parseInt(qty.value, 10);
+                    if (isNaN(n) || n < 1) qty.value = 1;
                     if (max > 0) {
                         qty.max = max;
-                        var n = parseInt(qty.value, 10);
-                        if (isNaN(n) || n < 1) qty.value = 1;
                         if (n > max) qty.value = max;
                     } else {
                         qty.removeAttribute('max');
                     }
-
-                    // visibility, not hidden: the button keeps its grid
-                    // column so the amounts stay lined up.
                     row.querySelector('.remove-row').style.visibility = rows.length === 1 ? 'hidden' : 'visible';
                 });
 
-                // No more rows than there are models left to pick.
-                var selectable = rowsBox.querySelector('.model-select')
-                    ? Array.from(rowsBox.querySelector('.model-select').options)
-                        .filter(function (o) { return o.value && o.getAttribute('data-available') !== '0'; }).length
-                    : 0;
+                var models = template.content.querySelectorAll('option[value]:not([value=""])');
+                var selectable = Array.from(models).filter(function (o) { return !showAvailability || o.getAttribute('data-available') !== '0'; }).length;
                 addButton.disabled = rows.length >= maxRows || rows.length >= selectable;
+                summary();
             }
 
-            // ---- Availability (not shown to Teachers and Staff) ---------
             // A Transfer cannot use units already at its destination, so
             // once one is chosen they come off each model's count -- the
-            // same rule the approval page and the service apply. For
-            // Teachers and Staff the options keep their plain model names:
-            // Razor still writes data-* attributes when the value is null
-            // (as empty strings), so the flag below is what skips them.
-            var showAvailability = @(showAvailability ? "true" : "false");
-            var locationSelect = document.getElementById('RequestedLocationID');
-
+            // same rule the approval page and the service apply.
             function refreshAvailability() {
-                if (!showAvailability) {
-                    sync();
-                    return;
-                }
-
-                var isTransfer = borrowValues.indexOf(typeSelect.value) === -1;
-                var dest = isTransfer && locationSelect ? locationSelect.value : '';
+                if (!showAvailability) { sync(); return; }
+                var dest = !isBorrow() ? location.value : '';
                 var options = Array.from(rowsBox.querySelectorAll('option[data-total]'))
                     .concat(Array.from(template.content.querySelectorAll('option[data-total]')));
-
                 options.forEach(function (opt) {
                     var total = parseInt(opt.getAttribute('data-total'), 10);
                     var at = JSON.parse(opt.getAttribute('data-at') || '{}');
                     var n = dest ? total - (at[dest] || 0) : total;
                     opt.setAttribute('data-available', n);
-                    opt.textContent = opt.getAttribute('data-name') + ' — ' +
+                    opt.dataset.sub = opt.dataset.cat + ' · ' +
                         (n > 0 ? n + ' available' : (dest ? 'none available to move there' : 'none available'));
                 });
-
                 sync();
             }
-
-            typeSelect.addEventListener('change', refreshAvailability);
-            if (locationSelect) locationSelect.addEventListener('change', refreshAvailability);
 
             addButton.addEventListener('click', function () {
                 var row = template.content.firstElementChild.cloneNode(true);
                 rowsBox.appendChild(row);
+                var select = row.querySelector('.model-select');
+                window.sabCombobox(select);
                 renumber();
                 sync();
-                row.querySelector('.model-select').focus();
+                var box = row.querySelector('.combo-input');
+                if (box) box.focus();
             });
 
             rowsBox.addEventListener('change', function (e) {
                 if (e.target.classList.contains('model-select')) {
-                    // A newly chosen model starts at an amount of 1.
                     e.target.closest('.item-row').querySelector('.qty-input').value = 1;
                 }
                 sync();
@@ -380,25 +503,77 @@
                 var max = parseInt(e.target.max, 10);
                 var n = parseInt(e.target.value, 10);
                 if (!isNaN(max) && n > max) e.target.value = max;
+                summary();
             });
 
             rowsBox.addEventListener('click', function (e) {
+                var step = e.target.closest('[data-step]');
+                if (step) {
+                    var qty = step.parentNode.querySelector('.qty-input');
+                    var n = (parseInt(qty.value, 10) || 1) + parseInt(step.dataset.step, 10);
+                    var max = parseInt(qty.max, 10);
+                    qty.value = Math.max(1, isNaN(max) ? n : Math.min(n, max));
+                    summary();
+                    return;
+                }
                 var button = e.target.closest('.remove-row');
                 if (!button) return;
-                var rows = allRows();
                 var row = button.closest('.item-row');
-                if (rows.length > 1) {
+                if (allRows().length > 1) {
                     row.remove();
                 } else {
-                    row.querySelector('.model-select').value = '';
+                    var select = row.querySelector('.model-select');
+                    select.value = '';
+                    select.dispatchEvent(new Event('combo-sync'));
                     row.querySelector('.qty-input').value = 1;
                 }
                 renumber();
                 sync();
             });
 
+            // ---- Summary card and badges ---------------------------------
+            function summary() {
+                var borrow = isBorrow();
+                var permanent = !borrow && untilPermanent.checked;
+                var filled = allRows().filter(function (r) { return r.querySelector('.model-select').value; });
+                var units = filled.reduce(function (s, r) { return s + (parseInt(r.querySelector('.qty-input').value, 10) || 0); }, 0);
+                var itemsText = filled.length ? filled.length + ' model' + (filled.length === 1 ? '' : 's') + ' · ' + units + ' unit' + (units === 1 ? '' : 's') : '—';
+                document.getElementById('itemsCount').textContent = filled.length ? itemsText : '';
+                document.getElementById('sumItems').textContent = itemsText;
+                document.getElementById('sumType').textContent = borrow ? 'Borrow' : 'Transfer';
+                document.getElementById('sumNeeded').textContent = nice(neededFrom.value);
+                document.getElementById('sumUntilLabel').textContent = borrow ? 'Return by' : 'Until';
+                document.getElementById('sumUntil').textContent = permanent ? 'Permanent' : nice(returnBy.value);
+
+                var opt = location.options[location.selectedIndex];
+                var bOpt = branch.options[branch.selectedIndex];
+                var where = document.getElementById('sumWhere');
+                document.getElementById('sumWhereLabel').textContent = borrow ? 'Pickup' : 'Moving to';
+                if (opt && opt.value) {
+                    where.textContent = opt.dataset.name + (bOpt && bOpt.value ? ' · ' + bOpt.dataset.name : '');
+                    where.className = 'is-green';
+                } else {
+                    where.textContent = borrow ? 'Staff will choose' : 'Not chosen yet';
+                    where.className = 'is-empty';
+                }
+
+                // "2 days" or "Permanent" beside "When".
+                var badge = '';
+                if (permanent) badge = 'Permanent';
+                else if (neededFrom.value && returnBy.value) {
+                    var days = Math.ceil((new Date(returnBy.value) - new Date(neededFrom.value)) / 86400000);
+                    if (days > 0) badge = days + ' day' + (days === 1 ? '' : 's');
+                }
+                whenBadge.textContent = badge;
+                whenBadge.hidden = !badge;
+
+                var room = opt && opt.value ? opt.dataset.name : 'the destination';
+                permanentHint.textContent = 'No return date. Once delivered, the units stay in ' + room + ' for good and are never marked overdue.';
+            }
+
             renumber();
-            refreshAvailability(); // also runs sync()
+            syncReturnMin();
+            syncType();   // also rebuilds rooms, availability, summary
         })();
     </script>
 }

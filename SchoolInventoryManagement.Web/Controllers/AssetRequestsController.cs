@@ -117,7 +117,8 @@ namespace SchoolInventoryManagement.Web.Controllers
         }
 
         // GET /AssetRequests/History
-        // Every approved or rejected request, newest decision first, with
+        // Every finished request (returned, cancelled after approval, or
+        // rejected), newest decision first, with
         // filters. Asset Officers and Administrators only; the service
         // checks the same.
         [Authorize(Roles = AssetManagerRoles)]
@@ -130,6 +131,7 @@ namespace SchoolInventoryManagement.Web.Controllers
                 Keyword = model.Keyword,
                 DecidedByUserId = model.DecidedBy,
                 DepartmentId = model.DepartmentId,
+                BranchId = model.BranchId,
                 FromDate = model.FromDate,
                 ToDate = model.ToDate,
                 Page = model.Page,
@@ -138,7 +140,8 @@ namespace SchoolInventoryManagement.Web.Controllers
 
             model.Rows = result.Rows;
             model.TotalCount = result.TotalCount;
-            model.ApprovedCount = result.ApprovedCount;
+            model.ReturnedCount = result.ReturnedCount;
+            model.CancelledCount = result.CancelledCount;
             model.RejectedCount = result.RejectedCount;
             model.Deciders = result.Deciders;
             model.Departments = await _departmentService.GetAllDepartmentsAsync();
@@ -701,10 +704,10 @@ namespace SchoolInventoryManagement.Web.Controllers
                 })
                 .ToList();
 
-            var locations = await _locationService.GetAllLocationsAsync();
-            ViewBag.Locations = new SelectList(
-                locations.Select(l => new { l.LocationID, Label = $"{l.BranchName} — {l.LocationName}" }),
-                "LocationID", "Label");
+            // A branch first, then one of its rooms (the page narrows the
+            // second list by the first).
+            ViewBag.LocationList = (await _locationService.GetAllLocationsAsync())
+                .OrderBy(l => l.LocationName).ToList();
         }
 
         // One entry per line of the ticket: its model, how many to pick,

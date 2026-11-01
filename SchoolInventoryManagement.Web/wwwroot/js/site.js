@@ -139,6 +139,9 @@ document.addEventListener('change', function (e) {
             var shown = 0;
 
             function addOption(opt, group) {
+                // Hidden: taken by another row, say. Disabled: shown greyed
+                // out, but cannot be picked.
+                if (opt.hidden) return false;
                 var text = opt.text;
                 var sub = opt.dataset.sub || '';
                 if (q && text.toLowerCase().indexOf(q) === -1 && sub.toLowerCase().indexOf(q) === -1
@@ -149,7 +152,12 @@ document.addEventListener('change', function (e) {
                 b.className = 'dropdown-item' + (opt.selected ? ' is-selected' : '') + (opt.value === '' ? ' combo-blank' : '');
                 b.setAttribute('role', 'option');
                 b.tabIndex = -1;
-                b.dataset.value = opt.value;
+                if (opt.disabled) {
+                    b.classList.add('disabled');
+                    b.setAttribute('aria-disabled', 'true');
+                } else {
+                    b.dataset.value = opt.value;
+                }
                 // The typed letters in bold, and an option's data-sub (say
                 // the building and floor) on a second line.
                 var at = q ? text.toLowerCase().indexOf(q) : -1;
@@ -171,7 +179,7 @@ document.addEventListener('change', function (e) {
                     small.textContent = sub;
                     b.appendChild(small);
                 }
-                b.addEventListener('mousedown', function (e) { e.preventDefault(); pick(opt.value); });
+                b.addEventListener('mousedown', function (e) { e.preventDefault(); if (!opt.disabled) pick(opt.value); });
                 li.appendChild(b);
                 list.appendChild(li);
                 shown++;
@@ -285,6 +293,8 @@ document.addEventListener('change', function (e) {
     }
 
     function init() { document.querySelectorAll('select[data-combobox]').forEach(enhance); }
+    // For rows added later (New request's "+ Add another item").
+    window.sabCombobox = function (select) { if (!select.closest('.combo')) enhance(select); };
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 })();
 
@@ -400,7 +410,49 @@ document.addEventListener('change', function (e) {
             });
         });
         if (search) search.addEventListener('input', function () { page = 1; render(); });
-        filters.forEach(function (f) { f.addEventListener('change', function () { page = 1; render(); }); });
+        filters.forEach(function (f) { f.addEventListener('change', function () { page = 1; render(); markFilters(); }); });
+
+        // The Filters button shows how many filters are on, and the menu
+        // gets a "Clear filters" link, so a forgotten filter cannot quietly
+        // hide part of the list.
+        var filterBtn = filters.length ? filters[0].closest('.dropdown') : null;
+        var filterMenu = filterBtn ? filterBtn.querySelector('.dropdown-menu') : null;
+        filterBtn = filterBtn ? filterBtn.querySelector('[data-bs-toggle="dropdown"]') : null;
+        if (filterMenu) {
+            var clear = document.createElement('button');
+            clear.type = 'button';
+            clear.className = 'btn btn-link btn-sm px-0 mt-2 md-filter-clear';
+            clear.textContent = 'Clear filters';
+            clear.hidden = true;
+            clear.addEventListener('click', function () {
+                filters.forEach(function (f) {
+                    f.value = '';
+                    f.dispatchEvent(new Event('combo-sync'));
+                });
+                page = 1;
+                render();
+                markFilters();
+            });
+            filterMenu.appendChild(clear);
+        }
+        function markFilters() {
+            if (!filterBtn) return;
+            var on = filters.filter(function (f) { return f.value; }).length;
+            filterBtn.classList.toggle('active', on > 0);
+            var badge = filterBtn.querySelector('.asset-filter-count');
+            if (on > 0) {
+                if (!badge) {
+                    badge = document.createElement('span');
+                    badge.className = 'asset-filter-count';
+                    filterBtn.appendChild(badge);
+                }
+                badge.textContent = on;
+            } else if (badge) {
+                badge.remove();
+            }
+            if (filterMenu) filterMenu.querySelector('.md-filter-clear').hidden = on === 0;
+        }
+        markFilters();
 
         // "Show N more units" in a panel.
         root.querySelectorAll('[data-more]').forEach(function (b) {

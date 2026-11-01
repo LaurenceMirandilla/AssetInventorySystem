@@ -8,7 +8,8 @@ namespace SchoolInventoryManagement.BLL.DTOs
     // History). Every one is optional.
     public class RequestHistoryFilterDTO
     {
-        // "Approved" or "Rejected"; anything else means both.
+        // How it ended: "Returned" (returned or fulfilled), "Cancelled"
+        // (cancelled after approval) or "Rejected"; anything else means all.
         public string? Decision { get; set; }
         public RequestType? Type { get; set; }
 
@@ -17,6 +18,7 @@ namespace SchoolInventoryManagement.BLL.DTOs
 
         public int? DecidedByUserId { get; set; }
         public int? DepartmentId { get; set; }
+        public int? BranchId { get; set; }
 
         // On the decision date, inclusive on both ends.
         public DateTime? FromDate { get; set; }
@@ -34,9 +36,10 @@ namespace SchoolInventoryManagement.BLL.DTOs
         // Across every page of the filtered set.
         public int TotalCount { get; set; }
 
-        // Ignoring the Approved / Rejected choice (every other filter
-        // applies), so the tabs show both numbers whichever is open.
-        public int ApprovedCount { get; set; }
+        // Ignoring the outcome tab (every other filter applies), so each
+        // tab keeps its number whichever one is open.
+        public int ReturnedCount { get; set; }
+        public int CancelledCount { get; set; }
         public int RejectedCount { get; set; }
 
         // Everyone who has decided a request, for the "Decided by" filter.

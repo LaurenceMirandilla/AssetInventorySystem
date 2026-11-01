@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using SchoolInventoryManagement.BLL.DTOs;
@@ -12,19 +12,21 @@ namespace SchoolInventoryManagement.Web.ViewModels
     {
         public const int PageSize = 20;
 
-        // "Approved" or "Rejected"; empty means both.
+        // "Returned", "Cancelled" or "Rejected"; empty means all.
         public string? Decision { get; set; }
         public RequestType? Type { get; set; }
         public string? Keyword { get; set; }
         public int? DecidedBy { get; set; }
         public int? DepartmentId { get; set; }
+        public int? BranchId { get; set; }
         public DateTime? FromDate { get; set; }
         public DateTime? ToDate { get; set; }
         public int Page { get; set; } = 1;
 
         [BindNever] public List<AssetRequestResponseDTO> Rows { get; set; } = new();
         [BindNever] public int TotalCount { get; set; }
-        [BindNever] public int ApprovedCount { get; set; }
+        [BindNever] public int ReturnedCount { get; set; }
+        [BindNever] public int CancelledCount { get; set; }
         [BindNever] public int RejectedCount { get; set; }
         [BindNever] public List<UserSummaryDTO> Deciders { get; set; } = new();
         [BindNever] public List<DepartmentDTO> Departments { get; set; } = new();
@@ -33,7 +35,7 @@ namespace SchoolInventoryManagement.Web.ViewModels
 
         public bool HasFilters =>
             !string.IsNullOrEmpty(Decision) || Type.HasValue || !string.IsNullOrWhiteSpace(Keyword) ||
-            DecidedBy.HasValue || DepartmentId.HasValue || FromDate.HasValue || ToDate.HasValue;
+            DecidedBy.HasValue || DepartmentId.HasValue || BranchId.HasValue || FromDate.HasValue || ToDate.HasValue;
 
         // The current filters as route values, for the tiles and the pager.
         // Decision and page are left for the caller to set.
@@ -44,6 +46,7 @@ namespace SchoolInventoryManagement.Web.ViewModels
             if (!string.IsNullOrWhiteSpace(Keyword)) route["keyword"] = Keyword;
             if (DecidedBy.HasValue) route["decidedBy"] = DecidedBy.Value.ToString();
             if (DepartmentId.HasValue) route["departmentId"] = DepartmentId.Value.ToString();
+            if (BranchId.HasValue) route["branchId"] = BranchId.Value.ToString();
             if (FromDate.HasValue) route["fromDate"] = FromDate.Value.ToString("yyyy-MM-dd");
             if (ToDate.HasValue) route["toDate"] = ToDate.Value.ToString("yyyy-MM-dd");
             return route;

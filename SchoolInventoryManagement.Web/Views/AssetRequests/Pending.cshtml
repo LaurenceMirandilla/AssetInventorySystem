@@ -318,6 +318,16 @@
                                 <option value="ontime">On time</option>
                                 <option value="overdue">Overdue</option>
                             </select>
+                            <label class="form-label">Branch</label>
+                            <div class="mb-2">
+                            <select class="form-select form-select-sm" data-md-filter="branch" data-combobox>
+                                <option value="">Any</option>
+                                @foreach (var d in inProgress.Select(BranchOf).Where(d => !string.IsNullOrEmpty(d)).Distinct().OrderBy(d => d))
+                                {
+                                    <option value="@d.ToLowerInvariant()">@d</option>
+                                }
+                            </select>
+                            </div>
                             <label class="form-label">Department</label>
                             <select class="form-select form-select-sm" data-md-filter="dept" data-combobox>
                                 <option value="">Any</option>
@@ -339,7 +349,7 @@
                             var isBorrow = r.RequestType == RequestType.Borrow;
                             var late = g.Key == "late";
                             <button type="button" class="myassets-item" data-entry="p-@r.RequestID" data-search="@Search(r)"
-                                    data-type="@r.RequestType.ToString().ToLowerInvariant()" data-dept="@(r.DepartmentName?.ToLowerInvariant() ?? "")"
+                                    data-type="@r.RequestType.ToString().ToLowerInvariant()" data-dept="@(r.DepartmentName?.ToLowerInvariant() ?? "")" data-branch="@BranchOf(r).ToLowerInvariant()"
                                     data-stage="@(g.Key == "transit" ? "deliver" : "return")" data-timing="@(late ? "overdue" : "ontime")">
                                 <span class="md-avatar @(late ? "is-dark" : "")">@Initials(r.RequestedByUser.FullName)</span>
                                 <span class="myassets-item-main">

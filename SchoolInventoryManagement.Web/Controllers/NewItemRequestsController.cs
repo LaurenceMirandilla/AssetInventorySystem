@@ -32,11 +32,30 @@ namespace SchoolInventoryManagement.Web.Controllers
             RoleNames.AssetOfficer + "," + RoleNames.Administrator;
 
         private readonly INewItemRequestService _requestService;
+        private readonly IDepartmentService _departmentService;
+        private readonly IUserService _userService;
 
-        public NewItemRequestsController(INewItemRequestService requestService)
+        public NewItemRequestsController(INewItemRequestService requestService, IDepartmentService departmentService,
+            IUserService userService)
         {
             _requestService = requestService;
+            _departmentService = departmentService;
+            _userService = userService;
         }
+
+        // The request form's side card: the requester's department, and
+        // whether the department-head step is skipped (their own request).
+        private async Task LoadFormInfoAsync()
+        {
+            var me = await _userService.GetUserByIdAsync(CurrentUserId);
+            ViewBag.MyDepartment = me?.DepartmentName;
+            ViewBag.SkipsDeptHead = User.IsInRole(RoleNames.DepartmentHead);
+        }
+
+        // Department id -> branch name, for the lists' Branch filter.
+        private async Task LoadDepartmentBranchesAsync() =>
+            ViewBag.DepartmentBranches = (await _departmentService.GetAllDepartmentsAsync())
+                .ToDictionary(d => d.DepartmentID, d => d.BranchName);
 
         private int CurrentUserId =>
             int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
@@ -67,6 +86,7 @@ namespace SchoolInventoryManagement.Web.Controllers
             ViewBag.Status = status;
             ViewBag.Search = q?.Trim();
             ViewBag.Sort = oldestFirst ? "oldest" : "newest";
+            await LoadDepartmentBranchesAsync();
             return View(requests);
         }
 
@@ -76,6 +96,7 @@ namespace SchoolInventoryManagement.Web.Controllers
         public async Task<IActionResult> Pending()
         {
             var requests = await _requestService.GetPendingRequestsAsync(CurrentUserId);
+            await LoadDepartmentBranchesAsync();
             return View(requests);
         }
 
@@ -102,8 +123,9 @@ namespace SchoolInventoryManagement.Web.Controllers
 
         // GET /NewItemRequests/Create
         // itemName lets a link pre-fill the first item box.
-        public IActionResult Create(string? itemName)
+        public async Task<IActionResult> Create(string? itemName)
         {
+            await LoadFormInfoAsync();
             return View(new CreateNewItemRequestViewModel
             {
                 ItemNames = new() { itemName ?? "" },
@@ -143,7 +165,10 @@ namespace SchoolInventoryManagement.Web.Controllers
                 ModelState.AddModelError(nameof(model.NeededBy), "The date cannot be in the past.");
 
             if (!ModelState.IsValid)
+            {
+                await LoadFormInfoAsync();
                 return View(model);
+            }
 
             try
             {
@@ -166,6 +191,7 @@ namespace SchoolInventoryManagement.Web.Controllers
             catch (Exception ex)
             {
                 HandleServiceException(ex);
+                await LoadFormInfoAsync();
                 return View(model);
             }
         }

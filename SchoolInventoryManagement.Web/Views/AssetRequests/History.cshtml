@@ -34,7 +34,7 @@
 
     // Filters behind the Filters button (search and decision have their own
     // places), for its count badge.
-    var filterCount = (Model.Type.HasValue ? 1 : 0) + (Model.DecidedBy.HasValue ? 1 : 0) + (Model.DepartmentId.HasValue ? 1 : 0)
+    var filterCount = (Model.Type.HasValue ? 1 : 0) + (Model.DecidedBy.HasValue ? 1 : 0) + (Model.DepartmentId.HasValue ? 1 : 0) + (Model.BranchId.HasValue ? 1 : 0)
         + (Model.FromDate.HasValue ? 1 : 0) + (Model.ToDate.HasValue ? 1 : 0);
     var first = (Model.Page - 1) * SchoolInventoryManagement.Web.ViewModels.RequestHistoryViewModel.PageSize + 1;
     var last = Math.Min(Model.Page * SchoolInventoryManagement.Web.ViewModels.RequestHistoryViewModel.PageSize, Model.TotalCount);
@@ -50,6 +50,16 @@
         return initials.Length > 2 ? initials[..2] : initials;
     }
 
+    // How the request ended, for the pill on each row and panel.
+    static (string Label, string Css) Outcome(AssetRequestResponseDTO r) => r.RequestStatus switch
+    {
+        RequestStatus.Rejected => ("Rejected", "st-overdue"),
+        RequestStatus.Cancelled => ("Cancelled", "st-disposed"),
+        // A permanent Transfer: delivered for good, nothing to come back.
+        RequestStatus.Fulfilled => ("Delivered", "st-available"),
+        _ => ("Returned", "st-available")
+    };
+
     static string Title(AssetRequestResponseDTO r) =>
         r.ItemsSummary + (r.RequestType == RequestType.Transfer && r.RequestedLocationName != null ? " → " + r.RequestedLocationName : "");
 }
@@ -57,19 +67,22 @@
 <div class="asset-detail-head mb-3 pb-0 border-0">
     <div>
         <h2 class="asset-detail-title">Request History</h2>
-        <div class="asset-detail-sub">Every Borrow and Transfer request that is completely finished: returned, rejected, or cancelled after approval. Newest decision first.</div>
+        <div class="asset-detail-sub">Every Borrow and Transfer request that is completely finished: returned (or delivered for good), rejected, or cancelled after approval. Newest decision first.</div>
     </div>
     <div class="asset-detail-actions">
         <a asp-action="Pending" class="btn btn-outline-secondary">&larr; Back to Approvals</a>
     </div>
 </div>
 
-<nav class="page-tabs" aria-label="Decision">
+<nav class="page-tabs" aria-label="Outcome">
     <a asp-action="History" asp-all-route-data="@WithDecision(null)" class="page-tab @(decision == "" ? "active" : "")">
-        All finished <span class="history-tab-count">@(Model.ApprovedCount + Model.RejectedCount)</span>
+        All finished <span class="history-tab-count">@(Model.ReturnedCount + Model.CancelledCount + Model.RejectedCount)</span>
     </a>
-    <a asp-action="History" asp-all-route-data="@WithDecision("Approved")" class="page-tab @(decision == "Approved" ? "active" : "")">
-        Approved <span class="history-tab-count">@Model.ApprovedCount</span>
+    <a asp-action="History" asp-all-route-data="@WithDecision("Returned")" class="page-tab @(decision == "Returned" ? "active" : "")">
+        Completed <span class="history-tab-count">@Model.ReturnedCount</span>
+    </a>
+    <a asp-action="History" asp-all-route-data="@WithDecision("Cancelled")" class="page-tab @(decision == "Cancelled" ? "active" : "")">
+        Cancelled <span class="history-tab-count">@Model.CancelledCount</span>
     </a>
     <a asp-action="History" asp-all-route-data="@WithDecision("Rejected")" class="page-tab @(decision == "Rejected" ? "active" : "")">
         Rejected <span class="history-tab-count">@Model.RejectedCount</span>
@@ -111,14 +124,26 @@
                             <option value="@u.UserID" selected="@(Model.DecidedBy == u.UserID)">@u.FullName</option>
                         }
                     </select>
+                    <label class="form-label">Branch</label>
+                    <div class="mb-2">
+                    <select name="branchId" class="form-select form-select-sm" data-combobox>
+                        <option value="">All branches</option>
+                        @foreach (var b in Model.Departments.GroupBy(d => d.BranchID).Select(g => g.First()).OrderBy(d => d.BranchName))
+                        {
+                            <option value="@b.BranchID" selected="@(Model.BranchId == b.BranchID)">@b.BranchName</option>
+                        }
+                    </select>
+                    </div>
                     <label class="form-label">Department</label>
-                    <select name="departmentId" class="form-select form-select-sm mb-2">
+                    <div class="mb-2">
+                    <select name="departmentId" class="form-select form-select-sm" data-combobox>
                         <option value="">All departments</option>
                         @foreach (var d in Model.Departments.OrderBy(d => d.BranchName).ThenBy(d => d.DepartmentName))
                         {
-                            <option value="@d.DepartmentID" selected="@(Model.DepartmentId == d.DepartmentID)">@d.BranchName — @d.DepartmentName</option>
+                            <option value="@d.DepartmentID" data-branch="@d.BranchID" selected="@(Model.DepartmentId == d.DepartmentID)">@d.BranchName — @d.DepartmentName</option>
                         }
                     </select>
+                    </div>
                     <div class="row g-2 mb-2">
                         <div class="col-6">
                             <label class="form-label">Decided from</label>
@@ -139,7 +164,7 @@
 
         @if (!Model.Rows.Any())
         {
-            <div class="myassets-nomatch">@(Model.HasFilters ? "No decided requests match these filters." : "No requests have been approved or rejected yet.")</div>
+            <div class="myassets-nomatch">@(Model.HasFilters ? "No finished requests match these filters." : "No requests have finished yet.")</div>
         }
 
         @foreach (var day in days)
@@ -159,7 +184,7 @@
                                 by @(r.ApprovedByUser?.FullName ?? "—")@(r.ApprovalDate is not null ? " · " + r.ApprovalDate.Value.ToString("h:mm tt") : "")
                             </span>
                         </span>
-                        <span class="asset-pill asset-status md-pill @(rejected ? "st-overdue" : "st-available")">@(rejected ? "Rejected" : "Approved")</span>
+                        <span class="asset-pill asset-status md-pill @Outcome(r).Css">@Outcome(r).Label</span>
                     </button>
                 }
             </div>
@@ -168,7 +193,7 @@
         @if (Model.TotalCount > 0)
         {
             <div class="md-foot">
-                <span>@first–@last of @Model.TotalCount decision@(Model.TotalCount == 1 ? "" : "s")</span>
+                <span>@first–@last of @Model.TotalCount request@(Model.TotalCount == 1 ? "" : "s")</span>
                 @if (Model.TotalPages > 1)
                 {
                     <nav class="d-flex" style="gap:6px;" aria-label="History pages">
@@ -218,7 +243,7 @@
             var rejected = r.RequestStatus == RequestStatus.Rejected;
             var isBorrow = r.RequestType == RequestType.Borrow;
             <article class="myassets-panel" data-panel="h-@r.RequestID" hidden>
-                <button type="button" class="myassets-back" data-back>&larr; All decisions</button>
+                <button type="button" class="myassets-back" data-back>&larr; All finished</button>
 
                 <div class="myassets-panel-head">
                     <div class="md-person">
@@ -232,7 +257,7 @@
                         </div>
                     </div>
                     <div class="myassets-panel-actions">
-                        <span class="asset-pill asset-status @(rejected ? "st-overdue" : "st-available")">@(rejected ? "Rejected" : "Approved")</span>
+                        <span class="asset-pill asset-status @Outcome(r).Css">@Outcome(r).Label</span>
                         <a asp-action="Details" asp-route-id="@r.RequestID" asp-route-from="history" class="btn btn-outline-secondary">View &rarr;</a>
                     </div>
                 </div>

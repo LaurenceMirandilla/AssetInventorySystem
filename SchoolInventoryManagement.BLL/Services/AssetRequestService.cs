@@ -289,6 +289,9 @@ namespace SchoolInventoryManagement.BLL.Services
             if (filter.DepartmentId.HasValue)
                 query = query.Where(r => r.DepartmentID == filter.DepartmentId.Value);
 
+            if (filter.BranchId.HasValue)
+                query = query.Where(r => r.Department.BranchID == filter.BranchId.Value);
+
             if (filter.FromDate.HasValue)
                 query = query.Where(r => r.ApprovalDate >= filter.FromDate.Value.Date);
 
@@ -311,14 +314,18 @@ namespace SchoolInventoryManagement.BLL.Services
                 }
             }
 
-            // The Approved / Rejected counts come from the other filters
-            // only, so each tab keeps its number whichever one is open; the
-            // decision then narrows the rows and the total.
-            var decidedCount = await query.CountAsync();
+            // The outcome counts come from the other filters only, so each
+            // tab keeps its number whichever one is open; the outcome then
+            // narrows the rows and the total.
             var rejected = await query.CountAsync(r => r.RequestStatus == RequestStatus.Rejected);
+            var cancelled = await query.CountAsync(r => r.RequestStatus == RequestStatus.Cancelled);
+            var returned = await query.CountAsync(r =>
+                r.RequestStatus == RequestStatus.Returned || r.RequestStatus == RequestStatus.Fulfilled);
 
-            if (string.Equals(filter.Decision, "Approved", StringComparison.OrdinalIgnoreCase))
-                query = query.Where(r => r.RequestStatus != RequestStatus.Rejected);
+            if (string.Equals(filter.Decision, "Returned", StringComparison.OrdinalIgnoreCase))
+                query = query.Where(r => r.RequestStatus == RequestStatus.Returned || r.RequestStatus == RequestStatus.Fulfilled);
+            else if (string.Equals(filter.Decision, "Cancelled", StringComparison.OrdinalIgnoreCase))
+                query = query.Where(r => r.RequestStatus == RequestStatus.Cancelled);
             else if (string.Equals(filter.Decision, "Rejected", StringComparison.OrdinalIgnoreCase))
                 query = query.Where(r => r.RequestStatus == RequestStatus.Rejected);
 
@@ -339,7 +346,8 @@ namespace SchoolInventoryManagement.BLL.Services
             {
                 Rows = rows.Select(r => r.ToResponseDTO()).ToList(),
                 TotalCount = total,
-                ApprovedCount = decidedCount - rejected,
+                ReturnedCount = returned,
+                CancelledCount = cancelled,
                 RejectedCount = rejected,
                 Deciders = deciders
             };

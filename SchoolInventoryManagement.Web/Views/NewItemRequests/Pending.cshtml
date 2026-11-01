@@ -25,6 +25,8 @@
     };
     var groups = Model.GroupBy(r => r.RequestStatus).ToList();
     var ordered = groups.SelectMany(g => g).ToList();
+    Dictionary<int, string> deptBranches = (ViewBag.DepartmentBranches as Dictionary<int, string>) ?? new Dictionary<int, string>();
+    string BranchOf(NewItemRequestResponseDTO r) => deptBranches.TryGetValue(r.DepartmentID, out var b) ? b : "";
 }
 @if (TempData["ErrorMessage"] != null)
 {
@@ -56,6 +58,41 @@ else
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
                     <input type="text" data-md-search autocomplete="off" placeholder="Item, requester or #..." aria-label="Search new-item requests" />
                 </label>
+                    <div class="dropdown">
+                        <button type="button" class="asset-tool-btn" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18l-7 8.5V19l-4 2v-7.5z" /></svg>
+                            Filters
+                        </button>
+                        <div class="dropdown-menu dropdown-menu-end md-filter-menu">
+                            <label class="form-label">Stage</label>
+                            <select class="form-select form-select-sm mb-2" data-md-filter="stage">
+                                <option value="">Any</option>
+                                @foreach (var g in groups)
+                                {
+                                    var gl2 = groupLabel.TryGetValue(g.Key, out var lab) ? lab.Label : DisplayText.Stage(g.Key);
+                                    <option value="@g.Key.ToString().ToLowerInvariant()">@gl2 (@g.Count())</option>
+                                }
+                            </select>
+                            <label class="form-label">Branch</label>
+                            <div class="mb-2">
+                            <select class="form-select form-select-sm" data-md-filter="branch" data-combobox>
+                                <option value="">Any</option>
+                                @foreach (var d in Model.Select(BranchOf).Where(d => !string.IsNullOrEmpty(d)).Distinct().OrderBy(d => d))
+                                {
+                                    <option value="@d.ToLowerInvariant()">@d</option>
+                                }
+                            </select>
+                            </div>
+                            <label class="form-label">Department</label>
+                            <select class="form-select form-select-sm" data-md-filter="dept" data-combobox>
+                                <option value="">Any</option>
+                                @foreach (var d in Model.Select(r => r.DepartmentName).Where(d => !string.IsNullOrEmpty(d)).Distinct().OrderBy(d => d))
+                                {
+                                    <option value="@d.ToLowerInvariant()">@d</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
             </div>
 
             @foreach (var g in groups)
@@ -67,6 +104,8 @@ else
                     {
                         var late = r.NeededBy is not null && r.NeededBy.Value.Date < DateTime.Today;
                         <button type="button" class="myassets-item" data-entry="n-@r.NewItemRequestID"
+                                data-stage="@r.RequestStatus.ToString().ToLowerInvariant()"
+                                data-dept="@r.DepartmentName.ToLowerInvariant()" data-branch="@BranchOf(r).ToLowerInvariant()"
                                 data-search="@($"#{r.NewItemRequestID} {r.NewItemRequestID} {r.ItemName} {r.Reason} {r.RequestedByUserName} {r.DepartmentName}".ToLowerInvariant())">
                             <span class="md-avatar">@NewItemProgress.Initials(r.RequestedByUserName)</span>
                             <span class="myassets-item-main">
@@ -79,7 +118,7 @@ else
                     }
                 </div>
             }
-            <div class="myassets-nomatch" data-md-empty hidden>Nothing matches your search.</div>
+            <div class="myassets-nomatch" data-md-empty hidden>Nothing matches your search or filters.</div>
 
             <div class="md-foot">
                 <span data-md-range></span>
