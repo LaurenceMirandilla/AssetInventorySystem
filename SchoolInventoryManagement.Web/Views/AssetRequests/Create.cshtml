@@ -147,7 +147,18 @@
             <label asp-for="ReturnBy" class="form-label">
                 <span id="returnByLabel">When will you return it?</span>
             </label>
+            @* Transfer only: move the units for good, with no return date.
+               Hidden for Borrow by the script below. *@
+            <div class="btn-group w-100 mb-2" role="group" id="untilChoice" aria-label="Until when">
+                <input type="radio" class="btn-check" name="Permanent" id="untilDate" value="false" checked="@(!Model.Permanent)" />
+                <label class="btn btn-outline-success" for="untilDate">Until a date</label>
+                <input type="radio" class="btn-check" name="Permanent" id="untilPermanent" value="true" checked="@Model.Permanent" />
+                <label class="btn btn-outline-success" for="untilPermanent">&infin; Permanent</label>
+            </div>
             <input asp-for="ReturnBy" id="returnBy" type="datetime-local" class="form-control" />
+            <div class="form-text" id="permanentHint" hidden>
+                No return date. Once delivered, the units stay at the destination for good and are never marked overdue.
+            </div>
             <span asp-validation-for="ReturnBy" class="text-danger"></span>
         </div>
     </div>
@@ -203,8 +214,30 @@
                 }
                 returnByLabel.textContent = isBorrow
                     ? 'When will you return it?'
-                    : 'When should it come back?';
+                    : 'Until when?';
+                syncPermanent();
             }
+
+            // Transfer: "Until a date" shows the date picker, "Permanent"
+            // hides it and clears it. Borrow always has a return date.
+            var untilChoice = document.getElementById('untilChoice');
+            var untilDate = document.getElementById('untilDate');
+            var untilPermanent = document.getElementById('untilPermanent');
+            var permanentHint = document.getElementById('permanentHint');
+            var returnByInput = document.getElementById('returnBy');
+
+            function syncPermanent() {
+                var isBorrow = borrowValues.indexOf(typeSelect.value) !== -1;
+                if (isBorrow) untilDate.checked = true;
+                untilChoice.hidden = isBorrow;
+                var permanent = !isBorrow && untilPermanent.checked;
+                returnByInput.hidden = permanent;
+                permanentHint.hidden = !permanent;
+                if (permanent) returnByInput.value = '';
+            }
+
+            untilDate.addEventListener('change', syncPermanent);
+            untilPermanent.addEventListener('change', syncPermanent);
 
             typeSelect.addEventListener('change', syncType);
             syncType();

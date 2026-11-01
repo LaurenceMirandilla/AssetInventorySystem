@@ -25,9 +25,14 @@ namespace SchoolInventoryManagement.Web.ViewModels
         [Display(Name = "Needed from")]
         public DateTime? NeededFrom { get; set; }
 
-        [Required(ErrorMessage = "Say when the item will be returned.")]
+        // Required unless this is a permanent Transfer. Checked in the
+        // controller, because whether it is needed depends on Permanent.
         [Display(Name = "Return by")]
         public DateTime? ReturnBy { get; set; }
+
+        // Transfer only: the units move for good, so there is no return
+        // date. The controller ignores it for Borrow.
+        public bool Permanent { get; set; }
 
         [MaxLength(500)]
         public string? Reason { get; set; }

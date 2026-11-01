@@ -21,10 +21,16 @@ namespace SchoolInventoryManagement.BLL.DTOs
         [MaxLength(500)]
         public string? Reason { get; set; }
 
-        // Required on every new request; nullable so a missing value reaches
-        // the service's own check and its readable message.
+        // NeededFrom is required on every new request. ReturnBy is too,
+        // except on a permanent Transfer, which has none. Both nullable so
+        // a missing value reaches the service's own check and its message.
         public DateTime? NeededFrom { get; set; }
         public DateTime? ReturnBy { get; set; }
+
+        // Transfer only: the units move to the destination for good. The
+        // request stores no ReturnBy, and on delivery the units stop being
+        // held by the requester (see RequestFulfillmentService).
+        public bool Permanent { get; set; }
     }
 
     public class CreateAssetRequestItemDTO

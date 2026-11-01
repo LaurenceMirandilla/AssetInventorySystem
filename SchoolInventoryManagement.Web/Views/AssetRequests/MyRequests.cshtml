@@ -167,9 +167,13 @@ else
                     new(isBorrow ? "Pick up" : "Delivery",
                         handedOver ? r.AssignedDate?.ToString("MMM d") : isBorrow ? (r.PickupLocationName ?? r.RequestedLocationName) : r.RequestedLocationName,
                         handedOver ? RequestStepState.Done : st == RequestStatus.InTransit ? RequestStepState.Current : RequestStepState.Todo),
-                    new("Return",
-                        st == RequestStatus.Returned ? r.ReturnedDate?.ToString("MMM d") : r.ReturnBy is not null ? "by " + r.ReturnBy.Value.ToString("MMM d") : null,
-                        st == RequestStatus.Returned ? RequestStepState.Done : late ? RequestStepState.Late : st == RequestStatus.Assigned ? RequestStepState.Current : RequestStepState.Todo)
+                    // A permanent Transfer (no return date) never comes back.
+                    !isBorrow && r.ReturnBy is null
+                        ? new RequestStep("Stays there", "permanent",
+                            st == RequestStatus.Fulfilled ? RequestStepState.Done : RequestStepState.Todo)
+                        : new RequestStep("Return",
+                            st == RequestStatus.Returned ? r.ReturnedDate?.ToString("MMM d") : r.ReturnBy is not null ? "by " + r.ReturnBy.Value.ToString("MMM d") : null,
+                            st == RequestStatus.Returned ? RequestStepState.Done : late ? RequestStepState.Late : st == RequestStatus.Assigned ? RequestStepState.Current : RequestStepState.Todo)
                 };
                 var pillCss = late ? "st-overdue" : st switch
                 {

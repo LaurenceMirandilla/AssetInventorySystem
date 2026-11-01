@@ -211,6 +211,16 @@ namespace SchoolInventoryManagement.Web.Controllers
             if (model.RequestType == RequestType.Transfer && model.RequestedLocationID is null)
                 ModelState.AddModelError(nameof(model.RequestedLocationID), "Choose where it should go.");
 
+            // Permanent only means something for a Transfer. A permanent
+            // Transfer has no return date, so a stale one from before the
+            // toggle is dropped; everything else needs one.
+            if (model.RequestType != RequestType.Transfer)
+                model.Permanent = false;
+            if (model.Permanent)
+                model.ReturnBy = null;
+            else if (model.ReturnBy is null)
+                ModelState.AddModelError(nameof(model.ReturnBy), "Say when the item will be returned.");
+
             // Caught here so the message sits under the field; the service
             // checks the same rule for anything that bypasses this form.
             if (model.NeededFrom is not null && model.ReturnBy is not null
@@ -239,6 +249,7 @@ namespace SchoolInventoryManagement.Web.Controllers
                     RequestedLocationID = model.RequestedLocationID,
                     NeededFrom = model.NeededFrom,
                     ReturnBy = model.ReturnBy,
+                    Permanent = model.Permanent,
                     Reason = model.Reason
                 };
 

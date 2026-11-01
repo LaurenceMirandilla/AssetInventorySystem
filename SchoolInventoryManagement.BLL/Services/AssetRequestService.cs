@@ -76,13 +76,19 @@ namespace SchoolInventoryManagement.BLL.Services
 
             // Dates. "Today" rather than "now" for the start, so a request
             // for this afternoon filled in a few minutes late still goes in.
+            // A permanent Transfer has no return date: it is stored as a
+            // Transfer with ReturnBy null, which is what MarkAssignedAsync
+            // looks for. Every other request needs one.
+            var permanent = dto.RequestType == RequestType.Transfer && dto.Permanent;
+            var returnBy = permanent ? null : dto.ReturnBy;
+
             if (dto.NeededFrom is null)
                 throw new ArgumentException("Say when you need the item.");
-            if (dto.ReturnBy is null)
+            if (!permanent && returnBy is null)
                 throw new ArgumentException("Say when the item will be returned.");
             if (dto.NeededFrom.Value < DateTime.Today)
                 throw new ArgumentException("The date you need the item cannot be in the past.");
-            if (dto.ReturnBy.Value <= dto.NeededFrom.Value)
+            if (returnBy is not null && returnBy.Value <= dto.NeededFrom.Value)
                 throw new ArgumentException("The return date must be after the date you need the item.");
 
             var modelIds = dto.Items.Select(i => i.ModelID).ToList();
@@ -162,7 +168,7 @@ namespace SchoolInventoryManagement.BLL.Services
                 RequestType = dto.RequestType,
                 Reason = dto.Reason,
                 NeededFrom = dto.NeededFrom,
-                ReturnBy = dto.ReturnBy,
+                ReturnBy = returnBy,
                 RequestStatus = RequestStatus.Pending,
                 Items = dto.Items
                     .Select(i => new AssetRequestItem { ModelID = i.ModelID, Quantity = i.Quantity })

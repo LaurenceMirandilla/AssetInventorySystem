@@ -78,7 +78,7 @@
                         </div>
                         <dl class="approve-facts">
                             <div><dt>Needed from</dt><dd>@(request.NeededFrom?.ToString("MMM d · h:mm tt") ?? "—")</dd></div>
-                            <div><dt>Until</dt><dd>@(request.ReturnBy?.ToString("MMM d · h:mm tt") ?? "—")</dd></div>
+                            <div><dt>Until</dt><dd>@(request.ReturnBy?.ToString("MMM d · h:mm tt") ?? "Permanent")</dd></div>
                             <div><dt>Units</dt><dd>@asked</dd></div>
                         </dl>
                         @if (!string.IsNullOrWhiteSpace(request.Reason))

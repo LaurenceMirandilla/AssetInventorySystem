@@ -271,18 +271,25 @@ namespace SchoolInventoryManagement.BLL.Services
             if (request.RequestStatus != RequestStatus.InTransit)
                 throw new InvalidOperationException("Only a request that is In Transit can be marked Assigned.");
 
-            var openUnits = request.Assignments
+            var openAssignments = request.Assignments
                 .Where(a => a.ReturnDate == null)
-                .Select(a => a.Asset)
                 .ToList();
+            var openUnits = openAssignments.Select(a => a.Asset).ToList();
 
             if (openUnits.Count == 0)
                 throw new InvalidOperationException("This request has no units out.");
 
+            // A Transfer with no ReturnBy is permanent: the units now belong
+            // to the destination, not to the person who asked for them.
+            var permanent = request.RequestType == RequestType.Transfer && request.ReturnBy is null;
+            var now = DateTime.Now;
+
             _context.Entry(request).Property(r => r.RowVersion).OriginalValue = requestRowVersion;
 
-            foreach (var unit in openUnits)
+            foreach (var assignment in openAssignments)
             {
+                var unit = assignment.Asset;
+
                 if (request.RequestType == RequestType.Borrow)
                 {
                     // Collected: with the requester now, not on a shelf --
@@ -295,20 +302,38 @@ namespace SchoolInventoryManagement.BLL.Services
                     // movement row so the history shows where it came from.
                     MovementHelper.Record(
                         _context, unit, request.RequestedLocationID!.Value, actingUserId,
-                        $"Transfer request #{requestId}: delivered");
+                        permanent
+                            ? $"Transfer request #{requestId}: delivered (permanent)"
+                            : $"Transfer request #{requestId}: delivered");
                 }
 
-                unit.Status = AssetStatus.Assigned;
+                if (permanent)
+                {
+                    // Handed over for good. Closing the assignment takes the
+                    // unit off the requester's My Assets, and with no holder
+                    // it can never go overdue. It is free to use where it is.
+                    assignment.ReturnDate = now;
+                    assignment.ConditionOnReturn = unit.Condition;
+                    unit.AssignedUserID = null;
+                    unit.Status = AssetStatus.Available;
+                }
+                else
+                {
+                    unit.Status = AssetStatus.Assigned;
+                }
             }
 
-            request.RequestStatus = RequestStatus.Assigned;
-            request.AssignedDate = DateTime.Now;
+            // A permanent Transfer is finished once delivered: nothing is
+            // out, so there is nothing to return. Fulfilled is the status
+            // Request History already counts as done.
+            request.RequestStatus = permanent ? RequestStatus.Fulfilled : RequestStatus.Assigned;
+            request.AssignedDate = now;
 
             var count = $"{openUnits.Count} item{(openUnits.Count == 1 ? "" : "s")}";
             var message = request.RequestType == RequestType.Borrow
                 ? $"You collected {count} on request #{requestId}."
                 : $"{count} on request #{requestId} {(openUnits.Count == 1 ? "was" : "were")} delivered " +
-                  $"to {request.RequestedLocation?.LocationName}.";
+                  $"to {request.RequestedLocation?.LocationName}{(permanent ? " for good" : "")}.";
 
             NotificationHelper.Queue(
                 _context, request.RequestedByUserID, message, $"/AssetRequests/Details/{requestId}");
