@@ -34,7 +34,7 @@
 
     // Filters behind the Filters button (search and decision have their own
     // places), for its count badge.
-    var filterCount = (Model.Type.HasValue ? 1 : 0) + (Model.DecidedBy.HasValue ? 1 : 0) + (Model.DepartmentId.HasValue ? 1 : 0) + (Model.BranchId.HasValue ? 1 : 0)
+    var filterCount = (Model.Type.HasValue ? 1 : 0) + (Model.DecidedBy.HasValue ? 1 : 0) + (Model.RequestedBy.HasValue ? 1 : 0) + (Model.DepartmentId.HasValue ? 1 : 0) + (Model.BranchId.HasValue ? 1 : 0)
         + (Model.FromDate.HasValue ? 1 : 0) + (Model.ToDate.HasValue ? 1 : 0);
     var first = (Model.Page - 1) * SchoolInventoryManagement.Web.ViewModels.RequestHistoryViewModel.PageSize + 1;
     var last = Math.Min(Model.Page * SchoolInventoryManagement.Web.ViewModels.RequestHistoryViewModel.PageSize, Model.TotalCount);
@@ -116,6 +116,16 @@
                         <option value="Borrow" selected="@(Model.Type == RequestType.Borrow)">Borrow</option>
                         <option value="Transfer" selected="@(Model.Type == RequestType.Transfer)">Transfer</option>
                     </select>
+                    <label class="form-label">Requested by</label>
+                    <div class="mb-2">
+                    <select name="requestedBy" class="form-select form-select-sm" data-combobox>
+                        <option value="">Anyone</option>
+                        @foreach (var u in Model.Requesters)
+                        {
+                            <option value="@u.UserID" data-sub="@u.RoleName" selected="@(Model.RequestedBy == u.UserID)">@u.FullName</option>
+                        }
+                    </select>
+                    </div>
                     <label class="form-label">Decided by</label>
                     <select name="decidedBy" class="form-select form-select-sm mb-2">
                         <option value="">Anyone</option>
@@ -126,7 +136,7 @@
                     </select>
                     <label class="form-label">Branch</label>
                     <div class="mb-2">
-                    <select name="branchId" class="form-select form-select-sm" data-combobox>
+                    <select name="branchId" id="historyBranch" class="form-select form-select-sm" data-combobox>
                         <option value="">All branches</option>
                         @foreach (var b in Model.Departments.GroupBy(d => d.BranchID).Select(g => g.First()).OrderBy(d => d.BranchName))
                         {
@@ -136,7 +146,7 @@
                     </div>
                     <label class="form-label">Department</label>
                     <div class="mb-2">
-                    <select name="departmentId" class="form-select form-select-sm" data-combobox>
+                    <select name="departmentId" id="historyDept" class="form-select form-select-sm" data-combobox>
                         <option value="">All departments</option>
                         @foreach (var d in Model.Departments.OrderBy(d => d.BranchName).ThenBy(d => d.DepartmentName))
                         {
@@ -332,3 +342,17 @@
         }
     </section>
 </div>
+
+@section Scripts {
+    <script>
+        // Filters: picking a branch leaves only its departments in the
+        // Department list (rebuilt, not hidden -- some browsers ignore
+        // "hidden" on <option>). A department from another branch is cleared.
+        (function () {
+            var branch = document.getElementById('historyBranch');
+            var dept = document.getElementById('historyDept');
+            if (!branch || !dept) return;
+            sabFilterByBranch(dept, branch, { showAllWhenEmpty: true, strip: true });
+        })();
+    </script>
+}

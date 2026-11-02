@@ -193,37 +193,19 @@
             var dept = document.getElementById('DepartmentID');
             if (!branch || !pickup || !dept) return;
 
-            function snapshot(select) {
-                return Array.from(select.options).filter(function (o) { return o.dataset.branch; }).map(function (o) {
-                    return { value: o.value, text: o.text, data: Object.assign({}, o.dataset) };
-                });
-            }
-            var allPickup = snapshot(pickup);
-            var allDept = snapshot(dept);
-
-            function rebuild(select, all) {
-                var keep = select.value;
-                Array.from(select.options).forEach(function (o) { if (o.dataset.branch) o.remove(); });
-                select.options[0].text = branch.value ? (select === pickup ? 'Search a location' : 'Select one') : '-- Pick a branch first --';
-                all.filter(function (x) { return x.data.branch === branch.value; }).forEach(function (x) {
-                    var o = document.createElement('option');
-                    o.value = x.value;
-                    o.text = x.text;
-                    Object.keys(x.data).forEach(function (k) { o.dataset[k] = x.data[k]; });
-                    select.appendChild(o);
-                });
-                select.value = keep;
-                if (select.value !== keep) {
-                    select.value = '';
-                    select.dispatchEvent(new Event('change'));
-                }
-                select.disabled = !branch.value;
-            }
-
-
-            branch.addEventListener('change', function () { rebuild(pickup, allPickup); rebuild(dept, allDept); });
-            rebuild(pickup, allPickup);
-            rebuild(dept, allDept);
+            // Both lists follow the branch (site.js); a choice from another
+            // branch is cleared.
+            var pickupFilter = sabFilterByBranch(pickup, branch, {
+                auto: false, notify: true,
+                hint: function (b) { return b ? 'Search a location' : '-- Pick a branch first --'; },
+                lock: function (b) { return !b; }
+            });
+            var deptFilter = sabFilterByBranch(dept, branch, {
+                auto: false, notify: true,
+                hint: function (b) { return b ? 'Select one' : '-- Pick a branch first --'; },
+                lock: function (b) { return !b; }
+            });
+            branch.addEventListener('change', function () { pickupFilter.refresh(); deptFilter.refresh(); });
             label(document.querySelectorAll('#unitPicker .unit-box:checked').length);
         })();
     </script>

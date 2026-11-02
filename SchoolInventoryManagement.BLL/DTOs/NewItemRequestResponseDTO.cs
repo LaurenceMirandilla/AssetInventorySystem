@@ -24,7 +24,8 @@ namespace SchoolInventoryManagement.BLL.DTOs
         // Price of one: only meaningful on a one-item ticket.
         public decimal? EstimatedUnitPrice { get; set; }
 
-        // What the ticket asks for, one line per item (always at least one).
+        // What the ticket asks for, one line per item (at least one on every
+        // request once Scripts/014 has run).
         public List<NewItemRequestItemDTO> Items { get; set; } = new();
 
         // Every priced line added up; null when nothing is priced.

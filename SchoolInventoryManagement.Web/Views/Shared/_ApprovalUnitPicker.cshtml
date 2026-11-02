@@ -27,6 +27,9 @@
 @{
     var targetLocationId = ViewBag.TargetLocationID as int?;
     Dictionary<int, int> locationBranches = (ViewBag.LocationBranches as Dictionary<int, int>) ?? new Dictionary<int, int>();
+    Dictionary<int, string> branchNames = (ViewBag.BranchNames as Dictionary<int, string>) ?? new Dictionary<int, string>();
+    // Every condition is offered in the filter, whether or not a unit is in it.
+    var allConditions = Enum.GetValues<ConditionStatus>();
 
     // Lower is better; Auto-fill sorts by it. Damaged is left out entirely.
     int ConditionRank(ConditionStatus c) => c switch
@@ -67,7 +70,14 @@
             .OrderBy(x => x.Name)
             .ToList();
         var anyWithoutLocation = line.Units.Any(u => u.LocationID is null);
-        var conditionChoices = line.Units.Select(u => u.Condition).Distinct().OrderBy(c => c).ToList();
+        // The branches this model's units are in.
+        var branchChoices = line.Units
+            .Where(u => u.BranchID is not null)
+            .Select(u => u.BranchID!.Value)
+            .Distinct()
+            .Select(id => new { Id = id, Name = branchNames.TryGetValue(id, out var n) ? n : "Branch " + id })
+            .OrderBy(b => b.Name)
+            .ToList();
 
         <section class="asset-card picker-line unit-line mb-3" id="line-@li" data-line="@li" data-quantity="@line.Quantity" data-page-size="20">
             <div class="picker-head">
@@ -98,25 +108,45 @@
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
                             <input type="search" class="line-search" placeholder="Search code..." autocomplete="off" aria-label="Search unit codes" />
                         </label>
-                        <select class="form-select form-select-sm line-location" aria-label="Location">
-                            <option value="">All locations</option>
-                            @foreach (var l in locationChoices)
-                            {
-                                <option value="@l.Id">@l.Name</option>
-                            }
-                            @if (anyWithoutLocation)
-                            {
-                                <option value="none">No location</option>
-                            }
-                        </select>
-                        <select class="form-select form-select-sm line-condition" aria-label="Condition">
-                            <option value="">All conditions</option>
-                            @foreach (var c in conditionChoices)
-                            {
-                                <option value="@c">@DisplayText.Humanize(c.ToString())</option>
-                            }
-                        </select>
-                        <button type="button" class="btn btn-link btn-sm line-clear-filters">Clear filters</button>
+                        @* Branch, location and condition behind one Filters button.
+                           The branch narrows the locations. *@
+                        <div class="dropdown">
+                            <button type="button" class="asset-tool-btn line-filter-btn" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18l-7 8.5V19l-4 2v-7.5z" /></svg>
+                                Filters <span class="asset-filter-count line-filter-count d-none"></span>
+                            </button>
+                            <div class="dropdown-menu md-filter-menu">
+                                <label class="form-label">Branch</label>
+                                <select class="form-select form-select-sm mb-2 line-branch" aria-label="Branch">
+                                    <option value="">All branches</option>
+                                    @foreach (var b in branchChoices)
+                                    {
+                                        <option value="@b.Id">@b.Name</option>
+                                    }
+                                </select>
+                                <label class="form-label">Location</label>
+                                <select class="form-select form-select-sm mb-2 line-location" aria-label="Location">
+                                    <option value="">All locations</option>
+                                    @foreach (var l in locationChoices)
+                                    {
+                                        <option value="@l.Id" data-branch="@(locationBranches.TryGetValue(l.Id, out var lb) ? lb : 0)">@l.Name</option>
+                                    }
+                                    @if (anyWithoutLocation)
+                                    {
+                                        <option value="none">No location</option>
+                                    }
+                                </select>
+                                <label class="form-label">Condition</label>
+                                <select class="form-select form-select-sm line-condition" aria-label="Condition">
+                                    <option value="">All conditions</option>
+                                    @foreach (var c in allConditions)
+                                    {
+                                        <option value="@c">@DisplayText.Humanize(c.ToString())</option>
+                                    }
+                                </select>
+                                <button type="button" class="btn btn-link btn-sm px-0 mt-2 md-filter-clear line-clear-filters">Clear filters</button>
+                            </div>
+                        </div>
                         <span class="picker-tools-gap"></span>
                         <button type="button" class="btn btn-outline-secondary btn-sm line-autofill">Auto-fill</button>
                         <button type="button" class="btn btn-outline-secondary btn-sm line-untick">Untick all</button>
@@ -177,7 +207,9 @@
 </div>
 
 <script>
-    (function () {
+    // Runs once the page has loaded, after site.js (the branch filter
+    // helper) and the page's own scripts (which listen for picker-change).
+    document.addEventListener('DOMContentLoaded', function () {
         var picker = document.getElementById('unitPicker');
         if (!picker) return;
 
@@ -219,6 +251,12 @@
             var search = line.querySelector('.line-search');
             var locationFilter = line.querySelector('.line-location');
             var conditionFilter = line.querySelector('.line-condition');
+            var branchFilter = line.querySelector('.line-branch');
+            var filterBtn = line.querySelector('.line-filter-btn');
+            // The branch narrows the location list (site.js).
+            var locationsByBranch = branchFilter && locationFilter
+                ? sabFilterByBranch(locationFilter, branchFilter, { showAllWhenEmpty: true, auto: false })
+                : null;
             var short = line.querySelector('.line-short');
             var hiddenNote = line.querySelector('.line-hidden');
             var range = line.querySelector('.line-range');
@@ -260,6 +298,7 @@
             function matches(row) {
                 var text = (search && search.value || '').trim().toLowerCase();
                 if (text && row.getAttribute('data-code').indexOf(text) === -1) return false;
+                if (branchFilter && branchFilter.value && row.getAttribute('data-branch') !== branchFilter.value) return false;
                 if (locationFilter && locationFilter.value && row.getAttribute('data-location') !== locationFilter.value) return false;
                 if (conditionFilter && conditionFilter.value && row.getAttribute('data-condition') !== conditionFilter.value) return false;
                 return true;
@@ -349,18 +388,36 @@
                 });
             });
 
-            [search, locationFilter, conditionFilter].forEach(function (el) {
+            // How many filters are on, on the Filters button.
+            function markFilters() {
+                if (!filterBtn) return;
+                var on = [branchFilter, locationFilter, conditionFilter].filter(function (f) { return f && f.value; }).length;
+                var badge = filterBtn.querySelector('.line-filter-count');
+                filterBtn.classList.toggle('active', on > 0);
+                badge.textContent = on;
+                badge.classList.toggle('d-none', on === 0);
+            }
+
+            if (branchFilter) branchFilter.addEventListener('change', function () {
+                if (locationsByBranch) locationsByBranch.refresh();
+            });
+
+            [search, branchFilter, locationFilter, conditionFilter].forEach(function (el) {
                 if (!el) return;
-                var go = function () { page = 1; applyFilters(); };
+                var go = function () { page = 1; applyFilters(); markFilters(); };
                 el.addEventListener('input', go);
                 el.addEventListener('change', go);
             });
 
             var clear = line.querySelector('.line-clear-filters');
             if (clear) clear.addEventListener('click', function () {
-                search.value = ''; locationFilter.value = ''; conditionFilter.value = '';
+                search.value = '';
+                if (branchFilter) branchFilter.value = '';
+                if (locationsByBranch) locationsByBranch.refresh();
+                locationFilter.value = ''; conditionFilter.value = '';
                 page = 1;
                 applyFilters();
+                markFilters();
             });
 
             var fill = line.querySelector('.line-autofill');
@@ -417,5 +474,5 @@
         // Fewer units a page on a phone, where the tiles stack in one column.
         var startSize = window.matchMedia('(max-width: 576px)').matches ? 10 : 20;
         lines.forEach(function (l) { l.setSize(startSize); });
-    })();
+    });
 </script>

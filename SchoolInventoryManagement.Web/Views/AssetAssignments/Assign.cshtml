@@ -234,31 +234,13 @@
             var assetBranch = '@asset.BranchID';
             var assetBranchName = @Json.Serialize(asset.BranchName);
 
-            function snapshot(select) {
-                return Array.from(select.options).filter(function (o) { return o.dataset.branch; })
-                    .map(function (o) { return { value: o.value, text: o.text, branch: o.dataset.branch, name: o.dataset.name }; });
-            }
-            var allDepts = snapshot(dept);
-            var allRooms = snapshot(keptAtSel);
-
-            function rebuild(select, all) {
-                var keep = select.value;
-                Array.from(select.options).forEach(function (o) { if (o.dataset.branch) o.remove(); });
-                all.filter(function (x) { return x.branch === branch.value; }).forEach(function (x) {
-                    var o = document.createElement('option');
-                    o.value = x.value;
-                    o.text = x.text;
-                    o.dataset.branch = x.branch;
-                    if (x.name) o.dataset.name = x.name;
-                    select.appendChild(o);
-                });
-                select.value = keep;
-                if (select.value !== keep) select.value = ''; // not in this branch
-            }
+            // Both lists follow the branch (site.js); onBranch refreshes them.
+            var deptFilter = sabFilterByBranch(dept, branch, { auto: false });
+            var roomFilter = sabFilterByBranch(keptAtSel, branch, { auto: false });
 
             function onBranch() {
-                rebuild(dept, allDepts);
-                rebuild(keptAtSel, allRooms);
+                deptFilter.refresh();
+                roomFilter.refresh();
                 var opt = branch.options[branch.selectedIndex];
                 document.getElementById('sumBranch').textContent = opt && opt.value ? opt.text : '—';
                 document.getElementById('branchNote').textContent = !branch.value || branch.value === assetBranch

@@ -83,8 +83,8 @@ namespace SchoolInventoryManagement.DAL.Entities
 
         // What the ticket asks for, one line per item. ItemName, Quantity
         // and EstimatedUnitPrice above then hold a summary ("Document
-        // camera, HDMI cable +3", total units, no price). Rows made before
-        // tickets existed have no lines: their own columns are the one item.
+        // camera, HDMI cable +3", total units, no price). Scripts/014 copied
+        // every older request in as a one-item ticket.
         public ICollection<NewItemRequestItem> Items { get; set; } = new List<NewItemRequestItem>();
     }
 }

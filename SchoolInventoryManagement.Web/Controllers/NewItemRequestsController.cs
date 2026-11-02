@@ -110,6 +110,10 @@ namespace SchoolInventoryManagement.Web.Controllers
             {
                 var request = await _requestService.GetRequestAsync(id, CurrentUserId);
                 await LoadAuditHistoryAsync("NewItemRequest", id);
+                // The sidebar lights New-Item Requests for your own request,
+                // New-Item Approvals for anyone else's.
+                if (request.RequestedByUserID != CurrentUserId)
+                    ViewData["NavSection"] = "newitem-approvals";
                 return View(request);
             }
             catch (KeyNotFoundException)

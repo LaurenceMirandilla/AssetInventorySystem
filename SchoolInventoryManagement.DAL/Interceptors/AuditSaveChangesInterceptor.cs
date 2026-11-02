@@ -113,7 +113,8 @@ namespace SchoolInventoryManagement.DAL.Interceptors
          e.Entity is AssetMovement || e.Entity is DisposalRecord || e.Entity is User ||
          e.Entity is Category || e.Entity is Model ||
          e.Entity is Branch || e.Entity is Department || e.Entity is Location ||
-         e.Entity is Role || e.Entity is NewItemRequest || e.Entity is AssetRequestItem) &&
+         e.Entity is Role || e.Entity is NewItemRequest || e.Entity is AssetRequestItem ||
+         e.Entity is NewItemRequestItem) &&
         (e.State == EntityState.Added || e.State == EntityState.Modified || e.State == EntityState.Deleted))
     .ToList();
 
@@ -243,6 +244,10 @@ namespace SchoolInventoryManagement.DAL.Interceptors
             return entry.Entity switch
             {
                 AssetRequestItem item => (nameof(AssetRequest), item.RequestID),
+                // A new-item ticket's lines belong to the ticket, so they show
+                // in its history. The ticket's real ID arrives after the save
+                // and is filled in by FillPendingIds.
+                NewItemRequestItem line => (nameof(NewItemRequest), line.NewItemRequestID),
                 AssetAssignment { RequestID: not null } assignment => (nameof(AssetRequest), assignment.RequestID),
                 _ => (entry.Metadata.ClrType.Name, GetIntKey(entry))
             };

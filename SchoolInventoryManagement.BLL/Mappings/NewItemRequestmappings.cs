@@ -1,5 +1,4 @@
-﻿using System.Collections.Generic;
-using System.Linq;
+﻿using System.Linq;
 using SchoolInventoryManagement.BLL.DTOs;
 using SchoolInventoryManagement.DAL.Entities;
 
@@ -24,27 +23,19 @@ namespace SchoolInventoryManagement.BLL.Mappings
                 ItemName = request.ItemName,
                 Quantity = request.Quantity,
                 EstimatedUnitPrice = request.EstimatedUnitPrice,
-                // A ticket's lines; a request from before tickets existed
-                // has none, and its own columns are its one line.
-                Items = request.Items.Count > 0
-                    ? request.Items
-                        .OrderBy(i => i.NewItemRequestItemID)
-                        .Select(i => new NewItemRequestItemDTO
-                        {
-                            ItemName = i.ItemName,
-                            Quantity = i.Quantity,
-                            EstimatedUnitPrice = i.EstimatedUnitPrice
-                        })
-                        .ToList()
-                    : new List<NewItemRequestItemDTO>
+                // A ticket's lines. Every request has at least one once
+                // Scripts/014 has run (it copies older requests in as one-item
+                // tickets), so nothing is made up here: a query that forgets
+                // to include Items shows an empty ticket instead of a wrong one.
+                Items = request.Items
+                    .OrderBy(i => i.NewItemRequestItemID)
+                    .Select(i => new NewItemRequestItemDTO
                     {
-                        new()
-                        {
-                            ItemName = request.ItemName,
-                            Quantity = request.Quantity,
-                            EstimatedUnitPrice = request.EstimatedUnitPrice
-                        }
-                    },
+                        ItemName = i.ItemName,
+                        Quantity = i.Quantity,
+                        EstimatedUnitPrice = i.EstimatedUnitPrice
+                    })
+                    .ToList(),
                 Reason = request.Reason,
                 NeededBy = request.NeededBy,
                 RequestDate = request.RequestDate,

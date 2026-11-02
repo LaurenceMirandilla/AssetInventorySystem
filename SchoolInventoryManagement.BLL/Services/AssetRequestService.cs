@@ -280,8 +280,29 @@ namespace SchoolInventoryManagement.BLL.Services
                 })
                 .ToListAsync();
 
+            // Everyone with a finished request, same reasoning.
+            var requesterIds = await query
+                .Select(r => r.RequestedByUserID)
+                .Distinct()
+                .ToListAsync();
+
+            var requesters = await _context.Users
+                .Where(u => requesterIds.Contains(u.UserID))
+                .OrderBy(u => u.FirstName).ThenBy(u => u.LastName)
+                .Select(u => new UserSummaryDTO
+                {
+                    UserID = u.UserID,
+                    FullName = u.FirstName + " " + u.LastName,
+                    Email = u.Email,
+                    RoleName = u.Role.RoleName
+                })
+                .ToListAsync();
+
             if (filter.Type.HasValue)
                 query = query.Where(r => r.RequestType == filter.Type.Value);
+
+            if (filter.RequestedByUserId.HasValue)
+                query = query.Where(r => r.RequestedByUserID == filter.RequestedByUserId.Value);
 
             if (filter.DecidedByUserId.HasValue)
                 query = query.Where(r => r.ApprovedByUserID == filter.DecidedByUserId.Value);
@@ -349,7 +370,8 @@ namespace SchoolInventoryManagement.BLL.Services
                 ReturnedCount = returned,
                 CancelledCount = cancelled,
                 RejectedCount = rejected,
-                Deciders = deciders
+                Deciders = deciders,
+                Requesters = requesters
             };
         }
 

@@ -1,4 +1,4 @@
-@model SchoolInventoryManagement.BLL.DTOs.NewItemRequestResponseDTO
+﻿@model SchoolInventoryManagement.BLL.DTOs.NewItemRequestResponseDTO
 @* What a new-item ticket asks for: one row per item with quantity, the
    estimate for one and the line total, then the estimated total. Used by
    New-Item Approvals, My New-Item Requests, All New-Item Requests and the
@@ -10,15 +10,14 @@
 <div class="ni-ticket">
     <table class="ni-ticket-table">
         <thead>
-            <tr><th colspan="2">Item</th><th class="num">Qty</th><th class="num">Est. each</th><th class="num">Line total</th></tr>
+            <tr><th>Item</th><th class="num">Qty</th><th class="num">Est. each</th><th class="num">Line total</th></tr>
         </thead>
         <tbody>
             @foreach (var item in Model.Items)
             {
-                <tr>
-                    <td class="ni-ticket-icon" aria-hidden="true">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M21 8 12 3 3 8v8l9 5 9-5z" /><path d="M3 8l9 5 9-5M12 13v8" /></svg>
-                    </td>
+                @* data-pager-item: a page that wraps this in [data-pager] (the
+                   request page) shows 10 rows at a time. *@
+                <tr data-pager-item>
                     <td class="ni-ticket-name">@item.ItemName</td>
                     <td class="num ni-ticket-qty" data-label="Qty">×@item.Quantity</td>
                     <td class="num ni-ticket-each" data-label="Each">@(item.EstimatedUnitPrice is null ? "not priced" : DisplayText.Peso(item.EstimatedUnitPrice))</td>

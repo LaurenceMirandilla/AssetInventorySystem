@@ -9,6 +9,11 @@
     var holder = assignment.AssignedToUser.FullName;
     var daysOut = (DateTime.Today - assignment.AssignmentDate.Date).Days;
     var picked = locations.FirstOrDefault(l => l.LocationID == Model.ReturnLocationID);
+    // The branch list starts on the picked room's branch, else the asset's.
+    var startBranch = picked?.BranchID ?? asset?.BranchID;
+    var branches = locations.GroupBy(l => l.BranchID)
+        .Select(g => (BranchID: g.Key, BranchName: g.First().BranchName, Rooms: g.Count()))
+        .OrderBy(b => b.BranchName).ToList();
     var conditions = Enum.GetValues<ConditionStatus>();
 }
 
@@ -99,26 +104,37 @@
                     <div class="register-step-title">Return to location</div>
                 </div>
                 <div class="register-step-body">
-                    <label for="returnLocation" class="form-label">Location</label>
-                    @* Typeable (see site.js): rooms grouped by branch, the
-                       asset's own branch first. *@
-                    <div class="input-icon">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 21s-7-6.2-7-12a7 7 0 0 1 14 0c0 5.8-7 12-7 12z" /><circle cx="12" cy="9" r="2.5" /></svg>
-                        <select asp-for="ReturnLocationID" id="returnLocation" class="form-select" data-combobox>
-                            <option value="">Select a location</option>
-                            @foreach (var g in locations.GroupBy(l => l.BranchName))
-                            {
-                                <optgroup label="@g.Key">
-                                    @foreach (var l in g)
+                    @* A branch first, then one of its rooms; both typeable. The
+                       branch is not posted: it only narrows the rooms (site.js
+                       sabFilterByBranch). Starts on the asset's own branch. *@
+                    <div class="row g-3">
+                        <div class="col-md-5">
+                            <label for="branchSelect" class="form-label">Branch</label>
+                            <select id="branchSelect" class="form-select" data-combobox>
+                                <option value="">Select a branch</option>
+                                @foreach (var b in branches)
+                                {
+                                    <option value="@b.BranchID" selected="@(b.BranchID == startBranch)">@b.BranchName · @b.Rooms location@(b.Rooms == 1 ? "" : "s")</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-7">
+                            <label for="returnLocation" class="form-label">Location</label>
+                            <div class="input-icon">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 21s-7-6.2-7-12a7 7 0 0 1 14 0c0 5.8-7 12-7 12z" /><circle cx="12" cy="9" r="2.5" /></svg>
+                                <select asp-for="ReturnLocationID" id="returnLocation" class="form-select" data-combobox>
+                                    <option value="">-- Pick a branch first --</option>
+                                    @foreach (var l in locations)
                                     {
-                                        <option value="@l.LocationID" data-name="@l.LocationName"
-                                                selected="@(l.LocationID == Model.ReturnLocationID)">@l.LocationName@(l.LocationID == asset?.CurrentLocationID ? " (where it is kept now)" : "")</option>
+                                        <option value="@l.LocationID" data-branch="@l.BranchID" data-name="@l.LocationName"
+                                                data-sub="@(l.LocationID == asset?.CurrentLocationID ? "where it is kept now" : l.Description)"
+                                                selected="@(l.LocationID == Model.ReturnLocationID)">@l.LocationName</option>
                                     }
-                                </optgroup>
-                            }
-                        </select>
+                                </select>
+                            </div>
+                        </div>
                     </div>
-                    <div class="form-text">Type a room or branch name. It becomes Available there.</div>
+                    <div class="form-text">It becomes Available there.</div>
                     <span asp-validation-for="ReturnLocationID" class="text-danger"></span>
                 </div>
             </div>
@@ -161,6 +177,11 @@
         (function () {
             // The summary follows the picks.
             var loc = document.getElementById('returnLocation');
+            sabFilterByBranch(loc, document.getElementById('branchSelect'), {
+                notify: true,
+                hint: function (b) { return b ? 'Search a location' : '-- Pick a branch first --'; },
+                lock: function (b) { return !b; }
+            });
             loc.addEventListener('change', function () {
                 var opt = loc.options[loc.selectedIndex];
                 document.getElementById('afterLocation').textContent = opt && opt.value ? opt.dataset.name : 'Pick a location';

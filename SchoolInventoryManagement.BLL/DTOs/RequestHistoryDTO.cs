@@ -17,6 +17,7 @@ namespace SchoolInventoryManagement.BLL.DTOs
         public string? Keyword { get; set; }
 
         public int? DecidedByUserId { get; set; }
+        public int? RequestedByUserId { get; set; }
         public int? DepartmentId { get; set; }
         public int? BranchId { get; set; }
 
@@ -44,5 +45,8 @@ namespace SchoolInventoryManagement.BLL.DTOs
 
         // Everyone who has decided a request, for the "Decided by" filter.
         public List<UserSummaryDTO> Deciders { get; set; } = new();
+
+        // Everyone with a finished request, for the "Requested by" filter.
+        public List<UserSummaryDTO> Requesters { get; set; } = new();
     }
 }

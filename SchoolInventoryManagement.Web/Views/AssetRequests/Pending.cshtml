@@ -28,13 +28,15 @@
     var transit = inProgress.Where(r => r.RequestStatus == RequestStatus.InTransit).ToList();
     var outNow = inProgress.Where(r => r.RequestStatus != RequestStatus.InTransit && !IsOverdue(r))
         .OrderBy(r => r.ReturnBy ?? DateTime.MaxValue).ToList();
-    var progressGroups = new[]
+    // The tabs split the approved requests: In progress is what still has to
+    // be picked up or delivered; Waiting to be returned is what is out.
+    var transitGroups = new[] { (Key: "transit", Label: "Ready for pickup or delivery", Items: transit) };
+    var returnList = overdue.Concat(outNow).ToList();
+    var returnGroups = new[]
     {
         (Key: "late", Label: "Overdue", Items: overdue),
-        (Key: "transit", Label: "Ready for pickup or delivery", Items: transit),
         (Key: "use", Label: "Out now", Items: outNow)
     };
-    var progressOrdered = progressGroups.SelectMany(g => g.Items).ToList();
 }
 
 @functions {
@@ -82,17 +84,30 @@
     }
 </div>
 
+@{
+    // ?tab=progress / ?tab=return (after Picked up / Delivered or a recorded
+    // return) opens that tab; otherwise Waiting for approval.
+    var openTab = (ViewBag.Tab as string) switch
+    {
+        "progress" => "tabProgress",
+        "return" => "tabReturn",
+        _ => "tabAwaiting"
+    };
+}
 <div class="page-tabs" role="tablist">
-    <button type="button" class="active" role="tab" aria-selected="true" data-md-tab="tabAwaiting">
-        Awaiting your decision <span class="history-tab-count">@Model.Count</span>
+    <button type="button" class="@(openTab == "tabAwaiting" ? "active" : "")" role="tab" aria-selected="@(openTab == "tabAwaiting" ? "true" : "false")" data-md-tab="tabAwaiting">
+        Waiting for approval <span class="history-tab-count">@Model.Count</span>
     </button>
-    <button type="button" role="tab" aria-selected="false" data-md-tab="tabProgress">
-        In progress <span class="history-tab-count">@inProgress.Count</span>
+    <button type="button" class="@(openTab == "tabProgress" ? "active" : "")" role="tab" aria-selected="@(openTab == "tabProgress" ? "true" : "false")" data-md-tab="tabProgress">
+        In progress <span class="history-tab-count">@transit.Count</span>
+    </button>
+    <button type="button" class="@(openTab == "tabReturn" ? "active" : "")" role="tab" aria-selected="@(openTab == "tabReturn" ? "true" : "false")" data-md-tab="tabReturn">
+        Waiting to be returned <span class="history-tab-count">@returnList.Count</span>
     </button>
 </div>
 
-@* ---- Awaiting your decision ---------------------------------------- *@
-<section id="tabAwaiting" role="tabpanel">
+@* ---- Waiting for approval ------------------------------------------- *@
+<section id="tabAwaiting" role="tabpanel" hidden="@(openTab != "tabAwaiting")">
     @if (!Model.Any())
     {
         <div class="sab-table-card">
@@ -203,6 +218,17 @@
                             </div>
                         </div>
 
+                        @{
+                            var waitSteps = new List<RequestStep>
+                            {
+                                new("Submitted", r.RequestDate.ToString("MMM d"), RequestStepState.Done),
+                                new("Approved", "waiting", RequestStepState.Current),
+                                new(isBorrow ? "Picked up" : "Delivered", null, RequestStepState.Todo),
+                                new("Returned", r.ReturnBy is not null ? "due " + r.ReturnBy.Value.ToString("MMM d") : null, RequestStepState.Todo)
+                            };
+                        }
+                        <partial name="_RequestSteps" model="waitSteps" />
+
                         <div class="myassets-stats">
                             <div><span>@(isBorrow ? "Pickup at" : "Move to")</span><strong>@(r.RequestedLocationName ?? "—")</strong></div>
                             <div>
@@ -274,21 +300,17 @@
     <partial name="_RejectRequestModal" model="r" />
 }
 
-@* ---- In progress ------------------------------------------------------ *@
-<section id="tabProgress" role="tabpanel" hidden>
-    @if (!inProgress.Any())
-    {
-        <div class="sab-table-card">
-            <div class="sab-empty">
-                <div class="sab-empty-title">Nothing out right now</div>
-                <p>Approved requests appear here until their return is recorded.</p>
-            </div>
-        </div>
-    }
-    else
+@{
+    // One approved-requests list with its panels, shared by the In progress
+    // tab (still to be picked up or delivered) and the Waiting to be
+    // returned tab. returns = the second: Timing instead of Stage in the
+    // filters. Async because the tag helpers inside render with await.
+    async Task ProgressList(List<AssetRequestResponseDTO> list,
+        (string Key, string Label, List<AssetRequestResponseDTO> Items)[] groups,
+        string prefix, string aria, bool returns)
     {
         <div class="sab-table-card myassets" data-md data-page-size="6">
-            <aside class="myassets-list" aria-label="Requests in progress">
+            <aside class="myassets-list" aria-label="@aria">
                 <div class="md-toolbar">
                     <label class="asset-search">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
@@ -306,23 +328,29 @@
                                 <option value="borrow">Borrow</option>
                                 <option value="transfer">Transfer</option>
                             </select>
-                            <label class="form-label">Stage</label>
-                            <select class="form-select form-select-sm mb-2" data-md-filter="stage">
-                                <option value="">Any</option>
-                                <option value="deliver">Waiting for pickup or delivery</option>
-                                <option value="return">Waiting for return</option>
-                            </select>
-                            <label class="form-label">Timing</label>
-                            <select class="form-select form-select-sm mb-2" data-md-filter="timing">
-                                <option value="">Any</option>
-                                <option value="ontime">On time</option>
-                                <option value="overdue">Overdue</option>
-                            </select>
+                            @if (!returns)
+                            {
+                                <label class="form-label">Stage</label>
+                                <select class="form-select form-select-sm mb-2" data-md-filter="stage">
+                                    <option value="">Any</option>
+                                    <option value="pickup">Pick up</option>
+                                    <option value="delivery">Delivery</option>
+                                </select>
+                            }
+                            else
+                            {
+                                <label class="form-label">Timing</label>
+                                <select class="form-select form-select-sm mb-2" data-md-filter="timing">
+                                    <option value="">Any</option>
+                                    <option value="ontime">On time</option>
+                                    <option value="overdue">Overdue</option>
+                                </select>
+                            }
                             <label class="form-label">Branch</label>
                             <div class="mb-2">
                             <select class="form-select form-select-sm" data-md-filter="branch" data-combobox>
                                 <option value="">Any</option>
-                                @foreach (var d in inProgress.Select(BranchOf).Where(d => !string.IsNullOrEmpty(d)).Distinct().OrderBy(d => d))
+                                @foreach (var d in list.Select(BranchOf).Where(d => !string.IsNullOrEmpty(d)).Distinct().OrderBy(d => d))
                                 {
                                     <option value="@d.ToLowerInvariant()">@d</option>
                                 }
@@ -331,7 +359,7 @@
                             <label class="form-label">Department</label>
                             <select class="form-select form-select-sm" data-md-filter="dept" data-combobox>
                                 <option value="">Any</option>
-                                @foreach (var d in inProgress.Select(r => r.DepartmentName).Where(d => !string.IsNullOrEmpty(d)).Distinct().OrderBy(d => d))
+                                @foreach (var d in list.Select(r => r.DepartmentName).Where(d => !string.IsNullOrEmpty(d)).Distinct().OrderBy(d => d))
                                 {
                                     <option value="@d.ToLowerInvariant()">@d</option>
                                 }
@@ -340,7 +368,7 @@
                     </div>
                 </div>
 
-                @foreach (var g in progressGroups.Where(g => g.Items.Any()))
+                @foreach (var g in groups.Where(g => g.Items.Any()))
                 {
                     <div class="myassets-group" data-md-group>
                         <div class="myassets-group-label group-@g.Key">@g.Label · <span data-md-count>@g.Items.Count</span></div>
@@ -348,9 +376,9 @@
                         {
                             var isBorrow = r.RequestType == RequestType.Borrow;
                             var late = g.Key == "late";
-                            <button type="button" class="myassets-item" data-entry="p-@r.RequestID" data-search="@Search(r)"
+                            <button type="button" class="myassets-item" data-entry="@prefix-@r.RequestID" data-search="@Search(r)"
                                     data-type="@r.RequestType.ToString().ToLowerInvariant()" data-dept="@(r.DepartmentName?.ToLowerInvariant() ?? "")" data-branch="@BranchOf(r).ToLowerInvariant()"
-                                    data-stage="@(g.Key == "transit" ? "deliver" : "return")" data-timing="@(late ? "overdue" : "ontime")">
+                                    data-stage="@(isBorrow ? "pickup" : "delivery")" data-timing="@(late ? "overdue" : "ontime")">
                                 <span class="md-avatar @(late ? "is-dark" : "")">@Initials(r.RequestedByUser.FullName)</span>
                                 <span class="myassets-item-main">
                                     <span class="myassets-item-title">@r.RequestedByUser.FullName</span>
@@ -383,7 +411,7 @@
             </aside>
 
             <section class="myassets-detail">
-                @foreach (var r in progressOrdered)
+                @foreach (var r in list)
                 {
                     var isBorrow = r.RequestType == RequestType.Borrow;
                     var late = IsOverdue(r);
@@ -401,7 +429,7 @@
                             late ? RequestStepState.Late : inTransit ? RequestStepState.Todo : RequestStepState.Current)
                     };
 
-                    <article class="myassets-panel" data-panel="p-@r.RequestID" hidden>
+                    <article class="myassets-panel" data-panel="@prefix-@r.RequestID" hidden>
                         <button type="button" class="myassets-back" data-back>&larr; All requests</button>
 
                         <div class="myassets-panel-head">
@@ -535,7 +563,7 @@
                                     }
                                     else if (r.UnitsOut > 0)
                                     {
-                                        <a asp-action="RecordReturn" asp-route-id="@r.RequestID" class="btn btn-primary">Record return &rarr;</a>
+                                        <a asp-action="RecordReturn" asp-route-id="@r.RequestID" asp-route-from="approvals" class="btn btn-primary">Record return &rarr;</a>
                                     }
                                 </div>
                             </div>
@@ -544,5 +572,39 @@
                 }
             </section>
         </div>
+    }
+}
+
+@* ---- In progress: to pick up or deliver ---------------------------------- *@
+<section id="tabProgress" role="tabpanel" hidden="@(openTab != "tabProgress")">
+    @if (!transit.Any())
+    {
+        <div class="sab-table-card">
+            <div class="sab-empty">
+                <div class="sab-empty-title">Nothing to hand over</div>
+                <p>Approved requests wait here until they are picked up or delivered.</p>
+            </div>
+        </div>
+    }
+    else
+    {
+        await ProgressList(transit, transitGroups, "p", "Requests to pick up or deliver", false);
+    }
+</section>
+
+@* ---- Waiting to be returned ----------------------------------------------- *@
+<section id="tabReturn" role="tabpanel" hidden="@(openTab != "tabReturn")">
+    @if (!returnList.Any())
+    {
+        <div class="sab-table-card">
+            <div class="sab-empty">
+                <div class="sab-empty-title">Nothing out right now</div>
+                <p>Picked-up and delivered requests wait here until their return is recorded.</p>
+            </div>
+        </div>
+    }
+    else
+    {
+        await ProgressList(returnList, returnGroups, "r", "Requests waiting to be returned", true);
     }
 </section>

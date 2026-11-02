@@ -25,7 +25,7 @@
     var directCount = entries.Count - requestCount;
     var sources = new List<string>();
     if (requestCount > 0) { sources.Add($"{requestCount} request{(requestCount == 1 ? "" : "s")}"); }
-    if (directCount > 0) { sources.Add($"{directCount} direct assignment{(directCount == 1 ? "" : "s")}"); }
+    if (directCount > 0) { sources.Add($"{directCount} item{(directCount == 1 ? "" : "s")} assigned by staff"); }
 }
 
 @functions {
@@ -81,7 +81,7 @@
 
         public int DaysLate => ReturnBy.HasValue ? (Today - ReturnBy.Value).Days : 0;
 
-        public string TypeLabel => IsRequest ? (First.RequestType?.ToString() ?? "Request") : "Direct";
+        public string TypeLabel => IsRequest ? (First.RequestType?.ToString() ?? "Request") : "Assigned";
 
         // The short note on the right of a list item.
         public string DueNote =>
@@ -183,10 +183,10 @@ else
                         <div class="mb-2">
                         <select class="form-select form-select-sm" data-md-filter="type" data-combobox>
                             <option value="">Any</option>
-                            @foreach (var t in entries.Select(e => e.TypeLabel).Distinct().OrderBy(t => t))
-                            {
-                                <option value="@t.ToLowerInvariant()">@t</option>
-                            }
+                            @* Every type, whether or not one is out right now. *@
+                            <option value="assigned">Assigned</option>
+                            <option value="borrow">Borrow</option>
+                            <option value="transfer">Transfer</option>
                         </select>
                         </div>
                         <label class="form-label">Location</label>

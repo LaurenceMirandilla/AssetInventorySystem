@@ -35,11 +35,10 @@
         var units = r.Items.Sum(i => i.Quantity);
         return $"{r.Items.Count} item{(r.Items.Count == 1 ? "" : "s")}" + (units != r.Items.Count ? $" · {units} units" : "");
     }
-    // "Document camera, HDMI cable +3" or "Whiteboard ×5".
+    // The ticket's own summary ("Document camera, HDMI cable +3", made by
+    // NewItemRequestService), with "×5" when it is one item.
     string Title(NewItemRequestResponseDTO r) =>
-        r.Items.Count == 1 ? r.Items[0].ItemName + (r.Items[0].Quantity > 1 ? $" ×{r.Items[0].Quantity}" : "")
-        : r.Items.Count == 2 ? $"{r.Items[0].ItemName}, {r.Items[1].ItemName}"
-        : $"{r.Items[0].ItemName}, {r.Items[1].ItemName} +{r.Items.Count - 2}";
+        r.ItemName + (r.Items.Count == 1 && r.Quantity > 1 ? $" ×{r.Quantity}" : "");
 }
 
 @if (TempData["ErrorMessage"] != null)

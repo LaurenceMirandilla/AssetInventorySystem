@@ -91,8 +91,12 @@ namespace SchoolInventoryManagement.Web.Controllers
         // Two lists: requests waiting for a decision, and approved ones that
         // are still out (In Transit / Assigned) until their return is recorded.
         [Authorize(Roles = ApproverRoles)]
-        public async Task<IActionResult> Pending()
+        // tab = progress | return opens that tab instead of Waiting for
+        // approval (where Picked up / Delivered and Record return send you
+        // back to).
+        public async Task<IActionResult> Pending(string? tab)
         {
+            ViewBag.Tab = tab;
             var requests = await _requestService.GetPendingRequestsAsync(CurrentUserId);
             ViewBag.InProgress = await _requestService.GetInProgressRequestsAsync(CurrentUserId);
             ViewBag.ModelCategories = await ModelCategoriesAsync();
@@ -130,6 +134,7 @@ namespace SchoolInventoryManagement.Web.Controllers
                 Type = model.Type,
                 Keyword = model.Keyword,
                 DecidedByUserId = model.DecidedBy,
+                RequestedByUserId = model.RequestedBy,
                 DepartmentId = model.DepartmentId,
                 BranchId = model.BranchId,
                 FromDate = model.FromDate,
@@ -144,6 +149,7 @@ namespace SchoolInventoryManagement.Web.Controllers
             model.CancelledCount = result.CancelledCount;
             model.RejectedCount = result.RejectedCount;
             model.Deciders = result.Deciders;
+            model.Requesters = result.Requesters;
             model.Departments = await _departmentService.GetAllDepartmentsAsync();
             model.Page = Math.Clamp(model.Page, 1, model.TotalPages);
 
@@ -413,17 +419,21 @@ namespace SchoolInventoryManagement.Web.Controllers
                 TempData["ErrorMessage"] = UserMessageFor(ex);
             }
 
-            // Back to wherever the button was pressed.
+            // Back to wherever the button was pressed: from Approvals, the
+            // In progress tab, so the next one to hand over is right there.
             return fromApprovals
-                ? RedirectToAction(nameof(Pending))
+                ? RedirectToAction(nameof(Pending), new { tab = "progress" })
                 : RedirectToAction(nameof(Details), new { id });
         }
 
         // GET /AssetRequests/RecordReturn/5
         // Units coming back on a request -- all of them are ticked to start.
         [Authorize(Roles = AssetManagerRoles)]
-        public async Task<IActionResult> RecordReturn(int id)
+        // from = approvals when opened from Approvals' Waiting to be returned
+        // tab: Cancel and a recorded return go back there.
+        public async Task<IActionResult> RecordReturn(int id, string? from)
         {
+            ViewBag.From = from;
             var request = await _requestService.GetRequestByIdAsync(id);
             if (request is null)
                 return NotFound();
@@ -458,7 +468,7 @@ namespace SchoolInventoryManagement.Web.Controllers
         [HttpPost]
         [ValidateAntiForgeryToken]
         [Authorize(Roles = AssetManagerRoles)]
-        public async Task<IActionResult> RecordReturn(int id, ReturnRequestViewModel model)
+        public async Task<IActionResult> RecordReturn(int id, ReturnRequestViewModel model, string? from)
         {
             if (model.AssignmentIDs.Count == 0)
                 ModelState.AddModelError(nameof(model.AssignmentIDs), "Tick at least one unit that is coming back.");
@@ -477,7 +487,10 @@ namespace SchoolInventoryManagement.Web.Controllers
 
                     TempData["StatusMessage"] =
                         $"{model.AssignmentIDs.Count} unit{(model.AssignmentIDs.Count == 1 ? "" : "s")} returned.";
-                    return RedirectToAction(nameof(Details), new { id });
+                    // Opened from Approvals: back to Waiting to be returned.
+                    return from == "approvals"
+                        ? RedirectToAction(nameof(Pending), new { tab = "return" })
+                        : RedirectToAction(nameof(Details), new { id });
                 }
                 catch (Exception ex)
                 {
@@ -486,6 +499,7 @@ namespace SchoolInventoryManagement.Web.Controllers
             }
 
             ViewBag.Request = await _requestService.GetRequestByIdAsync(id);
+            ViewBag.From = from;
             await PopulateReturnLocationsAsync();
             return View(model);
         }
@@ -755,6 +769,8 @@ namespace SchoolInventoryManagement.Web.Controllers
 
             var locations = await _locationService.GetAllLocationsAsync();
             ViewBag.LocationBranches = locations.ToDictionary(l => l.LocationID, l => l.BranchID);
+            // Branch id -> name, for the picker's Branch filter.
+            ViewBag.BranchNames = locations.GroupBy(l => l.BranchID).ToDictionary(g => g.Key, g => g.First().BranchName);
             ViewBag.TargetLocationID = request.RequestedLocationID;
 
             ViewBag.Lines = lines;
@@ -780,6 +796,8 @@ namespace SchoolInventoryManagement.Web.Controllers
         private async Task PopulateReturnLocationsAsync()
         {
             var locations = await _locationService.GetAllLocationsAsync();
+            // Record return picks a branch first, then one of its rooms.
+            ViewBag.LocationList = locations.OrderBy(l => l.LocationName).ToList();
             ViewBag.Locations = new SelectList(
                 locations
                     .Select(l => new { l.LocationID, Label = $"{l.BranchName} — {l.LocationName}" })

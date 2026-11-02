@@ -1,27 +1,106 @@
 ﻿@model SchoolInventoryManagement.BLL.DTOs.NewItemRequestResponseDTO
+@using System.Text.RegularExpressions
+@using SchoolInventoryManagement.BLL.DTOs
 @using SchoolInventoryManagement.DAL.Entities.Enums
+@using SchoolInventoryManagement.Web.ViewModels
+@inject SchoolInventoryManagement.Web.Helpers.AuditText AuditText
 @{
     ViewData["Title"] = $"New Item Request #{Model.NewItemRequestID}";
 
-    // The five stages in order, and where this request is among them.
+    // Height rules: two fixed cards (summary, step tracker), then lists that
+    // are each capped and paginated -- items 10 a page, history 10 a page;
+    // the steps list holds at most five entries and needs no pager.
+    var currentUserId = int.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)!.Value);
+    var isMine = Model.RequestedByUserID == currentUserId;
+    var isStopped = Model.RequestStatus is NewItemStatus.Rejected or NewItemStatus.Cancelled;
+    var canReject = Model.RequestStatus is NewItemStatus.AwaitingDeptHead or NewItemStatus.AwaitingBudget;
+    var units = Model.Items.Sum(i => i.Quantity);
+    // The item lines saved with the ticket are already in the table above
+    // and summed up in "Submitted the request", so they are not listed
+    // again one by one (they stay in the full audit log report).
+    var history = (ViewBag.AuditHistory as List<AuditReportRowDTO>)?
+        .Where(r => r.ActionPerformed != "NewItemRequestItem Created")
+        .ToList();
+
+    // Step tracker: Submitted -> Department head -> Principal -> Procurement
+    // -> Arrived. A stage is done once the step that ends it is recorded.
     var stages = new[]
     {
-        (Status: NewItemStatus.AwaitingDeptHead, Label: "Department head approval"),
-        (Status: NewItemStatus.AwaitingBudget, Label: "Principal: budget and reason"),
-        (Status: NewItemStatus.Procuring, Label: "Item procurement"),
-        (Status: NewItemStatus.AwaitingArrival, Label: "Waiting for item arrival"),
-        (Status: NewItemStatus.Arrived, Label: "Item arrived")
+        (Label: "Submitted", DoneBy: (NewItemStatus?)null, Hint: ""),
+        (Label: "Department head", DoneBy: (NewItemStatus?)NewItemStatus.AwaitingBudget, Hint: "approves the need"),
+        (Label: "Principal", DoneBy: (NewItemStatus?)NewItemStatus.Procuring, Hint: "budget & reason"),
+        (Label: "Procurement", DoneBy: (NewItemStatus?)NewItemStatus.AwaitingArrival, Hint: "item bought"),
+        (Label: "Arrived", DoneBy: (NewItemStatus?)NewItemStatus.Arrived, Hint: "ready")
     };
-    var isRejected = Model.RequestStatus is NewItemStatus.Rejected or NewItemStatus.Cancelled;
+    var tracker = new List<RequestStep>();
+    var reachedCurrent = false;
+    foreach (var st in stages)
+    {
+        var doneStep = st.DoneBy is null ? null : Model.Steps.LastOrDefault(s => s.Status == st.DoneBy);
+        if (st.DoneBy is null)
+            tracker.Add(new RequestStep(st.Label, Model.RequestDate.ToString("MMM d"), RequestStepState.Done));
+        else if (doneStep is not null)
+            tracker.Add(new RequestStep(st.Label, doneStep.ActedAt.ToString("MMM d"), RequestStepState.Done));
+        else if (!reachedCurrent)
+        {
+            reachedCurrent = true;
+            tracker.Add(isStopped
+                ? new RequestStep(st.Label, Model.RequestStatus == NewItemStatus.Rejected ? "rejected" : "cancelled", RequestStepState.Stopped)
+                : new RequestStep(st.Label, "waiting", RequestStepState.Current));
+        }
+        else
+            tracker.Add(new RequestStep(st.Label, st.Hint, RequestStepState.Todo));
+    }
 
-    // A rejected request stopped at the stage it was in when rejected: the
-    // stage of the step before the rejection.
-    var stoppedAt = isRejected
-        ? Model.Steps.LastOrDefault(s => s.Status is not (NewItemStatus.Rejected or NewItemStatus.Cancelled))?.Status
-        : null;
-    var currentIndex = Array.FindIndex(stages, s => s.Status == (isRejected ? stoppedAt : Model.RequestStatus));
-    var arrived = Model.RequestStatus == NewItemStatus.Arrived;
-    var canReject = Model.RequestStatus is NewItemStatus.AwaitingDeptHead or NewItemStatus.AwaitingBudget;
+    // What the dashed "Waiting for ..." entry and its "Next:" hint say.
+    var waitingFor = Model.RequestStatus switch
+    {
+        NewItemStatus.AwaitingDeptHead => ("Waiting for the department head", "Next: the principal checks the budget and reason"),
+        NewItemStatus.AwaitingBudget => ("Waiting for the principal", "Next: an Asset Officer buys the item"),
+        NewItemStatus.Procuring => ("Waiting for procurement", "Next: it waits for the item to arrive"),
+        NewItemStatus.AwaitingArrival => ("Waiting for the item to arrive", "Next: you're told when it's in"),
+        _ => ((string, string)?)null
+    };
+}
+
+@functions {
+    // A history entry in plain words, from the raw audit row.
+    string Headline(AuditReportRowDTO row) => row.ActionPerformed switch
+    {
+        "NewItemRequest Created" => "Submitted the request",
+        "NewItemRequestItem Created" => ItemLine(row.Description),
+        "NewItemRequest Updated" => StatusLine(row.Description),
+        _ => DisplayText.Humanize(row.ActionPerformed)
+    };
+
+    static string ItemLine(string? raw)
+    {
+        var name = Regex.Match(raw ?? "", @"ItemName: '([^']*)'");
+        var qty = Regex.Match(raw ?? "", @"Quantity: '(\d+)'");
+        return name.Success ? $"Asked for {name.Groups[1].Value}" + (qty.Success ? $" ×{qty.Groups[1].Value}" : "") : "Added an item";
+    }
+
+    static string StatusLine(string? raw)
+    {
+        var s = Regex.Match(raw ?? "", @"RequestStatus: '\w*' -> '(\w+)'");
+        if (!s.Success) return "Updated the request";
+        return s.Groups[1].Value switch
+        {
+            "AwaitingBudget" => "Approved for the department",
+            "Procuring" => "Approved the budget",
+            "AwaitingArrival" => "Marked the item procured",
+            "Arrived" => "Confirmed the item arrived",
+            "Rejected" => "Rejected the request",
+            "Cancelled" => "Cancelled the request",
+            var other => DisplayText.Humanize(other)
+        };
+    }
+
+    static string Kind(string action)
+    {
+        var last = action.Split(' ').LastOrDefault() ?? action;
+        return last is "Created" or "Updated" or "Deleted" ? last : "Event";
+    }
 }
 
 @if (TempData["ErrorMessage"] != null)
@@ -29,146 +108,215 @@
     <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
 }
 
-<nav class="mb-2" style="font-size:0.85rem;">
-    <a asp-action="MyRequests" class="text-muted">New-Item Requests</a>
-    <span class="text-muted mx-1">&rsaquo;</span>
-    <span>#@Model.NewItemRequestID</span>
-</nav>
-
-<div class="sab-page-head">
+<div class="asset-detail-head">
     <div>
-        <h2>@Model.ItemName @if (Model.Items.Count == 1 && Model.Quantity > 1) {<span class="text-muted fw-normal">× @Model.Quantity</span>}</h2>
-        <p class="sab-page-sub">
-            <span class="status-pill status-@Model.RequestStatus.ToString().ToLowerInvariant()">@DisplayText.Stage(Model.RequestStatus)</span>
-            <span class="ms-2">Request #@Model.NewItemRequestID from @Model.RequestedByUserName, @Model.DepartmentName</span>
-        </p>
+        <nav class="asset-crumbs" aria-label="Breadcrumb">
+            @if (isMine)
+            {
+                <a asp-action="MyRequests">New-Item Requests</a>
+            }
+            else
+            {
+                <a asp-action="Pending">New-Item Approvals</a>
+            }
+            <span aria-hidden="true">&rsaquo;</span>
+            <span>#@Model.NewItemRequestID</span>
+        </nav>
+        <h2 class="asset-detail-title">@Model.ItemName @if (Model.Items.Count == 1 && Model.Quantity > 1) {<span class="text-muted fw-normal">×@Model.Quantity</span>}</h2>
     </div>
 </div>
 
-@* Progress: done stages green, the current one blue, a rejection red. *@
-<ol class="nir-stages mb-4">
-    @for (var i = 0; i < stages.Length; i++)
+@* ---- 1. Summary (fixed height) ---- *@
+<div class="asset-card rq-summary mb-3">
+    <div class="rq-summary-top">
+        <div class="rq-summary-pills">
+            <span class="md-tag is-newitem">New item</span>
+            <span class="asset-pill asset-status md-pill @NewItemProgress.Pill(Model.RequestStatus)">@DisplayText.Stage(Model.RequestStatus)</span>
+            <span class="rq-status-line is-gray">Submitted @Model.RequestDate.ToString("MMM d, yyyy · h:mm tt")</span>
+        </div>
+        <div class="rq-requester">
+            <strong>@Model.RequestedByUserName</strong>
+            <span>· @(Model.RequestedByRoleName ?? "") · @Model.DepartmentName</span>
+        </div>
+    </div>
+    <dl class="rq-grid">
+        <div class="@(Model.NeededBy is not null && Model.NeededBy.Value.Date < DateTime.Today && !isStopped && Model.RequestStatus != NewItemStatus.Arrived ? "is-late" : "")">
+            <dt>Needed by</dt><dd>@(Model.NeededBy?.ToString("MMM d, yyyy") ?? "—")</dd>
+        </div>
+        <div><dt>Items</dt><dd>@Model.Items.Count · @units unit@(units == 1 ? "" : "s")</dd></div>
+        <div><dt>Estimated total</dt><dd class="text-success">@(Model.EstimatedTotal is null ? "not priced" : DisplayText.Peso(Model.EstimatedTotal))</dd></div>
+        <div><dt>Reason</dt><dd class="@(string.IsNullOrWhiteSpace(Model.Reason) ? "is-empty" : "")">@(string.IsNullOrWhiteSpace(Model.Reason) ? "None given" : Model.Reason)</dd></div>
+    </dl>
+    @if (isStopped && !string.IsNullOrWhiteSpace(Model.Remarks))
     {
-        var css = arrived || i < currentIndex ? "done"
-                : i == currentIndex ? (isRejected ? "stopped" : "current")
-                : "";
-        <li class="@css">
-            <div class="small">Step @(i + 1)</div>
-            <div>@stages[i].Label</div>
-            @if (css == "stopped")
-            {
-                <div class="small">Rejected here</div>
-            }
-        </li>
+        <div class="rq-remarks is-red">
+            <span>@(Model.RequestStatus == NewItemStatus.Cancelled ? "Reason for cancelling" : "Reason for rejection")</span>
+            @Model.Remarks
+        </div>
     }
-</ol>
+</div>
 
-@* What the ticket asks for, decided as one request. *@
-<h4 class="md-section-title mt-0">What @(Model.Items.Count == 1 ? "is" : "are") being asked for <small>· one request, decided together</small></h4>
-<div class="mb-4"><partial name="_NewItemTicketItems" model="Model" /></div>
+@* ---- 2. Step tracker (fixed height) ---- *@
+<div class="mb-3"><partial name="_RequestSteps" model="tracker" /></div>
 
-<div class="row g-3">
-    <div class="col-lg-5">
-        <div class="card mb-3">
-            <div class="card-body">
-                <h5 class="card-title">Request</h5>
-                <dl class="row mb-0 small">
-                    <dt class="col-5">Items</dt>
-                    <dd class="col-7">@Model.Items.Count · @Model.Quantity unit@(Model.Quantity == 1 ? "" : "s")</dd>
-                    <dt class="col-5">Estimated total</dt>
-                    <dd class="col-7 fw-semibold">@DisplayText.Peso(Model.EstimatedTotal)</dd>
-                    <dt class="col-5">Requested by</dt>
-                    <dd class="col-7">@Model.RequestedByUserName</dd>
-                    <dt class="col-5">Department</dt>
-                    <dd class="col-7">@Model.DepartmentName</dd>
-                    <dt class="col-5">Submitted</dt>
-                    <dd class="col-7">@Model.RequestDate.ToString("MMM d, yyyy h:mm tt")</dd>
-                    <dt class="col-5">Needed by</dt>
-                    <dd class="col-7">@(Model.NeededBy?.ToString("MMM d, yyyy") ?? "—")</dd>
-                    <dt class="col-5">Reason</dt>
-                    <dd class="col-7">@(Model.Reason ?? "—")</dd>
-                </dl>
+@* ---- 3. What's being asked for: 10 items a page; the total is the whole request's ---- *@
+<div class="asset-card mb-3" data-pager data-page-size="10" data-noun="items">
+    <div class="rq-card-head">
+        <h3>What's being asked for</h3>
+        <span>one request, decided together</span>
+    </div>
+    <div class="p-3 pb-0">
+        <partial name="_NewItemTicketItems" model="Model" />
+    </div>
+    @if (Model.Items.Count > 10)
+    {
+        <div class="rq-card-foot">
+            <span data-pager-range></span>
+            <div class="d-flex align-items-center flex-wrap" style="gap:8px;">
+                <span class="text-muted">Show</span>
+                <select class="form-select form-select-sm rq-size" data-pager-size aria-label="Items per page">
+                    <option value="10" selected>10</option>
+                    <option value="20">20</option>
+                    <option value="50">50</option>
+                </select>
+                <span class="text-muted">per page</span>
+                <div class="d-flex flex-wrap" style="gap:6px;" data-pager-buttons></div>
             </div>
         </div>
+    }
+    else
+    {
+        <div class="pb-3"></div>
+    }
+</div>
 
-        @if (Model.CanAct)
-        {
-            <div class="card mb-3 border-primary">
-                <div class="card-body">
-                    <h5 class="card-title">Your step</h5>
-                    <p class="small text-muted">
-                        @(Model.RequestStatus switch
-                        {
-                            NewItemStatus.AwaitingDeptHead => "Approve to send it to the Principal for the budget check, or reject it.",
-                            NewItemStatus.AwaitingBudget => "Check the reason and that there is budget for it. Approve to send it to the Asset Officer for procurement, or reject it.",
-                            NewItemStatus.Procuring => "Once the item has been bought or obtained, mark it procured. The requester is told it is on its way.",
-                            NewItemStatus.AwaitingArrival => "When the item is delivered, confirm its arrival. The requester is told it has arrived.",
-                            _ => ""
-                        })
-                    </p>
-                    <form asp-action="Advance" asp-route-id="@Model.NewItemRequestID" asp-route-returnTo="details" method="post">
-                        @Html.AntiForgeryToken()
-                        <input type="hidden" name="rowVersionBase64" value="@RowVersionHelper.ToBase64(Model.RowVersion)" />
-                        <textarea name="remarks" maxlength="500" rows="2" class="form-control mb-2"
-                                  placeholder="Remarks (optional — shown in the history@(canReject ? " and sent with a rejection" : ""))"></textarea>
-                        <button type="submit" class="btn btn-success">@DisplayText.AdvanceButton(Model.RequestStatus)</button>
-                        @if (canReject)
-                        {
-                            <button type="submit" class="btn btn-outline-danger"
-                                    formaction="@Url.Action("Reject", new { id = Model.NewItemRequestID, returnTo = "details" })"
-                                    onclick="return confirm('Reject this request and every item on it?');">
-                                Reject
-                            </button>
-                        }
-                    </form>
-                </div>
+@* ---- 4. Steps and History: side by side on wide screens, stacked on narrow ---- *@
+<div class="row g-3 mb-3">
+    <div class="@(history != null ? "col-lg-5" : "col-12")">
+        <div class="asset-card h-100">
+            <div class="rq-card-head">
+                <h3>Steps</h3>
+                <span>who moved it, oldest first</span>
             </div>
+            <ol class="ni-timeline">
+                @foreach (var s in Model.Steps)
+                {
+                    var bad = s.Status is NewItemStatus.Rejected or NewItemStatus.Cancelled;
+                    <li class="@(bad ? "is-stopped" : "is-done")">
+                        <span class="ni-timeline-dot" aria-hidden="true">@(bad ? "!" : "✓")</span>
+                        <div class="min-w-0">
+                            <div class="ni-timeline-title">@DisplayText.StepAction(s.Status)</div>
+                            <div class="ni-timeline-meta">@s.ActedByName · @s.ActedByRole · @s.ActedAt.ToString("MMM d, yyyy · h:mm tt")</div>
+                            @if (!string.IsNullOrWhiteSpace(s.Remarks))
+                            {
+                                <div class="ni-timeline-remarks">“@s.Remarks”</div>
+                            }
+                        </div>
+                    </li>
+                }
+                @if (waitingFor is { } w)
+                {
+                    <li class="is-waiting">
+                        <span class="ni-timeline-dot" aria-hidden="true">@(tracker.FindIndex(t => t.State == RequestStepState.Current) + 1)</span>
+                        <div class="min-w-0">
+                            <div class="ni-timeline-title">@w.Item1</div>
+                            <div class="ni-timeline-meta">@w.Item2</div>
+                        </div>
+                    </li>
+                }
+            </ol>
+        </div>
+    </div>
+
+    @* The audit trail in plain words, for the roles that read it
+       (BaseController.LoadAuditHistoryAsync); 10 entries a page. *@
+    @if (history != null)
+    {
+        <div class="col-lg-7">
+            <div class="asset-card h-100" data-pager data-page-size="10" data-noun="entries">
+                <div class="rq-card-head">
+                    <h3>History</h3>
+                    <span>@history.Count entr@(history.Count == 1 ? "y" : "ies") · newest first</span>
+                </div>
+                @if (history.Any())
+                {
+                    <div class="rq-history">
+                        <div class="rq-history-row rq-history-head" aria-hidden="true">
+                            <span>When</span><span>By</span><span>What happened</span>
+                        </div>
+                        @foreach (var row in history)
+                        {
+                            var kind = Kind(row.ActionPerformed);
+                            var created = row.ActionPerformed == "NewItemRequest Created";
+                            <div class="rq-history-row" data-pager-item>
+                                <span class="rq-when">@row.LogDateTime.ToString("MMM d · h:mm tt")</span>
+                                <span class="rq-by">@row.UserName<small>@row.UserRole</small></span>
+                                <span class="rq-what">
+                                    <span class="rq-what-title"><span class="rq-kind is-@kind.ToLowerInvariant()">@kind</span> @Headline(row)</span>
+                                    @if (created)
+                                    {
+                                        <small>@Model.Items.Count item@(Model.Items.Count == 1 ? "" : "s") · @units unit@(units == 1 ? "" : "s")@(Model.EstimatedTotal is null ? "" : " · " + DisplayText.Peso(Model.EstimatedTotal) + " estimated")@(Model.NeededBy is null ? "" : " · needed " + Model.NeededBy.Value.ToString("MMM d")) · @Model.DepartmentName</small>
+                                    }
+                                    else if (!string.IsNullOrWhiteSpace(row.Description) && row.ActionPerformed != "NewItemRequestItem Created")
+                                    {
+                                        <small>@(await AuditText.FormatAsync(row.Description))</small>
+                                    }
+                                </span>
+                            </div>
+                        }
+                    </div>
+                    <div class="rq-card-foot">
+                        <span data-pager-range></span>
+                        <div class="d-flex align-items-center flex-wrap" style="gap:8px;">
+                            <span class="text-muted">Show</span>
+                            <select class="form-select form-select-sm rq-size" data-pager-size aria-label="Entries per page">
+                                <option value="10" selected>10</option>
+                                <option value="20">20</option>
+                                <option value="50">50</option>
+                            </select>
+                            <span class="text-muted">per page</span>
+                            <div class="d-flex flex-wrap" style="gap:6px;" data-pager-buttons></div>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div class="sab-empty"><p class="mb-0">No recorded changes yet.</p></div>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@* ---- 5. Bottom bar (sticks to the bottom of the screen) ---- *@
+@if (Model.CanAct)
+{
+    @* One form: the main button moves it on; Reject swaps the action with
+       formaction, so both share the remarks. *@
+    <form asp-action="Advance" asp-route-id="@Model.NewItemRequestID" asp-route-returnTo="details" method="post" class="register-footer ni-footer">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="rowVersionBase64" value="@RowVersionHelper.ToBase64(Model.RowVersion)" />
+        <a asp-action="@(isMine ? "MyRequests" : "Pending")" class="btn btn-outline-secondary ni-footer-back" aria-label="Back to @(isMine ? "New-Item Requests" : "New-Item Approvals")">&larr;<span class="d-none d-sm-inline"> @(isMine ? "New-Item Requests" : "New-Item Approvals")</span></a>
+        <input type="text" name="remarks" maxlength="500" class="form-control ni-footer-remarks"
+               placeholder="Remarks (optional)@(canReject ? " — sent with a rejection" : "")" aria-label="Remarks" />
+        <div class="d-flex" style="gap:8px;">
+            @if (canReject)
+            {
+                <button type="submit" class="btn btn-outline-danger"
+                        formaction="@Url.Action("Reject", new { id = Model.NewItemRequestID, returnTo = "details" })"
+                        onclick="return confirm('Reject this request and every item on it?');">Reject</button>
+            }
+            <button type="submit" class="btn btn-primary">&#10003; @DisplayText.AdvanceButton(Model.RequestStatus)</button>
+        </div>
+    </form>
+}
+else
+{
+    <div class="register-footer ni-footer">
+        <a asp-action="@(isMine ? "MyRequests" : "Pending")" class="btn btn-outline-secondary">&larr; @(isMine ? "New-Item Requests" : "New-Item Approvals")</a>
+        @if (!isMine && NewItemProgress.Open.Contains(Model.RequestStatus))
+        {
+            <span class="ms-auto">Waiting on @NewItemProgress.WaitingOn(Model.RequestStatus).</span>
         }
     </div>
-
-    <div class="col-lg-7">
-        <div class="sab-table-card">
-            <div class="sab-table-head">
-                <h5>Steps</h5>
-                <span class="sab-table-count">Who moved it at each step, oldest first.</span>
-            </div>
-            <table class="table table-sm mb-0">
-                <thead>
-                    <tr>
-                        <th>When</th>
-                        <th>Step</th>
-                        <th>By</th>
-                        <th>Remarks</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var step in Model.Steps)
-                    {
-                        <tr>
-                            <td class="text-nowrap small">@step.ActedAt.ToString("MMM d, yyyy h:mm tt")</td>
-                            <td>
-                                <span class="status-pill status-@step.Status.ToString().ToLowerInvariant()">@DisplayText.StepAction(step.Status)</span>
-                            </td>
-                            <td>
-                                <div>@step.ActedByName</div>
-                                <div class="text-muted small">@step.ActedByRole</div>
-                            </td>
-                            <td class="small">@(step.Remarks ?? "—")</td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-            @if (!Model.Steps.Any())
-            {
-                <div class="sab-empty"><p class="mb-0">No steps recorded.</p></div>
-            }
-        </div>
-    </div>
-</div>
-
-@* The raw audit trail, for the roles that read it (see
-   BaseController.LoadAuditHistoryAsync). *@
-@if (ViewBag.AuditHistory is List<SchoolInventoryManagement.BLL.DTOs.AuditReportRowDTO> history)
-{
-    <partial name="_AuditHistory" model="history" />
 }

@@ -17,6 +17,7 @@ namespace SchoolInventoryManagement.Web.ViewModels
         public RequestType? Type { get; set; }
         public string? Keyword { get; set; }
         public int? DecidedBy { get; set; }
+        public int? RequestedBy { get; set; }
         public int? DepartmentId { get; set; }
         public int? BranchId { get; set; }
         public DateTime? FromDate { get; set; }
@@ -29,13 +30,14 @@ namespace SchoolInventoryManagement.Web.ViewModels
         [BindNever] public int CancelledCount { get; set; }
         [BindNever] public int RejectedCount { get; set; }
         [BindNever] public List<UserSummaryDTO> Deciders { get; set; } = new();
+        [BindNever] public List<UserSummaryDTO> Requesters { get; set; } = new();
         [BindNever] public List<DepartmentDTO> Departments { get; set; } = new();
 
         public int TotalPages => Math.Max(1, (int)Math.Ceiling(TotalCount / (double)PageSize));
 
         public bool HasFilters =>
             !string.IsNullOrEmpty(Decision) || Type.HasValue || !string.IsNullOrWhiteSpace(Keyword) ||
-            DecidedBy.HasValue || DepartmentId.HasValue || BranchId.HasValue || FromDate.HasValue || ToDate.HasValue;
+            DecidedBy.HasValue || RequestedBy.HasValue || DepartmentId.HasValue || BranchId.HasValue || FromDate.HasValue || ToDate.HasValue;
 
         // The current filters as route values, for the tiles and the pager.
         // Decision and page are left for the caller to set.
@@ -45,6 +47,7 @@ namespace SchoolInventoryManagement.Web.ViewModels
             if (Type.HasValue) route["type"] = Type.Value.ToString();
             if (!string.IsNullOrWhiteSpace(Keyword)) route["keyword"] = Keyword;
             if (DecidedBy.HasValue) route["decidedBy"] = DecidedBy.Value.ToString();
+            if (RequestedBy.HasValue) route["requestedBy"] = RequestedBy.Value.ToString();
             if (DepartmentId.HasValue) route["departmentId"] = DepartmentId.Value.ToString();
             if (BranchId.HasValue) route["branchId"] = BranchId.Value.ToString();
             if (FromDate.HasValue) route["fromDate"] = FromDate.Value.ToString("yyyy-MM-dd");

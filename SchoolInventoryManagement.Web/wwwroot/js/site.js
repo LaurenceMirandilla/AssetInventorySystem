@@ -298,6 +298,56 @@ document.addEventListener('change', function (e) {
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 })();
 
+// Lists that follow a branch: Assign, Approve borrow, New request, Record
+// return and Request History all pick a branch first, then a room or a
+// department of that branch.
+//   var f = sabFilterByBranch(select, branchSelect, options);
+// keeps only the options of select whose data-branch equals the branch's
+// value. Options are rebuilt rather than hidden (some browsers ignore
+// "hidden" on <option>); an option without data-branch (the blank first
+// one) always stays. A picked option from another branch is cleared, and
+// the typeable box is told to refresh. Options, all optional:
+//   hint(branchValue)  text for the blank first option
+//   lock(branchValue)  true to disable the list (e.g. until a branch is picked)
+//   showAllWhenEmpty   no branch picked: show every option, not none
+//   strip              with a branch picked, drop a "Branch — " prefix from texts
+//   notify             fire "change" when the picked option was cleared
+//   auto: false        don't refresh on the branch's own change event; call
+//                      f.refresh() yourself (to control the order of updates)
+// Returns { refresh }.
+window.sabFilterByBranch = function (select, branch, opts) {
+    opts = opts || {};
+    var all = Array.from(select.options).filter(function (o) { return o.dataset.branch; }).map(function (o) {
+        return { value: o.value, text: o.text, data: Object.assign({}, o.dataset) };
+    });
+
+    function refresh() {
+        var keep = select.value;
+        var b = branch.value;
+        Array.from(select.options).forEach(function (o) { if (o.dataset.branch) o.remove(); });
+        var blank = select.options[0];
+        if (blank && !blank.value && opts.hint) blank.text = opts.hint(b);
+        all.forEach(function (x) {
+            if (b ? x.data.branch !== b : !opts.showAllWhenEmpty) return;
+            var o = document.createElement('option');
+            o.value = x.value;
+            o.text = b && opts.strip ? x.text.replace(/^.*? — /, '') : x.text;
+            Object.keys(x.data).forEach(function (k) { o.dataset[k] = x.data[k]; });
+            select.appendChild(o);
+        });
+        select.value = keep;
+        var cleared = select.value !== keep;
+        if (cleared) select.value = '';
+        if (opts.lock) select.disabled = !!opts.lock(b);
+        select.dispatchEvent(new Event('combo-sync'));
+        if (cleared && opts.notify) select.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    if (opts.auto !== false) branch.addEventListener('change', refresh);
+    refresh();
+    return { refresh: refresh };
+};
+
 // List-and-details pages (Approvals, My Requests, My New-Item Requests).
 // Markup: a root [data-md] holding list items [data-entry="id"] (inside
 // groups [data-md-group] with a [data-md-count]), one [data-panel="id"]
@@ -543,7 +593,20 @@ document.addEventListener('change', function (e) {
                 buttons.appendChild(b);
             }
             add('&lsaquo;', page - 1, page === 1 ? 'disabled' : '');
-            for (var n = 1; n <= pages; n++) add(String(n), n, n === page ? 'current' : '');
+            // First, last, and the pages either side of this one; "…" for
+            // the gaps, so a long list doesn't give a long row of numbers.
+            var last = 0;
+            for (var n = 1; n <= pages; n++) {
+                if (n !== 1 && n !== pages && Math.abs(n - page) > 1) continue;
+                if (last && n - last > 1) {
+                    var gap = document.createElement('span');
+                    gap.className = 'asset-page-gap';
+                    gap.textContent = '…';
+                    buttons.appendChild(gap);
+                }
+                add(String(n), n, n === page ? 'current' : '');
+                last = n;
+            }
             add('&rsaquo;', page + 1, page === pages ? 'disabled' : '');
         }
 

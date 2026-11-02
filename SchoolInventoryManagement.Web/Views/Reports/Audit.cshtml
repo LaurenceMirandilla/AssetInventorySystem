@@ -94,6 +94,8 @@
                 <h5>Audit entries</h5>
                 <span class="sab-table-count">@Model.Count entr@(Model.Count == 1 ? "y" : "ies") shown.</span>
             </div>
+            @* Scrolls sideways inside the card on a phone instead of cutting off the last columns. *@
+            <div class="table-responsive">
             <table class="table table-striped table-sm">
                 <thead>
                     <tr>
@@ -138,6 +140,7 @@
                     }
                 </tbody>
             </table>
+            </div>
             @if (!Model.Any())
             {
                 <div class="sab-empty"><p class="mb-0">No audit entries match these filters.</p></div>

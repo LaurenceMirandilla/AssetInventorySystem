@@ -1,4 +1,4 @@
-@model List<SchoolInventoryManagement.BLL.DTOs.AuditReportRowDTO>
+﻿@model List<SchoolInventoryManagement.BLL.DTOs.AuditReportRowDTO>
 @inject SchoolInventoryManagement.Web.Helpers.AuditText AuditText
 @* The History box on a record's own page. Controllers load it only for
    the roles that can read the audit trail (Administrator, Principal,
@@ -12,6 +12,7 @@
     </div>
     @if (Model.Any())
     {
+        <div class="table-responsive">
         <table class="table table-striped table-sm">
             <thead>
                 <tr>
@@ -36,6 +37,7 @@
                 }
             </tbody>
         </table>
+        </div>
     }
     else
     {

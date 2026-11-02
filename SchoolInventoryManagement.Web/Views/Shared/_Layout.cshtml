@@ -50,7 +50,7 @@
     var newItemApprovalActions = new[] { "Pending", "Advance", "Reject" };
     var inNewItemRequests = isActive(new[] { "NewItemRequests" });
     var onNewItemApprovals = inNewItemRequests
-        && newItemApprovalActions.Contains(currentAction, StringComparer.OrdinalIgnoreCase);
+        && (newItemApprovalActions.Contains(currentAction, StringComparer.OrdinalIgnoreCase) || navSection == "newitem-approvals");
     var onNewItemAll = inNewItemRequests
         && string.Equals(currentAction, "All", StringComparison.OrdinalIgnoreCase);
 

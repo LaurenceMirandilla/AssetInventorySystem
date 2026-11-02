@@ -333,30 +333,12 @@
             // Rebuilt rather than hidden: some browsers ignore "hidden" on
             // <option>. The blank first option is "Let staff choose" for a
             // Borrow (a real choice) and a hint for a Transfer.
-            var allRooms = Array.from(location.options).filter(function (o) { return o.value; }).map(function (o) {
-                return { value: o.value, text: o.text, data: Object.assign({}, o.dataset) };
+            var roomFilter = sabFilterByBranch(location, branch, {
+                auto: false,
+                hint: function (b) { return isBorrow() ? 'Let staff choose' : (b ? 'Search a location' : '-- Pick a branch first --'); },
+                lock: function (b) { return !b && !isBorrow(); }
             });
-
-            function rebuildRooms() {
-                var keep = location.value;
-                var b = branch.value;
-                location.innerHTML = '';
-                var blank = document.createElement('option');
-                blank.value = '';
-                blank.textContent = isBorrow() ? 'Let staff choose' : (b ? 'Search a location' : '-- Pick a branch first --');
-                location.appendChild(blank);
-                allRooms.forEach(function (r) {
-                    if (!b || r.data.branch !== b) return;
-                    var o = document.createElement('option');
-                    o.value = r.value;
-                    o.textContent = r.text;
-                    Object.keys(r.data).forEach(function (k) { o.dataset[k] = r.data[k]; });
-                    location.appendChild(o);
-                });
-                location.value = Array.from(location.options).some(function (o) { return o.value === keep; }) ? keep : '';
-                location.disabled = !b && !isBorrow();
-                location.dispatchEvent(new Event('combo-sync'));
-            }
+            function rebuildRooms() { roomFilter.refresh(); }
 
             branch.addEventListener('change', function () { rebuildRooms(); refreshAvailability(); summary(); });
             location.addEventListener('change', function () { refreshAvailability(); summary(); });

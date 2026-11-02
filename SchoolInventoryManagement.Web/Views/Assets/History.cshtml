@@ -74,7 +74,7 @@
     </ul>
 
     <div class="tab-content">
-        <div class="tab-pane fade show active" id="pane-assignments" role="tabpanel" aria-labelledby="tab-assignments">
+        <div class="tab-pane fade show active" id="pane-assignments" role="tabpanel" data-pager data-page-size="10" data-noun="assignments" aria-labelledby="tab-assignments">
             <div class="history-caption"><span>Who had this unit and in what condition</span><span>Newest first</span></div>
             @if (Model.Assignments.Any())
             {
@@ -84,7 +84,7 @@
                         <tbody>
                             @foreach (var a in Model.Assignments)
                             {
-                                <tr>
+                                <tr data-pager-item>
                                     <td>@{ Person(a.AssignedToUser.FullName); }</td>
                                     <td>@{ Person(a.AssignedByUser.FullName); }</td>
                                     <td>@a.AssignmentDate.ToString("MMM d, yyyy")</td>
@@ -111,6 +111,19 @@
                         </tbody>
                     </table>
                 </div>
+                <div class="history-foot">
+                    <span data-pager-range></span>
+                    <div class="d-flex align-items-center flex-wrap" style="gap:8px;">
+                        <span class="text-muted">Show</span>
+                        <select class="form-select form-select-sm rq-size" data-pager-size aria-label="Rows per page">
+                            <option value="10" selected>10</option>
+                            <option value="20">20</option>
+                            <option value="50">50</option>
+                        </select>
+                        <span class="text-muted">per page</span>
+                        <div class="d-flex flex-wrap" style="gap:6px;" data-pager-buttons></div>
+                    </div>
+                </div>
             }
             else
             {
@@ -118,7 +131,7 @@
             }
         </div>
 
-        <div class="tab-pane fade" id="pane-movements" role="tabpanel" aria-labelledby="tab-movements">
+        <div class="tab-pane fade" id="pane-movements" role="tabpanel" data-pager data-page-size="10" data-noun="movements" aria-labelledby="tab-movements">
             <div class="history-caption"><span>Where this unit has been moved</span><span>Newest first</span></div>
             @if (Model.Movements.Any())
             {
@@ -128,7 +141,7 @@
                         <tbody>
                             @foreach (var m in Model.Movements)
                             {
-                                <tr>
+                                <tr data-pager-item>
                                     <td>@(m.SourceLocationName ?? "—")</td>
                                     <td class="fw-semibold">@m.DestinationLocationName</td>
                                     <td>@{ Person(m.MovedByUser.FullName); }</td>
@@ -139,6 +152,19 @@
                         </tbody>
                     </table>
                 </div>
+                <div class="history-foot">
+                    <span data-pager-range></span>
+                    <div class="d-flex align-items-center flex-wrap" style="gap:8px;">
+                        <span class="text-muted">Show</span>
+                        <select class="form-select form-select-sm rq-size" data-pager-size aria-label="Rows per page">
+                            <option value="10" selected>10</option>
+                            <option value="20">20</option>
+                            <option value="50">50</option>
+                        </select>
+                        <span class="text-muted">per page</span>
+                        <div class="d-flex flex-wrap" style="gap:6px;" data-pager-buttons></div>
+                    </div>
+                </div>
             }
             else
             {
@@ -146,7 +172,7 @@
             }
         </div>
 
-        <div class="tab-pane fade" id="pane-disposals" role="tabpanel" aria-labelledby="tab-disposals">
+        <div class="tab-pane fade" id="pane-disposals" role="tabpanel" data-pager data-page-size="10" data-noun="disposal records" aria-labelledby="tab-disposals">
             <div class="history-caption"><span>Disposals, and any that were later restored</span><span>Newest first</span></div>
             @if (Model.Disposals.Any())
             {
@@ -156,7 +182,7 @@
                         <tbody>
                             @foreach (var d in Model.Disposals)
                             {
-                                <tr>
+                                <tr data-pager-item>
                                     <td>@d.DisposalDate.ToString("MMM d, yyyy")</td>
                                     <td>@d.ReasonForDisposal</td>
                                     <td>@d.DisposalMethod</td>
@@ -176,6 +202,19 @@
                         </tbody>
                     </table>
                 </div>
+                <div class="history-foot">
+                    <span data-pager-range></span>
+                    <div class="d-flex align-items-center flex-wrap" style="gap:8px;">
+                        <span class="text-muted">Show</span>
+                        <select class="form-select form-select-sm rq-size" data-pager-size aria-label="Rows per page">
+                            <option value="10" selected>10</option>
+                            <option value="20">20</option>
+                            <option value="50">50</option>
+                        </select>
+                        <span class="text-muted">per page</span>
+                        <div class="d-flex flex-wrap" style="gap:6px;" data-pager-buttons></div>
+                    </div>
+                </div>
             }
             else
             {
@@ -183,7 +222,7 @@
             }
         </div>
 
-        <div class="tab-pane fade" id="pane-audit" role="tabpanel" aria-labelledby="tab-audit">
+        <div class="tab-pane fade" id="pane-audit" role="tabpanel" data-pager data-page-size="10" data-noun="audit entries" aria-labelledby="tab-audit">
             <div class="history-caption"><span>Every recorded change to this unit, and who made it</span><span>Newest first</span></div>
             @if (Model.AuditEntries.Any())
             {
@@ -193,7 +232,7 @@
                         <tbody>
                             @foreach (var log in Model.AuditEntries)
                             {
-                                <tr>
+                                <tr data-pager-item>
                                     <td class="fw-semibold">@log.ActionPerformed</td>
                                     <td>
                                         @{ Person(log.User.FirstName + " " + log.User.LastName); }
@@ -205,6 +244,19 @@
                             }
                         </tbody>
                     </table>
+                </div>
+                <div class="history-foot">
+                    <span data-pager-range></span>
+                    <div class="d-flex align-items-center flex-wrap" style="gap:8px;">
+                        <span class="text-muted">Show</span>
+                        <select class="form-select form-select-sm rq-size" data-pager-size aria-label="Rows per page">
+                            <option value="10" selected>10</option>
+                            <option value="20">20</option>
+                            <option value="50">50</option>
+                        </select>
+                        <span class="text-muted">per page</span>
+                        <div class="d-flex flex-wrap" style="gap:6px;" data-pager-buttons></div>
+                    </div>
                 </div>
             }
             else

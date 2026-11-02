@@ -1,73 +1,228 @@
 ﻿@model SchoolInventoryManagement.Web.ViewModels.ReturnRequestViewModel
+@using SchoolInventoryManagement.BLL.DTOs
 @{
     ViewData["Title"] = "Record Return";
-    var request = ViewBag.Request as SchoolInventoryManagement.BLL.DTOs.AssetRequestResponseDTO;
-    var outUnits = request?.Units.Where(u => u.ReturnDate == null).ToList()
-        ?? new List<SchoolInventoryManagement.BLL.DTOs.AssetRequestUnitDTO>();
+    var request = ViewBag.Request as AssetRequestResponseDTO;
+    var fromApprovals = ViewBag.From as string == "approvals" ? "approvals" : null;
+    List<LocationDTO> locations = (ViewBag.LocationList as List<LocationDTO>) ?? new List<LocationDTO>();
+
+    var outUnits = request?.Units.Where(u => u.ReturnDate == null).ToList() ?? new List<AssetRequestUnitDTO>();
+
+    // On a first visit every unit is ticked (the controller does that);
+    // after a failed post, what was ticked stays ticked.
+    var ticked = Model.AssignmentIDs.ToHashSet();
+
+    // One card per model, in the order the request lists them.
+    var modelNames = request?.Items.GroupBy(i => i.ModelID).ToDictionary(g => g.Key, g => g.First().ModelName)
+        ?? new Dictionary<int, string>();
+    var groups = outUnits
+        .GroupBy(u => u.ModelID)
+        .Select(g => (Name: modelNames.TryGetValue(g.Key, out var n) ? n : g.First().AssetName, Units: g.OrderBy(u => u.AssetCode).ToList()))
+        .ToList();
+
+    var branches = locations.GroupBy(l => l.BranchID)
+        .Select(g => (BranchID: g.Key, BranchName: g.First().BranchName, Rooms: g.Count()))
+        .OrderBy(b => b.BranchName).ToList();
+    var startBranch = locations.FirstOrDefault(l => l.LocationID == Model.ReturnLocationID)?.BranchID;
+
+    string Initials(string name)
+    {
+        var s = string.Concat(name.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(p => p[0])).ToUpperInvariant();
+        return s.Length > 2 ? s[..2] : s;
+    }
+
+    // "Dutton Metal Folding Chair - Unit 107" -> "Unit 107".
+    string UnitLabel(AssetRequestUnitDTO u)
+    {
+        var at = u.AssetName.LastIndexOf(" - ", StringComparison.Ordinal);
+        return at >= 0 ? u.AssetName[(at + 3)..] : u.AssetName;
+    }
 }
 
-<h2>Record Return — Request #@Model.RequestID</h2>
+<div class="asset-detail-head">
+    <div>
+        <nav class="asset-crumbs" aria-label="Breadcrumb">
+            <a asp-action="Pending">Approvals</a>
+            <span aria-hidden="true">&rsaquo;</span>
+            <a asp-action="Details" asp-route-id="@Model.RequestID" asp-route-from="approvals">#@Model.RequestID</a>
+            <span aria-hidden="true">&rsaquo;</span>
+            <span>Record return</span>
+        </nav>
+        <h2 class="asset-detail-title">Record return — request #@Model.RequestID</h2>
+    </div>
+</div>
 
-@if (request is not null)
-{
-    <p class="text-muted">
-        @request.ItemsSummary, with @request.RequestedByUser.FullName.
-        @outUnits.Count unit@(outUnits.Count == 1 ? " is" : "s are") still out.
-    </p>
-}
-
-<form asp-action="RecordReturn" asp-route-id="@Model.RequestID" method="post">
+<form asp-action="RecordReturn" asp-route-id="@Model.RequestID" method="post" class="register-form" id="returnForm">
     @Html.AntiForgeryToken()
     <input type="hidden" asp-for="RequestID" />
     <input type="hidden" asp-for="RowVersionBase64" />
+    @* Opened from Approvals: a recorded return goes back to its tab. *@
+    <input type="hidden" name="from" value="@fromApprovals" />
     <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
 
-    <div class="card mb-3">
-        <div class="card-body">
-            <div class="d-flex justify-content-between align-items-center mb-2">
-                <div class="fw-semibold">Units coming back</div>
-                <div class="small">
-                    <a href="#" id="tickAll">Tick all</a> &middot; <a href="#" id="tickNone">None</a>
+    <div class="row g-3">
+        <div class="col-lg-8">
+            @if (request is not null)
+            {
+                <div class="asset-card approve-who mb-3">
+                    <span class="md-avatar is-dark">@Initials(request.RequestedByUser.FullName)</span>
+                    <div class="flex-grow-1 min-w-0">
+                        <div class="fw-bold">@request.RequestedByUser.FullName</div>
+                        <div class="text-muted small">@request.RequestedByUser.RoleName · @request.DepartmentName</div>
+                    </div>
+                    <div class="text-end">
+                        <div class="text-muted small">Due back</div>
+                        <div class="fw-bold small @(request.ReturnBy < DateTime.Now ? "text-danger" : "")">@(request.ReturnBy?.ToString("MMM d · h:mm tt") ?? "—")</div>
+                    </div>
+                </div>
+            }
+
+            @* ---- Units, one card per model ---- *@
+            <div class="rr-summary">
+                <div><strong>Units coming back</strong> <span class="text-muted">· @groups.Count model@(groups.Count == 1 ? "" : "s") · @outUnits.Count unit@(outUnits.Count == 1 ? "" : "s")</span></div>
+                <div class="rr-summary-right">
+                    <span class="rr-count" id="tickedLabel"></span>
+                    <span class="picker-bar rr-bar"><span class="picker-bar-fill" id="tickedBar"></span></span>
+                    <button type="button" class="btn btn-link btn-sm p-0" id="tickAll">Tick all @outUnits.Count</button>
+                    <button type="button" class="btn btn-link btn-sm p-0" id="tickNone">None</button>
                 </div>
             </div>
-            <div class="row row-cols-1 row-cols-md-2 g-1">
-                @foreach (var unit in outUnits)
+
+            <div id="returnModels">
+                @foreach (var g in groups)
                 {
-                    <div class="col">
-                        <label class="form-check">
-                            <input type="checkbox" class="form-check-input return-box" name="AssignmentIDs"
-                                   value="@unit.AssignmentID" checked="@Model.AssignmentIDs.Contains(unit.AssignmentID)" />
-                            <span class="form-check-label small">
-                                <span class="sab-code">@unit.AssetCode</span> @unit.AssetName
-                            </span>
-                        </label>
-                    </div>
+                    <section class="asset-card picker-line rr-model mb-3" data-rr-model>
+                        <div class="picker-head">
+                            <div class="min-w-0">
+                                <span class="picker-model">@g.Name</span>
+                                <span class="picker-asked">@g.Units.Count out</span>
+                            </div>
+                            <div class="picker-progress">
+                                <span class="picker-picked"><span class="rr-line-count">0</span> of @g.Units.Count ticked</span>
+                                <span class="picker-bar"><span class="picker-bar-fill rr-line-bar"></span></span>
+                            </div>
+                        </div>
+                        <div class="picker-body">
+                            <div class="picker-tools">
+                                <label class="asset-search picker-search">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+                                    <input type="search" class="rr-search" placeholder="Search code..." autocomplete="off" aria-label="Search unit codes" />
+                                </label>
+                                <span class="picker-tools-gap"></span>
+                                <button type="button" class="btn btn-outline-secondary btn-sm rr-line-all">Tick all @g.Units.Count</button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm rr-line-none">Untick all</button>
+                            </div>
+                            <div class="picker-grid rr-grid">
+                                @foreach (var unit in g.Units)
+                                {
+                                    <label class="unit-tile rr-tile" data-code="@unit.AssetCode.ToLowerInvariant() @UnitLabel(unit).ToLowerInvariant()">
+                                        <input type="checkbox" class="unit-box rr-box" name="AssignmentIDs" value="@unit.AssignmentID" checked="@ticked.Contains(unit.AssignmentID)" />
+                                        <span class="unit-check" aria-hidden="true"></span>
+                                        <span class="asset-code-chip">@unit.AssetCode</span>
+                                        <span class="rr-unit">@UnitLabel(unit)</span>
+                                        <span class="rr-notback">not back</span>
+                                    </label>
+                                }
+                            </div>
+                        </div>
+                    </section>
                 }
             </div>
             <span asp-validation-for="AssignmentIDs" class="text-danger d-block"></span>
-            <div class="form-text">Untick any that are not back yet — they stay out and can be returned later.</div>
+
+            @* Five models a page when there are many. *@
+            <div class="asset-card rr-pager mb-3" id="modelPager" hidden>
+                <span class="text-muted" id="modelRange"></span>
+                <div class="d-flex align-items-center flex-wrap" style="gap:8px;">
+                    <span class="text-muted small">Show</span>
+                    <select class="form-select form-select-sm" id="modelPageSize" style="width:auto;" aria-label="Models per page">
+                        <option value="5" selected>5</option>
+                        <option value="10">10</option>
+                        <option value="20">20</option>
+                    </select>
+                    <span class="text-muted small">per page</span>
+                    <div class="d-flex" style="gap:6px;" id="modelPages"></div>
+                </div>
+            </div>
+
+            @* ---- Condition ---- *@
+            <div class="asset-card register-step mb-3">
+                <div class="register-step-head">
+                    <div class="register-step-title flex-grow-1">Condition on return</div>
+                    <span class="nr-head-note">applies to every ticked unit</span>
+                </div>
+                <div class="register-step-body">
+                    @{ ViewData["ChipName"] = "ConditionOnReturn"; }
+                    <partial name="_ConditionChips" model="(SchoolInventoryManagement.DAL.Entities.Enums.ConditionStatus?)Model.ConditionOnReturn" />
+                    <div class="nr-hint mt-2">If some came back in a different state, untick them and return them separately.</div>
+                </div>
+            </div>
+        </div>
+
+        @* ---- Where they go, and the facts ---- *@
+        <div class="col-lg-4">
+            <div class="asset-card approve-side nr-summary">
+                <div class="asset-card-title">The return</div>
+                <div class="approve-side-body">
+                    <div class="register-side-label mb-2">Returned to</div>
+                    @* A branch first, then one of its rooms, both typeable. The
+                       branch is not posted: it only narrows the rooms. *@
+                    <div class="pickup-picker">
+                        <label for="branchSelect" class="visually-hidden">Branch</label>
+                        <select id="branchSelect" class="form-select" data-combobox>
+                            <option value="">Select a branch</option>
+                            @foreach (var b in branches)
+                            {
+                                <option value="@b.BranchID" selected="@(b.BranchID == startBranch)">@b.BranchName · @b.Rooms location@(b.Rooms == 1 ? "" : "s")</option>
+                            }
+                        </select>
+                        <label for="ReturnLocationID" class="visually-hidden">Location</label>
+                        <div class="input-icon">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 21s-7-6.2-7-12a7 7 0 0 1 14 0c0 5.8-7 12-7 12z" /><circle cx="12" cy="9" r="2.5" /></svg>
+                            <select name="ReturnLocationID" id="ReturnLocationID" class="form-select" data-combobox>
+                                <option value="">-- Pick a branch first --</option>
+                                @foreach (var l in locations)
+                                {
+                                    <option value="@l.LocationID" data-branch="@l.BranchID" data-sub="@l.Description"
+                                            selected="@(l.LocationID == Model.ReturnLocationID)">@l.LocationName</option>
+                                }
+                            </select>
+                        </div>
+                        <span asp-validation-for="ReturnLocationID" class="text-danger"></span>
+                    </div>
+
+                    @if (request is not null)
+                    {
+                        <dl class="approve-facts rr-facts">
+                            <div><dt>@(request.RequestType == SchoolInventoryManagement.DAL.Entities.Enums.RequestType.Borrow ? "Borrowed" : "Delivered")</dt><dd>@(request.AssignedDate?.ToString("MMM d, yyyy") ?? "—")</dd></div>
+                            <div><dt>Due back</dt><dd>@(request.ReturnBy?.ToString("MMM d, yyyy") ?? "—")</dd></div>
+                            <div><dt>Out</dt><dd>@outUnits.Count unit@(outUnits.Count == 1 ? "" : "s")</dd></div>
+                            <div><dt>Still out after</dt><dd id="stillOut">—</dd></div>
+                        </dl>
+                        @if (!string.IsNullOrWhiteSpace(request.Reason))
+                        {
+                            <div class="approve-reason"><span>Reason</span>@request.Reason</div>
+                        }
+                    }
+                </div>
+            </div>
         </div>
     </div>
 
-    <div class="mb-3">
-        <label asp-for="ConditionOnReturn" class="form-label">Condition on return</label>
-        <select asp-for="ConditionOnReturn"
-                asp-items="Html.GetEnumSelectList<SchoolInventoryManagement.DAL.Entities.Enums.ConditionStatus>()"
-                class="form-select"></select>
-        <div class="form-text">Applies to every ticked unit. If some came back in a different state, return them separately.</div>
+    <div class="register-footer">
+        <span class="d-none d-md-inline">Ticked units become Available at the chosen location. Unticked ones stay out.</span>
+        <div class="d-flex ms-auto" style="gap:8px;">
+            @if (fromApprovals != null)
+            {
+                <a asp-action="Pending" asp-route-tab="return" class="btn btn-outline-secondary">Cancel</a>
+            }
+            else
+            {
+                <a asp-action="Details" asp-route-id="@Model.RequestID" class="btn btn-outline-secondary">Cancel</a>
+            }
+            <button type="submit" class="btn btn-primary" id="confirmBtn">Confirm return</button>
+        </div>
     </div>
-
-    <div class="mb-3">
-        <label asp-for="ReturnLocationID" class="form-label">Return to location</label>
-        <select asp-for="ReturnLocationID" asp-items="ViewBag.Locations" class="form-select">
-            <option value="">-- Select Location --</option>
-        </select>
-        <div class="form-text">Where the units are being put back. They become Available there.</div>
-        <span asp-validation-for="ReturnLocationID" class="text-danger"></span>
-    </div>
-
-    <button type="submit" class="btn btn-primary">Confirm Return</button>
-    <a asp-action="Details" asp-route-id="@Model.RequestID" class="btn btn-secondary">Cancel</a>
 </form>
 
 @section Scripts {
@@ -76,10 +231,92 @@
     }
     <script>
         (function () {
-            var boxes = document.querySelectorAll('.return-box');
-            function setAll(value) { boxes.forEach(function (b) { b.checked = value; }); }
-            document.getElementById('tickAll').addEventListener('click', function (e) { e.preventDefault(); setAll(true); });
-            document.getElementById('tickNone').addEventListener('click', function (e) { e.preventDefault(); setAll(false); });
+            var form = document.getElementById('returnForm');
+            var boxes = Array.from(form.querySelectorAll('.rr-box'));
+            var total = boxes.length;
+
+            // Counts everywhere: per model, the overall bar, the side card
+            // and the button.
+            function refresh() {
+                var on = boxes.filter(function (b) { return b.checked; }).length;
+                document.getElementById('tickedLabel').textContent = on + ' of ' + total + ' ticked';
+                document.getElementById('tickedLabel').classList.toggle('is-partial', on < total);
+                var bar = document.getElementById('tickedBar');
+                bar.style.width = (total ? on / total * 100 : 0) + '%';
+                bar.classList.toggle('is-partial', on < total);
+                var still = document.getElementById('stillOut');
+                if (still) {
+                    still.textContent = (total - on) + ' unit' + (total - on === 1 ? '' : 's');
+                    still.classList.toggle('text-warning-emphasis', total - on > 0);
+                }
+                document.getElementById('confirmBtn').textContent = on ? 'Confirm return of ' + on + ' unit' + (on === 1 ? '' : 's') : 'Confirm return';
+                document.getElementById('confirmBtn').disabled = on === 0;
+
+                form.querySelectorAll('[data-rr-model]').forEach(function (card) {
+                    var mine = Array.from(card.querySelectorAll('.rr-box'));
+                    var n = mine.filter(function (b) { return b.checked; }).length;
+                    card.querySelector('.rr-line-count').textContent = n;
+                    var lineBar = card.querySelector('.rr-line-bar');
+                    lineBar.style.width = (mine.length ? n / mine.length * 100 : 0) + '%';
+                    lineBar.classList.toggle('is-partial', n < mine.length);
+                    card.querySelector('.picker-picked').classList.toggle('is-partial', n < mine.length);
+                });
+                boxes.forEach(function (b) { var t = b.closest('.rr-tile'); t.classList.toggle('is-picked', b.checked); t.classList.toggle('is-off', !b.checked); });
+            }
+
+            form.addEventListener('change', function (e) { if (e.target.classList.contains('rr-box')) refresh(); });
+            document.getElementById('tickAll').addEventListener('click', function () { boxes.forEach(function (b) { b.checked = true; }); refresh(); });
+            document.getElementById('tickNone').addEventListener('click', function () { boxes.forEach(function (b) { b.checked = false; }); refresh(); });
+
+            form.querySelectorAll('[data-rr-model]').forEach(function (card) {
+                var mine = Array.from(card.querySelectorAll('.rr-box'));
+                card.querySelector('.rr-line-all').addEventListener('click', function () { mine.forEach(function (b) { b.checked = true; }); refresh(); });
+                card.querySelector('.rr-line-none').addEventListener('click', function () { mine.forEach(function (b) { b.checked = false; }); refresh(); });
+                // Search only hides tiles; a hidden tile keeps its tick.
+                card.querySelector('.rr-search').addEventListener('input', function (e) {
+                    var q = e.target.value.trim().toLowerCase();
+                    card.querySelectorAll('.rr-tile').forEach(function (t) { t.hidden = q && t.dataset.code.indexOf(q) === -1; });
+                });
+            });
+
+            // Model pager: five cards a page by default.
+            var cards = Array.from(form.querySelectorAll('[data-rr-model]'));
+            var pager = document.getElementById('modelPager');
+            var sizeBox = document.getElementById('modelPageSize');
+            var page = 1;
+            function renderPages() {
+                var size = parseInt(sizeBox.value, 10);
+                var pages = Math.max(1, Math.ceil(cards.length / size));
+                page = Math.min(page, pages);
+                cards.forEach(function (c, i) { c.hidden = i < (page - 1) * size || i >= page * size; });
+                pager.hidden = cards.length <= 5;
+                var first = (page - 1) * size + 1, last = Math.min(page * size, cards.length);
+                document.getElementById('modelRange').textContent = 'Models ' + first + '–' + last + ' of ' + cards.length + ' · ' + total + ' units';
+                var box = document.getElementById('modelPages');
+                box.innerHTML = '';
+                function btn(label, target, active, disabled) {
+                    var b = document.createElement('button');
+                    b.type = 'button';
+                    b.className = 'btn btn-sm ' + (active ? 'btn-primary' : 'btn-outline-secondary');
+                    b.textContent = label;
+                    b.disabled = disabled;
+                    b.addEventListener('click', function () { page = target; renderPages(); pager.scrollIntoView({ block: 'nearest' }); });
+                    box.appendChild(b);
+                }
+                btn('‹', page - 1, false, page === 1);
+                for (var p = 1; p <= pages; p++) btn(String(p), p, p === page, false);
+                btn('›', page + 1, false, page === pages);
+            }
+            sizeBox.addEventListener('change', function () { page = 1; renderPages(); });
+            renderPages();
+
+            // Returned to: the branch narrows the rooms (site.js).
+            sabFilterByBranch(document.getElementById('ReturnLocationID'), document.getElementById('branchSelect'), {
+                hint: function (b) { return b ? 'Search a location' : '-- Pick a branch first --'; },
+                lock: function (b) { return !b; }
+            });
+
+            refresh();
         })();
     </script>
 }
