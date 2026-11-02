@@ -208,9 +208,12 @@ namespace SchoolInventoryManagement.BLL.Services
                 throw new ArgumentException("The date you need the item cannot be in the past.");
 
             // A department head's own request has nobody above it at the
-            // first stage, so it starts at the budget check -- recorded as a
-            // step so the history says why.
-            var isDeptHead = requester.Role.RoleName == RoleNames.DepartmentHead;
+            // first stage, and neither does an Administrator's (who would
+            // otherwise wait on their department's head, or on another
+            // Administrator). Both start at the budget check -- recorded as
+            // a step so the history says why.
+            var role = requester.Role.RoleName;
+            var skipsDeptHead = role == RoleNames.DepartmentHead || role == RoleNames.Administrator;
             var now = DateTime.Now;
 
             var items = lines.Select(line => new NewItemRequestItem
@@ -232,14 +235,16 @@ namespace SchoolInventoryManagement.BLL.Services
                 Reason = dto.Reason.Trim(),
                 NeededBy = dto.NeededBy.Value.Date,
                 RequestDate = now,
-                RequestStatus = isDeptHead ? NewItemStatus.AwaitingBudget : NewItemStatus.AwaitingDeptHead,
+                RequestStatus = skipsDeptHead ? NewItemStatus.AwaitingBudget : NewItemStatus.AwaitingDeptHead,
                 Items = items
             };
 
             AddStep(request, NewItemStatus.AwaitingDeptHead, actingUserId, null, now);
-            if (isDeptHead)
+            if (skipsDeptHead)
                 AddStep(request, NewItemStatus.AwaitingBudget, actingUserId,
-                    "Submitted by the department head, so no separate department approval was needed.", now);
+                    role == RoleNames.Administrator
+                        ? "Submitted by an Administrator, so no separate department approval was needed."
+                        : "Submitted by the department head, so no separate department approval was needed.", now);
 
             _context.NewItemRequests.Add(request);
             await _context.SaveChangesAsync();
@@ -248,11 +253,11 @@ namespace SchoolInventoryManagement.BLL.Services
             var what = $"{ItemText(request)}, needed by {request.NeededBy:MMM d, yyyy}";
             var url = DetailsUrl(request.NewItemRequestID);
 
-            var recipients = isDeptHead
+            var recipients = skipsDeptHead
                 ? await BudgetCheckerIdsAsync()
                 : await DeptApproverIdsAsync(requester.DepartmentID);
 
-            var message = isDeptHead
+            var message = skipsDeptHead
                 ? $"Budget and reason check needed: new item request from {requesterName} ({what})."
                 : $"New item request from {requesterName} needs your approval: {what}.";
 

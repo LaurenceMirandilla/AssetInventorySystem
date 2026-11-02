@@ -44,12 +44,15 @@ namespace SchoolInventoryManagement.Web.Controllers
         }
 
         // The request form's side card: the requester's department, and
-        // whether the department-head step is skipped (their own request).
+        // whether the department-head step is skipped (a department head's
+        // or an Administrator's own request).
         private async Task LoadFormInfoAsync()
         {
             var me = await _userService.GetUserByIdAsync(CurrentUserId);
             ViewBag.MyDepartment = me?.DepartmentName;
-            ViewBag.SkipsDeptHead = User.IsInRole(RoleNames.DepartmentHead);
+            // Department heads' and Administrators' own requests start at
+            // the Principal (NewItemRequestService.CreateRequestAsync).
+            ViewBag.SkipsDeptHead = User.IsInRole(RoleNames.DepartmentHead) || User.IsInRole(RoleNames.Administrator);
         }
 
         // Department id -> branch name, for the lists' Branch filter.

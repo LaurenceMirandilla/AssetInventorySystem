@@ -13,8 +13,9 @@
     var myDepartment = ViewBag.MyDepartment as string;
     var skipsDeptHead = ViewBag.SkipsDeptHead is bool skip && skip;
 
-    // What happens after submitting, in order. A department head's own
-    // request starts at the Principal (NewItemRequestService).
+    // What happens after submitting, in order. A department head's or an
+    // Administrator's own request starts at the Principal
+    // (NewItemRequestService).
     var steps = new List<(string Title, string Sub)>();
     if (!skipsDeptHead) steps.Add(("Department head", "approves the need"));
     steps.Add(("Principal", "checks budget and reason"));
