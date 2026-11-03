@@ -341,16 +341,10 @@ namespace SchoolInventoryManagement.BLL.Services
             return asset?.ToResponseDTO();
         }
 
-        public async Task<List<AssetResponseDTO>> GetAllAssetsAsync()
-        {
-            var assets = await AssetQueryWithIncludes().ToListAsync();
-            return assets.Select(a => a.ToResponseDTO()).ToList();
-        }
-
         public async Task<List<AssetResponseDTO>> SearchAssetsAsync(
             string? keyword, int? categoryId, int? modelId, int? branchId,
             int? departmentId, AssetStatus? status, ConditionStatus? condition,
-            int? locationId = null)
+            int? locationId = null, int? assignedUserId = null)
         {
             var query = AssetQueryWithIncludes();
 
@@ -386,6 +380,10 @@ namespace SchoolInventoryManagement.BLL.Services
             // how many are actually on the shelf.
             if (locationId.HasValue)
                 query = query.Where(a => a.CurrentLocationID == locationId.Value);
+
+            // Who has it now (the Assets list's User filter).
+            if (assignedUserId.HasValue)
+                query = query.Where(a => a.AssignedUserID == assignedUserId.Value);
 
             var assets = await query.ToListAsync();
             return assets.Select(a => a.ToResponseDTO()).ToList();
@@ -428,29 +426,6 @@ namespace SchoolInventoryManagement.BLL.Services
             asset.BranchID = dto.BranchID;
             asset.DepartmentID = dto.DepartmentID;
             asset.AcquisitionCost = dto.AcquisitionCost;
-
-            try
-            {
-                await _context.SaveChangesAsync();
-            }
-            catch (DbUpdateConcurrencyException)
-            {
-                throw new ConcurrencyConflictException(
-                    "This asset was modified by someone else. Please reload and try again.");
-            }
-        }
-
-        public async Task ChangeConditionAsync(int assetId, ConditionStatus newCondition, byte[] rowVersion, int actingUserId)
-        {
-            await PermissionHelper.EnsureIsAssetManagerAsync(_context, actingUserId);
-
-            var asset = await _context.Assets.FindAsync(assetId);
-            if (asset is null)
-                throw new KeyNotFoundException("Asset not found.");
-
-            _context.Entry(asset).Property(a => a.RowVersion).OriginalValue = rowVersion;
-
-            asset.Condition = newCondition;
 
             try
             {

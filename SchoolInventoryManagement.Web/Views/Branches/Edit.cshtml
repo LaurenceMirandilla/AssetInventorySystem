@@ -1,47 +1,88 @@
 ﻿@model SchoolInventoryManagement.BLL.DTOs.UpdateBranchDTO
+@using SchoolInventoryManagement.Web.Helpers
+@inject LookupUsage Usage
 @{
     ViewData["Title"] = "Edit Branch";
+    var recordId = (int)ViewBag.BranchID;
+    var usage = (await Usage.BranchesAsync()).GetValueOrDefault(recordId);
 }
 
-<h2>Edit Branch</h2>
-
-<form asp-action="Edit" asp-route-id="@ViewBag.BranchID" method="post">
+<form asp-action="Edit" asp-route-id="@recordId" method="post" class="register-form page-fill" id="lkForm">
     @Html.AntiForgeryToken()
+
+    <div class="asset-detail-head">
+        <div>
+            <nav class="asset-crumbs" aria-label="Breadcrumb">
+                <a asp-action="Index">Branches</a>
+                <span aria-hidden="true">&rsaquo;</span>
+                <a href="@Url.Action("Index")#b-@recordId">@Model.BranchName</a>
+                <span aria-hidden="true">&rsaquo;</span>
+                <span>Edit</span>
+            </nav>
+            <h2 class="asset-detail-title">Edit branch</h2>
+            <div class="asset-detail-sub">A campus of the school. Locations, departments and users belong to one.</div>
+        </div>
+    </div>
+
     <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
 
-    <div class="mb-3">
-        <label asp-for="BranchName" class="form-label"></label>
-        <input asp-for="BranchName" class="form-control" />
-        <span asp-validation-for="BranchName" class="text-danger"></span>
+    <div class="row g-3 align-items-start">
+        <div class="col-lg-8">
+            <div class="asset-card register-step">
+                <div class="register-step-head"><div class="register-step-title">Details</div></div>
+                <div class="register-step-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label asp-for="BranchName" class="form-label">Name</label>
+                            <input asp-for="BranchName" class="form-control" maxlength="100" placeholder="e.g. North Campus" />
+                            <span asp-validation-for="BranchName" class="text-danger small"></span>
+                        </div>
+                        <div class="col-md-6">
+                            <label asp-for="BranchCode" class="form-label">Code</label>
+                            <input asp-for="BranchCode" class="form-control text-uppercase" maxlength="1" autocomplete="off" placeholder="e.g. N" id="branchCode" readonly="@((bool)(ViewBag.CodeLocked == true))" />
+                            <div class="form-text">@(ViewBag.CodeLocked == true ? "Locked: it's printed in this branch's asset barcodes." : "One letter. Must be unique.")</div>
+                            <span asp-validation-for="BranchCode" class="text-danger small"></span>
+                        </div>
+                        <div class="col-12">
+                            <label asp-for="Address" class="form-label">Address <span class="register-optional">optional</span></label>
+                            <input asp-for="Address" class="form-control" maxlength="255" placeholder="e.g. 45 Mabini St., Quezon City" />
+                            <span asp-validation-for="Address" class="text-danger small"></span>
+                        </div>
+                        <div class="col-12">
+                            <label asp-for="ContactInfo" class="form-label">Contact info <span class="register-optional">optional</span></label>
+                            <input asp-for="ContactInfo" class="form-control" maxlength="100" placeholder="e.g. (02) 8765 4321" />
+                            <span asp-validation-for="ContactInfo" class="text-danger small"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="asset-card register-step lk-side">
+                <div class="register-step-head"><div class="register-step-title">In use</div></div>
+                <div class="register-step-body">
+                    <div class="lk-side-facts"><div><span>Locations</span><strong>@(usage?.Locations ?? 0)</strong></div><div><span>Departments</span><strong>@(usage?.Departments ?? 0)</strong></div><div><span>Users</span><strong>@(usage?.Users ?? 0)</strong></div></div>
+                    <a asp-controller="Locations" asp-action="Index" class="lk-link">View locations &rarr;</a>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <div class="mb-3" style="max-width:320px;">
-        <label asp-for="BranchCode" class="form-label"></label>
-        @if (ViewBag.CodeLocked == true)
-        {
-            <input asp-for="BranchCode" class="form-control" readonly />
-            <div class="form-text">Locked because this branch already has assets.</div>
-        }
-        else
-        {
-            <input asp-for="BranchCode" class="form-control text-uppercase" maxlength="1" autocomplete="off" />
-            <div class="form-text">One letter, unique. Starts every barcode made in this branch.</div>
-        }
-        <span asp-validation-for="BranchCode" class="text-danger"></span>
+    <div class="register-footer">
+        <div class="d-flex align-items-center flex-wrap" style="gap:10px;">
+            <button type="submit" form="lkDelete" class="btn btn-outline-danger" disabled="@(usage?.Blocked is not null)">Delete</button>
+            <span class="lk-why">@(usage?.Blocked ?? "Nothing uses it yet.")</span>
+        </div>
+        <div class="d-flex ms-auto" style="gap:8px;">
+            <a href="@Url.Action("Index")#b-@recordId" class="btn btn-outline-secondary">Cancel</a>
+            <button type="submit" class="btn btn-primary">Save changes</button>
+        </div>
     </div>
+</form>
 
-    <div class="mb-3">
-        <label asp-for="Address" class="form-label">Address <span class="text-muted">(optional)</span></label>
-        <textarea asp-for="Address" class="form-control"></textarea>
-    </div>
-
-    <div class="mb-3">
-        <label asp-for="ContactInfo" class="form-label">Contact Info <span class="text-muted">(optional)</span></label>
-        <input asp-for="ContactInfo" class="form-control" />
-    </div>
-
-    <button type="submit" class="btn btn-primary">Save</button>
-    <a asp-action="Index" class="btn btn-secondary">Cancel</a>
+@* Outside the edit form: a form can't hold another. *@
+<form asp-action="Delete" asp-route-id="@recordId" method="post" id="lkDelete" onsubmit="return confirm('Delete this branch? This can\'t be undone.');">
+    @Html.AntiForgeryToken()
 </form>
 
 @if (ViewBag.AuditHistory is List<SchoolInventoryManagement.BLL.DTOs.AuditReportRowDTO> history)
@@ -53,4 +94,14 @@
     @{
         await Html.RenderPartialAsync("_ValidationScriptsPartial");
     }
+    <script>
+        (function () {
+            var code = document.getElementById('branchCode');
+            if (!code) return;
+            code.addEventListener('input', function () {
+                var clean = code.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 1);
+                if (clean !== code.value) code.value = clean;
+            });
+        })();
+    </script>
 }

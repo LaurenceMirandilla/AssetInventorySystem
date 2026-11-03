@@ -1,64 +1,140 @@
 @model List<SchoolInventoryManagement.BLL.DTOs.BranchDTO>
+@using SchoolInventoryManagement.Web.Helpers
 @{
     ViewData["Title"] = "Branches";
+    var usage = ViewBag.Usage as Dictionary<int, LookupUsage.BranchUsage> ?? new();
+
 }
 @if (TempData["ErrorMessage"] != null)
 {
     <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
 }
 
-<div class="sab-page-head">
+<div class="asset-detail-head mb-3 pb-0 border-0">
     <div>
-        <h2>Branches</h2>
-        <p class="sab-page-sub">@Model.Count branch@(Model.Count == 1 ? "" : "es") on record.</p>
+        <h2 class="asset-detail-title">Branches</h2>
+        <div class="asset-detail-sub">@Model.Count branch@(Model.Count == 1 ? "" : "es")</div>
     </div>
-    <div class="sab-page-actions">
-        <a asp-action="Create" class="btn btn-primary">+ New Branch</a>
+    <div class="asset-detail-actions">
+        <a asp-action="Create" class="btn btn-primary">+ New branch</a>
     </div>
 </div>
 
-@if (Model.Any())
+@if (!Model.Any())
 {
     <div class="sab-table-card">
-        <table class="table table-striped">
-            <thead>
-                <tr>
-                    <th>Name</th>
-                    <th>Code</th>
-                    <th>Address</th>
-                    <th>Contact</th>
-                    <th></th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var branch in Model)
-                {
-                    <tr>
-                        <td>@branch.BranchName</td>
-                        <td><span class="sab-code">@branch.BranchCode</span></td>
-                        <td>@branch.Address</td>
-                        <td>@branch.ContactInfo</td>
-                        <td>
-                            <a asp-action="Edit" asp-route-id="@branch.BranchID">Edit</a>
-                            <form asp-action="Delete" asp-route-id="@branch.BranchID" method="post" class="d-inline" onsubmit="return confirm('Delete this branch?');">
-                                @Html.AntiForgeryToken()
-                                <button type="submit" class="btn btn-link text-danger p-0 ms-2">Delete</button>
-                            </form>
-                        </td>
-                    </tr>
-                }
-            </tbody>
-        </table>
+        <div class="sab-empty">
+            <div class="sab-empty-title">No branches yet</div>
+            <p>A branch is a campus of the school. Locations, departments and users belong to one.</p>
+            <a asp-action="Create" class="btn btn-primary">+ New branch</a>
+        </div>
     </div>
 }
 else
 {
-    <div class="card">
-        <div class="sab-empty">
-            <div class="sab-empty-title">No branches yet</div>
-            <p>A branch is a campus. Locations and departments both hang off one.</p>
-            <a asp-action="Create" class="btn btn-primary">+ New Branch</a>
-        </div>
+    <div class="sab-table-card myassets lk" data-md data-page-size="10" data-noun="branches">
+        <aside class="myassets-list" aria-label="Branches">
+            <div class="md-toolbar">
+                <label class="asset-search">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+                    <input type="text" data-md-search autocomplete="off" placeholder="Search branches..." aria-label="Search branches" />
+                </label>
+            </div>
+            <div class="myassets-group" data-md-group>
+                @foreach (var x in Model.OrderBy(y => y.BranchName))
+                {
+                    var u = usage.GetValueOrDefault(x.BranchID);
+                    <button type="button" class="myassets-item" data-entry="b-@x.BranchID"
+                            data-search="@($"{x.BranchName} {x.BranchCode} {x.Address}".ToLowerInvariant())">
+                        <span class="myassets-item-main">
+                            <span class="myassets-item-title">@x.BranchName</span>
+                            <span class="myassets-item-sub">@(u?.Locations ?? 0) location@(u?.Locations == 1 ? "" : "s") · @(u?.Departments ?? 0) department@(u?.Departments == 1 ? "" : "s")</span>
+                        </span>
+                        <span class="lk-count">@(u?.Users ?? 0) user@(u?.Users == 1 ? "" : "s")</span>
+                    </button>
+                }
+            </div>
+            <div class="myassets-nomatch" data-md-empty hidden>No branch matches.</div>
+            <div class="md-foot"><span data-md-range></span><div data-md-pager></div></div>
+        </aside>
+
+        <section class="myassets-detail">
+            @foreach (var x in Model)
+            {
+                var u = usage.GetValueOrDefault(x.BranchID);
+                var formId = "edit-b-" + x.BranchID;
+                <article class="myassets-panel" data-panel="b-@x.BranchID" hidden>
+                    <button type="button" class="myassets-back" data-back>&larr; All branches</button>
+                    <h3 class="myassets-panel-title mt-0">@x.BranchName</h3>
+                    <div class="lk-sub">Code @x.BranchCode@(string.IsNullOrWhiteSpace(x.Address) ? "" : " · " + x.Address)</div>
+
+                    <div class="myassets-stats lk-stats-3">
+                        <div>
+                            <span>Locations</span><strong>@(u?.Locations ?? 0)</strong>
+                            <a asp-controller="Locations" asp-action="Index" class="lk-link">View locations &rarr;</a>
+                        </div>
+                        <div>
+                            <span>Departments</span><strong>@(u?.Departments ?? 0)</strong>
+                            <a asp-controller="Departments" asp-action="Index" class="lk-link">View departments &rarr;</a>
+                        </div>
+                        <div><span>Users</span><strong>@(u?.Users ?? 0)</strong></div>
+                    </div>
+
+                    <div class="asset-card register-step mt-3">
+                        <div class="register-step-head">
+                            <div class="register-step-title flex-grow-1">Details</div>
+                            <span class="nr-head-note">edit and save</span>
+                        </div>
+                        <form asp-action="Edit" asp-route-id="@x.BranchID" method="post" id="@formId" class="register-step-body">
+                            @Html.AntiForgeryToken()
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label class="form-label" for="@formId-name">Name</label>
+                                    <input id="@formId-name" name="BranchName" value="@x.BranchName" class="form-control" maxlength="100" required />
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label" for="@formId-code">Code</label>
+                                    @* Printed in every barcode, so it can't change once the branch has assets. *@
+                                    <input id="@formId-code" name="BranchCode" value="@x.BranchCode" class="form-control text-uppercase lk-code" maxlength="1"
+                                           pattern="[A-Za-z]" required autocomplete="off" readonly="@(u?.HasAssets == true)" />
+                                    <div class="form-text">@(u?.HasAssets == true ? "Locked: it's printed in this branch's asset barcodes." : "One letter. Must be unique.")</div>
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label" for="@formId-address">Address <span class="register-optional">optional</span></label>
+                                    <input id="@formId-address" name="Address" value="@x.Address" class="form-control" maxlength="255" />
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label" for="@formId-contact">Contact info <span class="register-optional">optional</span></label>
+                                    <input id="@formId-contact" name="ContactInfo" value="@x.ContactInfo" class="form-control" maxlength="100" />
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+
+                    <div class="lk-foot">
+                        <form asp-action="Delete" asp-route-id="@x.BranchID" method="post" onsubmit="return confirm('Delete @x.BranchName?');">
+                            @Html.AntiForgeryToken()
+                            <button type="submit" class="btn btn-outline-danger" disabled="@(u?.Blocked is not null)">Delete</button>
+                        </form>
+                        <span class="lk-why">@(u?.Blocked ?? "Nothing uses it yet.")</span>
+                        <div class="lk-foot-actions">
+                            <button type="reset" form="@formId" class="btn btn-outline-secondary">Discard changes</button>
+                            <button type="submit" form="@formId" class="btn btn-primary">Save changes</button>
+                        </div>
+                    </div>
+                </article>
+            }
+        </section>
     </div>
 }
-
+@section Scripts {
+    <script>
+        // Branch code: one upper-case letter, as the service requires.
+        document.querySelectorAll('.lk-code').forEach(function (input) {
+            input.addEventListener('input', function () {
+                var clean = input.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 1);
+                if (clean !== input.value) input.value = clean;
+            });
+        });
+    </script>
+}

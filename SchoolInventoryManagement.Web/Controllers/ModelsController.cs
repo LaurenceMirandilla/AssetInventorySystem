@@ -33,9 +33,13 @@ namespace SchoolInventoryManagement.Web.Controllers
             ViewBag.Categories = new SelectList(categories, "CategoryID", "CategoryName");
         }
 
-        public async Task<IActionResult> Index()
+        public async Task<IActionResult> Index([FromServices] Helpers.LookupUsage usage)
         {
             var models = await _modelService.GetAllModelsAsync();
+            ViewBag.Usage = await usage.ModelsAsync();
+            // For the Category list in each model's edit form.
+            ViewBag.CategoryList = (await _categoryService.GetAllCategoriesAsync())
+                .OrderBy(c => c.CategoryName).ToList();
             return View(models);
         }
 
@@ -179,7 +183,8 @@ namespace SchoolInventoryManagement.Web.Controllers
             try
             {
                 await _modelService.UpdateModelAsync(id, dto, CurrentUserId);
-                return RedirectToAction(nameof(Index));
+                // Back to the list with this model still open.
+                return Redirect(Url.Action(nameof(Index)) + "#m-" + id);
             }
             catch (Exception ex)
             {

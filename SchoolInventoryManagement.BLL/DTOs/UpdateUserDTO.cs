@@ -21,8 +21,12 @@ namespace SchoolInventoryManagement.BLL.DTOs
         [MaxLength(50)]
         public string LastName { get; set; } = null!;
 
-        // Email intentionally NOT editable here — see earlier note on
-        // login-identity changes needing their own dedicated flow.
+        // The sign-in name. Changing it is allowed; the audit trail records
+        // the old and new value ("Username: 'old' -> 'new'"), shown in the
+        // History box on Edit user and on Reports > Audit.
+        [Required]
+        [MaxLength(50)]
+        public string Username { get; set; } = null!;
 
         [Required]
         public byte[] RowVersion { get; set; } = null!;

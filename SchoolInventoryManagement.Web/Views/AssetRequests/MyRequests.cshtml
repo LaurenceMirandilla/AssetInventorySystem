@@ -30,7 +30,7 @@
         r.ItemsSummary + (r.RequestType == RequestType.Transfer && r.RequestedLocationName != null ? " → " + r.RequestedLocationName : "");
 
     static string When(AssetRequestResponseDTO r) =>
-        r.NeededFrom is null ? "—" : r.NeededFrom.Value.ToString("MMM d") + (r.ReturnBy is not null ? " – " + r.ReturnBy.Value.ToString("MMM d") : "");
+        r.NeededFrom is null ? "No dates given" : r.NeededFrom.Value.ToString("MMM d") + (r.ReturnBy is not null ? " – " + r.ReturnBy.Value.ToString("MMM d") : "");
 
     static string Status(RequestStatus s) => s switch
     {
@@ -111,7 +111,7 @@ else
                         var units = r.Units.Count > 0 ? r.Units.Count : r.TotalQuantity;
                         var detail = r.RequestStatus switch
                         {
-                            RequestStatus.InTransit => r.RequestType == RequestType.Borrow ? "pick up at " + (r.PickupLocationName ?? "—") : "on its way",
+                            RequestStatus.InTransit => r.RequestType == RequestType.Borrow ? "pick up at " + (r.PickupLocationName ?? "the pickup point") : "on its way",
                             RequestStatus.Assigned => r.ReturnBy is not null ? "due " + r.ReturnBy.Value.ToString("MMM d") : "no due date",
                             _ => When(r)
                         };
@@ -208,7 +208,7 @@ else
                         <div class="@(late ? "is-late" : "")"><span>When</span><strong>@When(r)</strong></div>
                         <div>
                             <span>@(isBorrow ? "Pick up at" : "Move to")</span>
-                            <strong>@((isBorrow ? r.PickupLocationName ?? r.RequestedLocationName : r.RequestedLocationName) ?? "—")</strong>
+                            <strong>@DisplayText.Or(isBorrow ? r.PickupLocationName ?? r.RequestedLocationName : r.RequestedLocationName, "Chosen when approved")</strong>
                         </div>
                         <div><span>Units</span><strong>@units</strong></div>
                     </div>

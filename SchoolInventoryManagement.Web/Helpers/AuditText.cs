@@ -36,6 +36,7 @@ namespace SchoolInventoryManagement.Web.Helpers
             ["ReturnLocationID"] = ("Location", "Returned to"),
             ["LocationID"] = ("Location", "Location"),
             ["DepartmentID"] = ("Department", "Department"),
+            ["PreviousDepartmentID"] = ("Department", "Department before"),
             ["BranchID"] = ("Branch", "Branch"),
             ["CategoryID"] = ("Category", "Category"),
             ["ModelID"] = ("Model", "Model"),

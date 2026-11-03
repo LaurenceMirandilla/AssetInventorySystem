@@ -1,39 +1,79 @@
 ﻿@model SchoolInventoryManagement.BLL.DTOs.CreateDepartmentDTO
+@using SchoolInventoryManagement.Web.Helpers
+@inject LookupUsage Usage
 @{
     ViewData["Title"] = "New Department";
 }
 
-<h2>New Department</h2>
-
-<form asp-action="Create" method="post">
+<form asp-action="Create" method="post" class="register-form page-fill" id="lkForm">
     @Html.AntiForgeryToken()
+
+    <div class="asset-detail-head">
+        <div>
+            <nav class="asset-crumbs" aria-label="Breadcrumb">
+                <a asp-action="Index">Departments</a>
+                <span aria-hidden="true">&rsaquo;</span>
+                <span>New department</span>
+            </nav>
+            <h2 class="asset-detail-title">New department</h2>
+            <div class="asset-detail-sub">A group of people. Users pick one, and requests are filed under it.</div>
+        </div>
+    </div>
+
     <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
 
-    <div class="mb-3">
-        <label asp-for="BranchID" class="form-label">Branch</label>
-        <select asp-for="BranchID" asp-items="ViewBag.Branches" class="form-select">
-            <option value="">-- Select Branch --</option>
-        </select>
-        <span asp-validation-for="BranchID" class="text-danger"></span>
+    <div class="row g-3 align-items-start">
+        <div class="col-lg-8">
+            <div class="asset-card register-step">
+                <div class="register-step-head"><div class="register-step-title">Details</div></div>
+                <div class="register-step-body">
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label asp-for="BranchID" class="form-label">Branch</label>
+                            <select asp-for="BranchID" asp-items="ViewBag.Branches" class="form-select">
+                                <option value="">Select a branch</option>
+                            </select>
+                            <span asp-validation-for="BranchID" class="text-danger small"></span>
+                        </div>
+                        <div class="col-12">
+                            <label asp-for="DepartmentName" class="form-label">Name</label>
+                            <input asp-for="DepartmentName" class="form-control" maxlength="100" placeholder="e.g. Senior High Department" />
+                            <span asp-validation-for="DepartmentName" class="text-danger small"></span>
+                        </div>
+                        <div class="col-12">
+                            <label asp-for="Description" class="form-label">Description <span class="register-optional">optional</span></label>
+                            <textarea asp-for="Description" class="form-control" rows="3" maxlength="255" placeholder="e.g. Grades 11 and 12."></textarea>
+                            <span asp-validation-for="Description" class="text-danger small"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="asset-card register-step lk-side">
+                <div class="register-step-head"><div class="register-step-title">Where it's used</div></div>
+                <div class="register-step-body">
+                    <ul class="lk-checks">
+                        <li>Users choose it on their account</li>
+                        <li>Requests and new-item requests are filed under it</li>
+                        <li>Department heads approve for it</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <div class="mb-3">
-        <label asp-for="DepartmentName" class="form-label">Department Name</label>
-        <input asp-for="DepartmentName" class="form-control" />
-        <span asp-validation-for="DepartmentName" class="text-danger"></span>
+    <div class="register-footer">
+        <div class="d-flex ms-auto" style="gap:8px;">
+            <a asp-action="Index" class="btn btn-outline-secondary">Cancel</a>
+            <button type="submit" class="btn btn-primary">Create department</button>
+        </div>
     </div>
-
-    <div class="mb-3">
-        <label asp-for="Description" class="form-label">Description <span class="text-muted">(optional)</span></label>
-        <textarea asp-for="Description" class="form-control"></textarea>
-    </div>
-
-    <button type="submit" class="btn btn-primary">Create</button>
-    <a asp-action="Index" class="btn btn-secondary">Cancel</a>
 </form>
 
 @section Scripts {
     @{
         await Html.RenderPartialAsync("_ValidationScriptsPartial");
     }
+
 }

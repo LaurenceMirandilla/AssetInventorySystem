@@ -1,62 +1,128 @@
 ﻿@model List<SchoolInventoryManagement.BLL.DTOs.DepartmentDTO>
+@using SchoolInventoryManagement.Web.Helpers
 @{
     ViewData["Title"] = "Departments";
+    var usage = ViewBag.Usage as Dictionary<int, LookupUsage.DepartmentUsage> ?? new();
+    var branches = ViewBag.BranchList as List<SchoolInventoryManagement.BLL.DTOs.BranchDTO> ?? new();
 }
 @if (TempData["ErrorMessage"] != null)
 {
     <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
 }
 
-<div class="sab-page-head">
+<div class="asset-detail-head mb-3 pb-0 border-0">
     <div>
-        <h2>Departments</h2>
-        <p class="sab-page-sub">@Model.Count department@(Model.Count == 1 ? "" : "s") across all branches.</p>
+        <h2 class="asset-detail-title">Departments</h2>
+        <div class="asset-detail-sub">@Model.Count department@(Model.Count == 1 ? "" : "s") in @Model.Select(d => d.BranchID).Distinct().Count() branch@(Model.Select(d => d.BranchID).Distinct().Count() == 1 ? "" : "es")</div>
     </div>
-    <div class="sab-page-actions">
-        <a asp-action="Create" class="btn btn-primary">+ New Department</a>
+    <div class="asset-detail-actions">
+        <a asp-action="Create" class="btn btn-primary">+ New department</a>
     </div>
 </div>
 
-@if (Model.Any())
+@if (!Model.Any())
 {
     <div class="sab-table-card">
-        <table class="table table-striped">
-            <thead>
-                <tr>
-                    <th>Name</th>
-                    <th>Branch</th>
-                    <th>Description</th>
-                    <th></th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var department in Model)
-                {
-                    <tr>
-                        <td>@department.DepartmentName</td>
-                        <td>@department.BranchName</td>
-                        <td>@(department.Description ?? "—")</td>
-                        <td>
-                            <a asp-action="Edit" asp-route-id="@department.DepartmentID">Edit</a>
-                            <form asp-action="Delete" asp-route-id="@department.DepartmentID" method="post" class="d-inline" onsubmit="return confirm('Delete this department?');">
-                                @Html.AntiForgeryToken()
-                                <button type="submit" class="btn btn-link text-danger p-0 ms-2">Delete</button>
-                            </form>
-                        </td>
-                    </tr>
-                }
-            </tbody>
-        </table>
+        <div class="sab-empty">
+            <div class="sab-empty-title">No departments yet</div>
+            <p>A department is a group of people. Users pick one, and requests are filed under it.</p>
+            <a asp-action="Create" class="btn btn-primary">+ New department</a>
+        </div>
     </div>
 }
 else
 {
-    <div class="card">
-        <div class="sab-empty">
-            <div class="sab-empty-title">No departments yet</div>
-            <p>Departments belong to a branch and are what an asset is issued against.</p>
-            <a asp-action="Create" class="btn btn-primary">+ New Department</a>
-        </div>
+    <div class="sab-table-card myassets lk" data-md data-page-size="10" data-noun="departments">
+        <aside class="myassets-list" aria-label="Departments">
+            <div class="md-toolbar">
+                <label class="asset-search">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+                    <input type="text" data-md-search autocomplete="off" placeholder="Search departments..." aria-label="Search departments" />
+                </label>
+            </div>
+            @foreach (var g in Model.GroupBy(y => y.BranchName).OrderBy(k => k.Key))
+            {
+                <div class="myassets-group" data-md-group>
+                    <div class="myassets-group-label">@g.Key · <span data-md-count>@g.Count()</span></div>
+                    @foreach (var x in g.OrderBy(y => y.DepartmentName))
+                    {
+                        var u = usage.GetValueOrDefault(x.DepartmentID);
+                    <button type="button" class="myassets-item" data-entry="d-@x.DepartmentID"
+                            data-search="@($"{x.DepartmentName} {x.BranchName} {x.Description}".ToLowerInvariant())">
+                        <span class="myassets-item-main">
+                            <span class="myassets-item-title">@x.DepartmentName</span>
+                            <span class="myassets-item-sub">@x.BranchName</span>
+                        </span>
+                        <span class="lk-count">@(u?.Users ?? 0) user@(u?.Users == 1 ? "" : "s")</span>
+                    </button>
+                    }
+                </div>
+            }
+            <div class="myassets-nomatch" data-md-empty hidden>No department matches.</div>
+            <div class="md-foot"><span data-md-range></span><div data-md-pager></div></div>
+        </aside>
+
+        <section class="myassets-detail">
+            @foreach (var x in Model)
+            {
+                var u = usage.GetValueOrDefault(x.DepartmentID);
+                var formId = "edit-d-" + x.DepartmentID;
+                <article class="myassets-panel" data-panel="d-@x.DepartmentID" hidden>
+                    <button type="button" class="myassets-back" data-back>&larr; All departments</button>
+                    <h3 class="myassets-panel-title mt-0">@x.DepartmentName</h3>
+                    <div class="lk-sub">@x.BranchName · head: @DisplayText.Or(u?.Head, "none yet")</div>
+
+                    <div class="myassets-stats lk-stats-3">
+                        <div>
+                            <span>Users</span><strong>@(u?.Users ?? 0)</strong>
+                            <a asp-controller="Users" asp-action="Index" asp-route-status="All" class="lk-link">View users &rarr;</a>
+                        </div>
+                        <div><span>Assets issued</span><strong>@(u?.AssetsIssued ?? 0)</strong></div>
+                        <div><span>Open requests</span><strong>@(u?.OpenRequests ?? 0)</strong></div>
+                    </div>
+
+                    <div class="asset-card register-step mt-3">
+                        <div class="register-step-head">
+                            <div class="register-step-title flex-grow-1">Details</div>
+                            <span class="nr-head-note">edit and save</span>
+                        </div>
+                        <form asp-action="Edit" asp-route-id="@x.DepartmentID" method="post" id="@formId" class="register-step-body">
+                            @Html.AntiForgeryToken()
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label class="form-label" for="@formId-name">Name</label>
+                                    <input id="@formId-name" name="DepartmentName" value="@x.DepartmentName" class="form-control" maxlength="100" required />
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label" for="@formId-branch">Branch</label>
+                                    <select id="@formId-branch" name="BranchID" class="form-select" required>
+                                        @foreach (var b in branches)
+                                        {
+                                            <option value="@b.BranchID" selected="@(b.BranchID == x.BranchID)">@b.BranchName</option>
+                                        }
+                                    </select>
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label" for="@formId-desc">Description <span class="register-optional">optional</span></label>
+                                    <textarea id="@formId-desc" name="Description" class="form-control" rows="2" maxlength="255">@x.Description</textarea>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+
+                    <div class="lk-foot">
+                        <form asp-action="Delete" asp-route-id="@x.DepartmentID" method="post" onsubmit="return confirm('Delete @x.DepartmentName?');">
+                            @Html.AntiForgeryToken()
+                            <button type="submit" class="btn btn-outline-danger" disabled="@(u?.Blocked is not null)">Delete</button>
+                        </form>
+                        <span class="lk-why">@(u?.Blocked ?? "Nothing uses it yet.")</span>
+                        <div class="lk-foot-actions">
+                            <button type="reset" form="@formId" class="btn btn-outline-secondary">Discard changes</button>
+                            <button type="submit" form="@formId" class="btn btn-primary">Save changes</button>
+                        </div>
+                    </div>
+                </article>
+            }
+        </section>
     </div>
 }
-

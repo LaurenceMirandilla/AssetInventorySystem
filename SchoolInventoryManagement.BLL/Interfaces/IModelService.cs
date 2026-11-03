@@ -9,7 +9,6 @@ namespace SchoolInventoryManagement.BLL.Interfaces
         Task<ModelDTO> CreateModelAsync(CreateModelDTO dto, int actingUserId);
         Task<ModelDTO?> GetModelByIdAsync(int modelId);
         Task<List<ModelDTO>> GetAllModelsAsync();
-        Task<List<ModelDTO>> GetModelsByCategoryAsync(int categoryId);
         Task UpdateModelAsync(int modelId, UpdateModelDTO dto, int actingUserId);
         Task DeleteModelAsync(int modelId, int actingUserId);
     }

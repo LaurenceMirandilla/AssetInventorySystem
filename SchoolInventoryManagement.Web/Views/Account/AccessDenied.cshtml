@@ -1,9 +1,44 @@
-﻿@{
-    ViewData["Title"] = "Access Denied";
+﻿@using System.Security.Claims
+@{
+    ViewData["Title"] = "Access denied";
+
+    var signedIn = User.Identity?.IsAuthenticated == true;
+    var whoItIsFor = ViewBag.WhoItIsFor as string;
+    var name = User.FindFirstValue(ClaimTypes.Name);
+    var role = User.FindFirstValue(ClaimTypes.Role);
+
+    // Same label the sidebar gives the first link for this role.
+    var homeLabel = User.IsInRole("Asset Officer") || User.IsInRole("Administrator") || User.IsInRole("Principal")
+        ? "Dashboard" : "Home";
 }
 
-<div class="text-center mt-5">
-    <h2>Access Denied</h2>
-    <p>You do not have permission to view this page.</p>
-    <a asp-controller="Account" asp-action="Login" class="btn btn-primary">Back to Login</a>
+<div class="state-page">
+    <div class="state-icon is-amber" aria-hidden="true">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></svg>
+    </div>
+    <h2 class="state-title">You don't have access to this page</h2>
+    <p class="state-text">
+        @(whoItIsFor ?? "Your role doesn't cover this page.")
+        @if (signedIn && !string.IsNullOrEmpty(name))
+        {
+            <text>You're signed in as <strong>@name@(string.IsNullOrEmpty(role) ? "" : " · " + role)</strong>.</text>
+        }
+    </p>
+
+    @if (signedIn)
+    {
+        <div class="state-note">If you think you should have access, ask the Administrator to check your role.</div>
+    }
+
+    <div class="state-actions">
+        <button type="button" class="btn btn-outline-secondary" onclick="history.back()">&larr; Go back</button>
+        @if (signedIn)
+        {
+            <a asp-controller="Home" asp-action="Index" class="btn btn-primary">Go to @homeLabel</a>
+        }
+        else
+        {
+            <a asp-controller="Account" asp-action="Login" class="btn btn-primary">Sign in</a>
+        }
+    </div>
 </div>

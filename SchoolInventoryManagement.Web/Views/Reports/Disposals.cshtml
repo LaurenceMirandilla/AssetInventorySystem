@@ -2,62 +2,67 @@
 @{
     ViewData["Title"] = "Disposals";
     var totalCost = Model.Sum(r => r.AcquisitionCost ?? 0m);
+    var restored = Model.Count(r => r.IsRestored);
+    var common = Model.GroupBy(r => r.DisposalMethod).OrderByDescending(g => g.Count()).FirstOrDefault();
+    var includeRestored = (bool)(ViewBag.IncludeRestored == true);
 }
 
-<div class="row g-3 sab-reports-grid">
-    <div class="col-lg-3">
-        @await Html.PartialAsync("_ReportsNav")
+<div class="asset-detail-head mb-2 pb-0 border-0">
+    <div>
+        <h2 class="asset-detail-title">Reports</h2>
+        <div class="asset-detail-sub">Assets taken out of service, and why. An asset can appear more than once if it was restored and disposed again.</div>
     </div>
-    <div class="col-lg-9">
-        <div class="sab-page-head">
-            <div>
-                <h2>Disposals</h2>
-                <p class="sab-page-sub">
-                    An asset can appear more than once — it can be disposed, restored, and
-                    disposed again over its life. Restored rows are hidden unless you ask for them.
-                </p>
-            </div>
-            <div class="sab-page-actions">
-            <a asp-action="ExportDisposals"
-               asp-route-fromDate="@Context.Request.Query["fromDate"]"
-               asp-route-toDate="@Context.Request.Query["toDate"]"
-               asp-route-includeRestored="@Context.Request.Query["includeRestored"]"
-               class="btn btn-primary">Export CSV</a>
-            </div>
-        </div>
+    <div class="asset-detail-actions">
+        <a asp-action="ExportDisposals"
+           asp-route-fromDate="@Context.Request.Query["fromDate"]"
+           asp-route-toDate="@Context.Request.Query["toDate"]"
+           asp-route-includeRestored="@Context.Request.Query["includeRestored"]"
+           class="btn btn-primary">&darr; Export CSV</a>
+    </div>
+</div>
 
-        <div class="sab-filter-card">
-            <form method="get" class="row g-2 align-items-end">
-                <div class="col-auto">
-                    <label class="form-label">From</label>
-                    <input type="date" name="fromDate" class="form-control"
-                           value="@(ViewBag.FromDate is DateTime f ? f.ToString("yyyy-MM-dd") : "")" />
-                </div>
-                <div class="col-auto">
-                    <label class="form-label">To</label>
-                    <input type="date" name="toDate" class="form-control"
-                           value="@(ViewBag.ToDate is DateTime t ? t.ToString("yyyy-MM-dd") : "")" />
-                </div>
-                <div class="col-auto align-self-end">
-                    <div class="form-check">
-                        <input type="checkbox" name="includeRestored" value="true" class="form-check-input"
-                               id="includeRestored" @(ViewBag.IncludeRestored == true ? "checked" : "") />
-                        <label class="form-check-label" for="includeRestored">Include restored</label>
-                    </div>
-                </div>
-                <div class="col-auto align-self-end">
-                    <button type="submit" class="btn btn-secondary">Apply</button>
-                    <a asp-action="Disposals" class="btn btn-outline-secondary">Reset</a>
-                </div>
-            </form>
-        </div>
+@await Html.PartialAsync("_ReportsNav")
 
-        <div class="sab-table-card">
-            <div class="sab-table-head">
-                <h5>Disposals</h5>
-                <span class="sab-table-count">@Model.Count disposal(s), original acquisition cost @DisplayText.Peso(totalCost).</span>
-            </div>
-            <table class="table table-striped">
+<form method="get" class="rp-filters">
+    <label class="rp-field">
+        <span>From</span>
+        <input type="date" name="fromDate" class="form-control" value="@(ViewBag.FromDate is DateTime f ? f.ToString("yyyy-MM-dd") : "")" />
+    </label>
+    <label class="rp-field">
+        <span>To</span>
+        <input type="date" name="toDate" class="form-control" value="@(ViewBag.ToDate is DateTime t ? t.ToString("yyyy-MM-dd") : "")" />
+    </label>
+    <label class="rp-field">
+        <span>Restored</span>
+        <select name="includeRestored" class="form-select">
+            <option value="false" selected="@(!includeRestored)">Hide restored</option>
+            <option value="true" selected="@includeRestored">Include restored</option>
+        </select>
+    </label>
+    <div class="rp-actions">
+        <a asp-action="Disposals" class="btn btn-outline-secondary">Reset</a>
+        <button type="submit" class="btn btn-primary">Apply</button>
+    </div>
+</form>
+
+<div class="myassets-stats lk-stats-4 mt-0 mb-3">
+    <div><span>Disposed</span><strong>@Model.Count asset@(Model.Count == 1 ? "" : "s")</strong></div>
+    <div><span>Original cost</span><strong>@DisplayText.Peso(totalCost)</strong></div>
+    <div>
+        <span>Restored</span><strong>@restored</strong>
+        @if (restored > 0) { <span class="lk-link">Back in service</span> }
+    </div>
+    <div>
+        <span>Most common</span><strong>@DisplayText.Or(common?.Key, "None yet")</strong>
+        @if (common is not null) { <span class="text-muted small">@common.Count() of @Model.Count</span> }
+    </div>
+</div>
+
+<div class="sab-table-card" data-pager data-page-size="10" data-noun="disposals">
+    @if (Model.Any())
+    {
+        <div class="table-responsive">
+            <table class="table asset-table mb-0">
                 <thead>
                     <tr>
                         <th>Asset</th>
@@ -73,39 +78,55 @@
                 <tbody>
                     @foreach (var row in Model)
                     {
-                        <tr>
+                        <tr data-pager-item>
                             <td>
-                                <a asp-controller="Assets" asp-action="Details" asp-route-id="@row.AssetID">@row.AssetCode</a>
+                                <a asp-controller="Assets" asp-action="Details" asp-route-id="@row.AssetID" class="asset-code-chip">@row.AssetCode</a>
                                 <div class="text-muted small">@row.AssetName</div>
                             </td>
                             <td>@row.CategoryName</td>
-                            <td>@row.DisposalDate.ToString("MMM d, yyyy")</td>
+                            <td>@row.DisposalDate.ToString("MMM d")</td>
                             <td>@row.ReasonForDisposal</td>
                             <td>@row.DisposalMethod</td>
                             <td>@row.ApprovedByName</td>
-                            <td class="text-end">@DisplayText.Peso(row.AcquisitionCost)</td>
+                            <td class="text-end">@DisplayText.Or(row.AcquisitionCost is null ? null : DisplayText.Peso(row.AcquisitionCost), "Not recorded")</td>
                             <td>
                                 @if (row.IsRestored)
                                 {
-                                    <span class="status-pill status-available">Restored</span>
-                                    <div class="text-muted small">
-                                        @row.RestoredDate?.ToString("MMM d, yyyy") by @row.RestoredByName
-                                    </div>
+                                    <span class="asset-pill st-intransit" title="@row.RestoredDate?.ToString("MMM d, yyyy") by @row.RestoredByName">Restored</span>
                                 }
                                 else
                                 {
-                                    <span class="status-pill status-disposed">Disposed</span>
+                                    <span class="is-empty">No</span>
                                 }
                             </td>
                         </tr>
                     }
                 </tbody>
+                <tfoot>
+                    <tr class="rp-total">
+                        <td colspan="6">Total · @Model.Count asset@(Model.Count == 1 ? "" : "s")</td>
+                        <td class="text-end">@DisplayText.Peso(totalCost)</td>
+                        <td></td>
+                    </tr>
+                </tfoot>
             </table>
-            @if (!Model.Any())
-            {
-                <div class="sab-empty"><p class="mb-0">No disposals in this range.</p></div>
-            }
         </div>
-
-    </div>
+        <div class="history-foot">
+            <span data-pager-range></span>
+            <div class="d-flex align-items-center flex-wrap" style="gap:8px;">
+                <span class="text-muted">Show</span>
+                <select class="form-select form-select-sm rq-size" data-pager-size aria-label="Rows per page">
+                    <option value="10" selected>10</option>
+                    <option value="20">20</option>
+                    <option value="50">50</option>
+                </select>
+                <span class="text-muted">per page</span>
+                <div class="d-flex flex-wrap" style="gap:6px;" data-pager-buttons></div>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="sab-empty"><p class="mb-0">No disposals in this range.</p></div>
+    }
 </div>

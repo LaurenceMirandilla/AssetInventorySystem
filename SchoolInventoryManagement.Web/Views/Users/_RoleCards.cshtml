@@ -1,0 +1,27 @@
+@model int
+@* The Role card on Add user and Edit user: one tile per role with what it
+   does, as radio buttons named RoleID. Roles come from ViewBag.Roles. *@
+@{
+    var roles = ((IEnumerable<SelectListItem>)ViewBag.Roles).ToList();
+    var order = new[] { "Teacher", "Staff", "Department Head", "Principal", "Asset Officer", "Administrator" };
+    var about = new Dictionary<string, string>
+    {
+        ["Teacher"] = "Borrow, transfer and request new items.",
+        ["Staff"] = "Same as Teacher.",
+        ["Department Head"] = "Approves new-item requests for the department.",
+        ["Principal"] = "Approves requests and new-item budgets; manages users.",
+        ["Asset Officer"] = "Registers assets, hands out and records returns.",
+        ["Administrator"] = "Everything, including users and settings."
+    };
+    var sorted = roles.OrderBy(r => Array.IndexOf(order, r.Text) is var i && i >= 0 ? i : 99).ThenBy(r => r.Text).ToList();
+}
+<div class="role-cards" role="radiogroup" aria-label="Role">
+    @foreach (var r in sorted)
+    {
+        <label class="role-card">
+            <input type="radio" name="RoleID" value="@r.Value" checked="@(r.Value == Model.ToString())" data-role-name="@r.Text" />
+            <span class="role-card-name">@r.Text</span>
+            <span class="role-card-about">@(about.TryGetValue(r.Text, out var text) ? text : "")</span>
+        </label>
+    }
+</div>

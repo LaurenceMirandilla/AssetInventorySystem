@@ -171,7 +171,7 @@
                 <dl class="handover-rows">
                     <div><dt>Unit</dt><dd>@asset.AssetCode</dd></div>
                     <div><dt>Condition</dt><dd id="sumCondition">@DisplayText.Humanize(Model.ConditionOnAssignment.ToString())</dd></div>
-                    <div><dt>Branch</dt><dd id="sumBranch">@(((IEnumerable<SelectListItem>)ViewBag.Branches).FirstOrDefault(b => b.Value == Model.BranchID?.ToString())?.Text ?? "—")</dd></div>
+                    <div><dt>Branch</dt><dd id="sumBranch">@DisplayText.Or(((IEnumerable<SelectListItem>)ViewBag.Branches).FirstOrDefault(b => b.Value == Model.BranchID?.ToString())?.Text, "Not chosen yet")</dd></div>
                     <div><dt>Kept at</dt><dd id="sumKeptAt">@(keptAtName ?? "With the borrower")</dd></div>
                     <div><dt>Status after</dt><dd>Assigned</dd></div>
                 </dl>
@@ -242,7 +242,7 @@
                 deptFilter.refresh();
                 roomFilter.refresh();
                 var opt = branch.options[branch.selectedIndex];
-                document.getElementById('sumBranch').textContent = opt && opt.value ? opt.text : '—';
+                sabShow(document.getElementById('sumBranch'), opt && opt.value ? opt.text : '', 'Not chosen yet');
                 document.getElementById('branchNote').textContent = !branch.value || branch.value === assetBranch
                     ? 'The asset is in ' + assetBranchName + '. Picking another branch moves it there.'
                     : 'Moves the asset from ' + assetBranchName + ' to ' + opt.text + '.';

@@ -65,13 +65,29 @@ namespace SchoolInventoryManagement.BLL.Services
                 "A department can have only one. Change their role or deactivate them first.");
         }
 
+        // Usernames are unique whatever the case: "Admin" blocks "admin".
+        // Deactivated accounts keep theirs, so it stays free of mix-ups in
+        // the history. Returns the trimmed username to save.
+        private async Task<string> EnsureUsernameFreeAsync(string? username, int exceptUserId)
+        {
+            var clean = UsernamePolicy.Normalize(username);
+            UsernamePolicy.Ensure(clean);
+
+            var lower = clean.ToLower();
+            var taken = await _context.Users
+                .AnyAsync(u => u.UserID != exceptUserId && u.Username.ToLower() == lower);
+            if (taken)
+                throw new InvalidOperationException(UsernamePolicy.TakenMessage);
+
+            return clean;
+        }
+
         public async Task<UserResponseDTO> CreateUserAsync(CreateUserDTO dto, int actingUserId)
         {
             await PermissionHelper.EnsureIsUserManagerAsync(_context, actingUserId);
 
-            var emailExists = await _context.Users.AnyAsync(u => u.Email == dto.Email);
-            if (emailExists)
-                throw new InvalidOperationException("A user with this email already exists.");
+            var username = await EnsureUsernameFreeAsync(dto.Username, exceptUserId: 0);
+            PasswordPolicy.Ensure(dto.Password);
 
             // The form only offers departments of the chosen branch, but that
             // filter is JavaScript and a stale or hand-built post skips it.
@@ -90,8 +106,11 @@ namespace SchoolInventoryManagement.BLL.Services
                 BranchID = dto.BranchID,
                 FirstName = dto.FirstName,
                 LastName = dto.LastName,
-                Email = dto.Email,
+                Username = username,
                 Status = "Active",
+                // Starts on the shared default password; they choose their
+                // own the first time they sign in.
+                MustChangePassword = true,
                 PasswordHash = string.Empty
             };
 
@@ -132,6 +151,8 @@ namespace SchoolInventoryManagement.BLL.Services
             if (user is null)
                 throw new KeyNotFoundException("User not found.");
 
+            var username = await EnsureUsernameFreeAsync(dto.Username, exceptUserId: userId);
+
             // Only an active user holds the post; an inactive one being
             // edited is checked again if they are reactivated.
             if (user.Status == "Active")
@@ -144,6 +165,12 @@ namespace SchoolInventoryManagement.BLL.Services
             user.BranchID = dto.BranchID;
             user.FirstName = dto.FirstName;
             user.LastName = dto.LastName;
+
+            // A real change only: "admin" -> "Admin" is still a change worth
+            // keeping, but re-saving the same text isn't. The audit
+            // interceptor records the old and new value.
+            if (!string.Equals(user.Username, username, StringComparison.Ordinal))
+                user.Username = username;
 
             try
             {
@@ -239,7 +266,10 @@ namespace SchoolInventoryManagement.BLL.Services
             // longer live. Better to make the second one reload.
             _context.Entry(user).Property(u => u.RowVersion).OriginalValue = rowVersion;
 
+            PasswordPolicy.Ensure(newPassword);
             user.PasswordHash = _passwordHasher.HashPassword(user, newPassword);
+            // A password someone else knows: they set their own on next sign-in.
+            user.MustChangePassword = true;
 
             // Security hygiene: an unexpected reset is exactly the thing the
             // account holder should find out about. It makes an unauthorised
@@ -273,7 +303,14 @@ namespace SchoolInventoryManagement.BLL.Services
             if (verifyResult == PasswordVerificationResult.Failed)
                 throw new UnauthorizedAccessException("Current password is incorrect.");
 
+            PasswordPolicy.Ensure(newPassword);
+            if (newPassword == currentPassword)
+                throw new ArgumentException(PasswordPolicy.SameAsCurrentMessage);
+
+            // The signed-in session is untouched: the cookie carries no
+            // password, so the user stays signed in after the change.
             user.PasswordHash = _passwordHasher.HashPassword(user, newPassword);
+            user.MustChangePassword = false;
 
             await _context.SaveChangesAsync();
         }

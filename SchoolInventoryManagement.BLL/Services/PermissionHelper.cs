@@ -99,7 +99,7 @@ namespace SchoolInventoryManagement.BLL.Services
         public static void EnsureIsActive(User user)
         {
             if (user.Status != "Active")
-                throw new InvalidOperationException($"User '{user.Email}' is not active.");
+                throw new InvalidOperationException($"User '{user.Username}' is not active.");
         }
         // Covers user/role/branch/department management — everything the
         // permission matrix puts behind Administrator or Principal.

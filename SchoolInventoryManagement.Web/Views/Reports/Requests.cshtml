@@ -1,129 +1,139 @@
 ﻿@model SchoolInventoryManagement.BLL.DTOs.RequestActivityDTO
 @using SchoolInventoryManagement.DAL.Entities.Enums
 @{
-    ViewData["Title"] = "Request Activity";
+    ViewData["Title"] = "Request activity";
+
+    // Turnaround in the unit that reads best: minutes, hours or days.
+    static string Span(double? days)
+    {
+        if (days is null) return "";
+        var hours = days.Value * 24;
+        if (hours < 1) return $"{Math.Max(1, (int)Math.Round(hours * 60))} min";
+        if (hours < 24) return $"{(int)Math.Round(hours)} h";
+        var d = (int)Math.Round(days.Value);
+        return d == 1 ? "1 day" : $"{d} days";
+    }
+
+    // Middle value, so one slow request doesn't drag the figure.
+    var decided = Model.Rows.Where(r => r.TurnaroundDays.HasValue).Select(r => r.TurnaroundDays!.Value).OrderBy(v => v).ToList();
+    double? median = decided.Count == 0 ? null
+        : decided.Count % 2 == 1 ? decided[decided.Count / 2]
+        : (decided[decided.Count / 2 - 1] + decided[decided.Count / 2]) / 2;
+
+    // Same colours as the status tags.
+    static string BarColour(string label) => label.Replace(" ", "").ToLowerInvariant() switch
+    {
+        "returned" => "var(--tag-navy)",
+        "assigned" or "approved" or "fulfilled" or "borrow" => "var(--tag-green)",
+        "intransit" or "transfer" => "var(--tag-teal)",
+        "rejected" => "var(--tag-red)",
+        "cancelled" => "var(--tag-grey-light)",
+        _ => "var(--tag-grey)"
+    };
+    var maxStatus = Math.Max(1, Model.ByStatus.Select(s => s.Count).DefaultIfEmpty(0).Max());
+    var maxType = Math.Max(1, Model.ByType.Select(s => s.Count).DefaultIfEmpty(0).Max());
 }
 
-<div class="row g-3 sab-reports-grid">
-    <div class="col-lg-3">
-        @await Html.PartialAsync("_ReportsNav")
+<div class="asset-detail-head mb-2 pb-0 border-0">
+    <div>
+        <h2 class="asset-detail-title">Reports</h2>
+        <div class="asset-detail-sub">Borrow and Transfer requests, how they were decided and how fast.</div>
     </div>
-    <div class="col-lg-9">
-        <div class="sab-page-head">
-            <div>
-                <h2>Request Activity</h2>
-                <p class="sab-page-sub">
-                    Turnaround is measured from submission to decision, so it only exists for
-                    requests that were actually approved or rejected — pending and cancelled
-                    requests are excluded from the average.
-                </p>
+    <div class="asset-detail-actions">
+        <a asp-action="ExportRequests"
+           asp-route-fromDate="@Context.Request.Query["fromDate"]"
+           asp-route-toDate="@Context.Request.Query["toDate"]"
+           asp-route-status="@Context.Request.Query["status"]"
+           asp-route-type="@Context.Request.Query["type"]"
+           class="btn btn-primary">&darr; Export CSV</a>
+    </div>
+</div>
+
+@await Html.PartialAsync("_ReportsNav")
+
+<form method="get" class="rp-filters">
+    <label class="rp-field">
+        <span>From</span>
+        <input type="date" name="fromDate" class="form-control" value="@(ViewBag.FromDate is DateTime f ? f.ToString("yyyy-MM-dd") : "")" />
+    </label>
+    <label class="rp-field">
+        <span>To</span>
+        <input type="date" name="toDate" class="form-control" value="@(ViewBag.ToDate is DateTime t ? t.ToString("yyyy-MM-dd") : "")" />
+    </label>
+    <label class="rp-field">
+        <span>Status</span>
+        @Html.DropDownList("status", Html.GetEnumSelectList<RequestStatus>(), "All statuses", new { @class = "form-select" })
+    </label>
+    <label class="rp-field">
+        <span>Type</span>
+        @Html.DropDownList("type", Html.GetEnumSelectList<RequestType>(), "All types", new { @class = "form-select" })
+    </label>
+    <div class="rp-actions">
+        <a asp-action="Requests" class="btn btn-outline-secondary">Reset</a>
+        <button type="submit" class="btn btn-primary">Apply</button>
+    </div>
+</form>
+
+<div class="row g-3 mb-3">
+    <div class="col-lg-6">
+        <div class="asset-card h-100">
+            <div class="register-step-head">
+                <div class="register-step-title flex-grow-1">By status</div>
+                <span class="nr-head-note">@Model.TotalRequests request@(Model.TotalRequests == 1 ? "" : "s")</span>
             </div>
-            <div class="sab-page-actions">
-            <a asp-action="ExportRequests"
-               asp-route-fromDate="@Context.Request.Query["fromDate"]"
-               asp-route-toDate="@Context.Request.Query["toDate"]"
-               asp-route-status="@Context.Request.Query["status"]"
-               asp-route-type="@Context.Request.Query["type"]"
-               class="btn btn-primary">Export CSV</a>
+            <div class="rp-bars">
+                @foreach (var s in Model.ByStatus)
+                {
+                    <div class="rp-bar">
+                        <span>@DisplayText.Humanize(s.Label)</span>
+                        <div class="rp-bar-track"><div class="rp-bar-fill" style="width:@(s.Count * 100 / maxStatus)%;background:@BarColour(s.Label);"></div></div>
+                        <strong>@s.Count</strong>
+                    </div>
+                }
+                @if (!Model.ByStatus.Any())
+                {
+                    <div class="is-empty py-2">No requests in this range.</div>
+                }
             </div>
         </div>
-
-        <div class="sab-filter-card">
-            <form method="get" class="row g-2 align-items-end">
-                <div class="col-auto">
-                    <label class="form-label">From</label>
-                    <input type="date" name="fromDate" class="form-control"
-                           value="@(ViewBag.FromDate is DateTime f ? f.ToString("yyyy-MM-dd") : "")" />
-                </div>
-                <div class="col-auto">
-                    <label class="form-label">To</label>
-                    <input type="date" name="toDate" class="form-control"
-                           value="@(ViewBag.ToDate is DateTime t ? t.ToString("yyyy-MM-dd") : "")" />
-                </div>
-                <div class="col-auto">
-                    <label class="form-label">Status</label>
-                    @Html.DropDownList("status", Html.GetEnumSelectList<RequestStatus>(),
-                         "All statuses", new { @class = "form-select" })
-                </div>
-                <div class="col-auto">
-                    <label class="form-label">Type</label>
-                    @Html.DropDownList("type", Html.GetEnumSelectList<RequestType>(),
-                         "All types", new { @class = "form-select" })
-                </div>
-                <div class="col-auto align-self-end">
-                    <button type="submit" class="btn btn-secondary">Apply</button>
-                    <a asp-action="Requests" class="btn btn-outline-secondary">Reset</a>
-                </div>
-            </form>
-        </div>
-
-        <div class="report-tiles">
-            <div class="report-tile">
-                <span class="report-tile-label">Requests</span>
-                <span class="report-tile-value">@Model.TotalRequests</span>
-                <span class="report-tile-note">in range</span>
-            </div>
-            <div class="report-tile">
-                <span class="report-tile-label">Decided</span>
-                <span class="report-tile-value">@Model.DecidedRequests</span>
-                <span class="report-tile-note">approved or rejected</span>
-            </div>
-            <div class="report-tile">
-                <span class="report-tile-label">Avg turnaround</span>
-                <span class="report-tile-value">
-                    @(Model.AverageTurnaroundDays.HasValue ? $"{Model.AverageTurnaroundDays:0.0}d" : "—")
-                </span>
-                <span class="report-tile-note">submission to decision</span>
+    </div>
+    <div class="col-md-6 col-lg-3">
+        <div class="asset-card h-100">
+            <div class="register-step-head"><div class="register-step-title">By type</div></div>
+            <div class="rp-bars">
+                @foreach (var s in Model.ByType)
+                {
+                    <div class="rp-bar" style="grid-template-columns:70px minmax(0,1fr) 34px;">
+                        <span>@s.Label</span>
+                        <div class="rp-bar-track"><div class="rp-bar-fill" style="width:@(s.Count * 100 / maxType)%;background:@BarColour(s.Label);"></div></div>
+                        <strong>@s.Count</strong>
+                    </div>
+                }
             </div>
         </div>
-
-        <div class="row g-3 mb-3">
-            <div class="col-md-6">
-                <div class="sab-table-card">
-                    <div class="sab-table-head"><h5>By status</h5></div>
-                    <table class="table table-sm table-striped">
-                        <thead><tr><th>Status</th><th class="text-end">Count</th></tr></thead>
-                        <tbody>
-                            @foreach (var row in Model.ByStatus)
-                            {
-                                <tr>
-                                    <td><span class="status-pill status-@row.Label.ToLowerInvariant()">@row.Label</span></td>
-                                    <td class="text-end">@row.Count</td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-            <div class="col-md-6">
-                <div class="sab-table-card">
-                    <div class="sab-table-head"><h5>By type</h5></div>
-                    <table class="table table-sm table-striped">
-                        <thead><tr><th>Type</th><th class="text-end">Count</th></tr></thead>
-                        <tbody>
-                            @foreach (var row in Model.ByType)
-                            {
-                                <tr>
-                                    <td><span class="status-pill status-@row.Label.ToLowerInvariant()">@row.Label</span></td>
-                                    <td class="text-end">@row.Count</td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
-                </div>
+    </div>
+    <div class="col-md-6 col-lg-3">
+        <div class="asset-card h-100">
+            <div class="register-step-head"><div class="register-step-title">Turnaround</div></div>
+            <div class="rp-big">
+                <strong>@DisplayText.Or(Span(median), "No decisions yet")</strong>
+                <span>median from submitted to decided</span>
             </div>
         </div>
+    </div>
+</div>
 
-        <div class="sab-table-card">
-            <div class="sab-table-head"><h5>Requests</h5></div>
-            <table class="table table-striped">
+<div class="sab-table-card" data-pager data-page-size="10" data-noun="requests">
+    @if (Model.Rows.Any())
+    {
+        <div class="table-responsive">
+            <table class="table asset-table mb-0">
                 <thead>
                     <tr>
                         <th>#</th>
                         <th>Type</th>
                         <th>Requester</th>
-                        <th>Department</th>
-                        <th>Item</th>
+                        <th>Items</th>
                         <th>Submitted</th>
                         <th>Decided by</th>
                         <th class="text-end">Turnaround</th>
@@ -133,28 +143,39 @@
                 <tbody>
                     @foreach (var row in Model.Rows)
                     {
-                        <tr>
-                            <td><a asp-controller="AssetRequests" asp-action="Details" asp-route-id="@row.RequestID">@row.RequestID</a></td>
-                            <td><span class="status-pill status-@row.RequestType.ToString().ToLowerInvariant()">@row.RequestType</span></td>
+                        <tr data-pager-item>
+                            <td><a asp-controller="AssetRequests" asp-action="Details" asp-route-id="@row.RequestID" class="fw-bold">#@row.RequestID</a></td>
+                            <td><span class="md-tag @(row.RequestType == RequestType.Transfer ? "is-transfer" : "")">@row.RequestType</span></td>
                             <td>
                                 @row.RequesterName
-                                <div class="text-muted small">@row.RequesterRole</div>
+                                <div class="text-muted small">@row.DepartmentName</div>
                             </td>
-                            <td>@row.DepartmentName</td>
                             <td>@row.ItemDescription</td>
-                            <td>@row.RequestDate.ToString("MMM d, yyyy")</td>
-                            <td>@(row.DecidedByName ?? "—")</td>
-                            <td class="text-end">@(row.TurnaroundDays.HasValue ? $"{row.TurnaroundDays:0.0}d" : "—")</td>
-                            <td><span class="status-pill status-@row.RequestStatus.ToString().ToLowerInvariant()">@row.RequestStatus</span></td>
+                            <td>@row.RequestDate.ToString("MMM d")</td>
+                            <td>@DisplayText.Or(row.DecidedByName, "Not yet")</td>
+                            <td class="text-end">@DisplayText.Or(Span(row.TurnaroundDays), "Not yet")</td>
+                            <td><span class="status-pill status-@row.RequestStatus.ToString().ToLowerInvariant()">@DisplayText.Humanize(row.RequestStatus.ToString())</span></td>
                         </tr>
                     }
                 </tbody>
             </table>
         </div>
-
-        @if (!Model.Rows.Any())
-        {
-            <div class="sab-empty"><p class="mb-0">No requests in this range.</p></div>
-        }
-    </div>
+        <div class="history-foot">
+            <span data-pager-range></span>
+            <div class="d-flex align-items-center flex-wrap" style="gap:8px;">
+                <span class="text-muted">Show</span>
+                <select class="form-select form-select-sm rq-size" data-pager-size aria-label="Rows per page">
+                    <option value="10" selected>10</option>
+                    <option value="20">20</option>
+                    <option value="50">50</option>
+                </select>
+                <span class="text-muted">per page</span>
+                <div class="d-flex flex-wrap" style="gap:6px;" data-pager-buttons></div>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="sab-empty"><p class="mb-0">No requests in this range.</p></div>
+    }
 </div>

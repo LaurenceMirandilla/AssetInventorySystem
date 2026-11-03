@@ -155,7 +155,7 @@ namespace SchoolInventoryManagement.Web.Controllers
             var csv = CsvExportHelper.Build(
                 new[]
                 {
-                    "Asset Code", "Asset Name", "Assigned To", "Email", "Role",
+                    "Asset Code", "Asset Name", "Assigned To", "Username", "Role",
                     "Department", "Assigned By", "Assignment Date", "Days Out",
                     "Condition Out", "Remarks"
                 },
@@ -164,7 +164,7 @@ namespace SchoolInventoryManagement.Web.Controllers
                     r.AssetCode,
                     r.AssetName,
                     r.AssignedToName,
-                    r.AssignedToEmail,
+                    r.AssignedToUsername,
                     r.AssignedToRole,
                     r.DepartmentName,
                     r.AssignedByName,

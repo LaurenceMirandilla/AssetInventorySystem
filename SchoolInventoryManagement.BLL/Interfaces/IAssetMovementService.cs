@@ -11,7 +11,6 @@ namespace SchoolInventoryManagement.BLL.Interfaces
             int assetId, int destinationLocationId, string reasonForTransfer,
             ConditionStatus? conditionOnTransfer, int actingUserId, string? notes);
 
-        Task<AssetMovementResponseDTO?> GetMovementByIdAsync(int movementId);
         Task<List<AssetMovementResponseDTO>> GetMovementHistoryForAssetAsync(int assetId);
         Task<List<AssetMovementResponseDTO>> GetMovementHistoryForLocationAsync(int locationId);
     }

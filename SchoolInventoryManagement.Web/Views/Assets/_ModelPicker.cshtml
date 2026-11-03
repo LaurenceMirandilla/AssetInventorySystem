@@ -201,6 +201,13 @@
             pick(button);
         });
 
+        // "Use that instead" in the + New model popup: pick the existing
+        // model it found rather than adding a near-duplicate.
+        document.addEventListener('model-use', function (e) {
+            var found = items.find(function (b) { return b.dataset.id === String(e.detail.modelId); });
+            if (found) pick(found);
+        });
+
 
         search.addEventListener('blur', close);
 

@@ -22,9 +22,10 @@ namespace SchoolInventoryManagement.Web.Controllers
         private int CurrentUserId =>
             int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
-        public async Task<IActionResult> Index()
+        public async Task<IActionResult> Index([FromServices] Helpers.LookupUsage usage)
         {
             var categories = await _categoryService.GetAllCategoriesAsync();
+            ViewBag.Usage = await usage.CategoriesAsync();
             return View(categories);
         }
 
@@ -85,7 +86,8 @@ namespace SchoolInventoryManagement.Web.Controllers
             try
             {
                 await _categoryService.UpdateCategoryAsync(id, dto, CurrentUserId);
-                return RedirectToAction(nameof(Index));
+                // Back to the list with this category still open.
+                return Redirect(Url.Action(nameof(Index)) + "#c-" + id);
             }
             catch (Exception ex)
             {

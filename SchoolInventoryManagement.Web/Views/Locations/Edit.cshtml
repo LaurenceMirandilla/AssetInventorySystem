@@ -1,53 +1,96 @@
 ﻿@model SchoolInventoryManagement.BLL.DTOs.UpdateLocationDTO
+@using SchoolInventoryManagement.Web.Helpers
+@inject LookupUsage Usage
 @{
     ViewData["Title"] = "Edit Location";
+    var recordId = (int)ViewBag.LocationID;
+    var usage = (await Usage.LocationsAsync()).GetValueOrDefault(recordId);
 }
 
-<h2>Edit Location</h2>
-
-<form asp-action="Edit" asp-route-id="@ViewBag.LocationID" method="post">
+<form asp-action="Edit" asp-route-id="@recordId" method="post" class="register-form page-fill" id="lkForm">
     @Html.AntiForgeryToken()
+
+    <div class="asset-detail-head">
+        <div>
+            <nav class="asset-crumbs" aria-label="Breadcrumb">
+                <a asp-action="Index">Locations</a>
+                <span aria-hidden="true">&rsaquo;</span>
+                <a href="@Url.Action("Index")#l-@recordId">@Model.LocationName</a>
+                <span aria-hidden="true">&rsaquo;</span>
+                <span>Edit</span>
+            </nav>
+            <h2 class="asset-detail-title">Edit location</h2>
+            <div class="asset-detail-sub">A room or area where units are kept.</div>
+        </div>
+    </div>
+
     <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
 
-    <div class="mb-3">
-        <label asp-for="BranchID" class="form-label">Branch</label>
-        <select asp-for="BranchID" asp-items="ViewBag.Branches" class="form-select">
-            <option value="">-- Select Branch --</option>
-        </select>
-        <span asp-validation-for="BranchID" class="text-danger"></span>
-    </div>
-
-    <div class="mb-3">
-        <label asp-for="LocationName" class="form-label">Location Name</label>
-        <input asp-for="LocationName" class="form-control" />
-        <span asp-validation-for="LocationName" class="text-danger"></span>
-    </div>
-
-    <div class="mb-3" style="max-width:320px;">
-        <label asp-for="LocationCode" class="form-label"></label>
-        @if (ViewBag.CodeLocked == true)
-        {
-            <input asp-for="LocationCode" class="form-control" readonly />
-            <div class="form-text">Locked while assets are in this location. Move them out to change it.</div>
-        }
-        else
-        {
-            <input asp-for="LocationCode" id="locationCode" class="form-control text-uppercase" maxlength="3" autocomplete="off" />
-            <div class="form-text">
-                Exactly 3 letters or digits, unique within the branch. Barcodes made for assets here look like
-                <span class="sab-code">M-<span id="codeExample">LIB</span>-CHR-0001</span>.
+    <div class="row g-3 align-items-start">
+        <div class="col-lg-8">
+            <div class="asset-card register-step">
+                <div class="register-step-head"><div class="register-step-title">Details</div></div>
+                <div class="register-step-body">
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label asp-for="BranchID" class="form-label">Branch</label>
+                            <select asp-for="BranchID" asp-items="ViewBag.Branches" class="form-select">
+                                <option value="">Select a branch</option>
+                            </select>
+                            <div class="form-text">Pick the branch first; codes are unique within it.</div>
+                            <span asp-validation-for="BranchID" class="text-danger small"></span>
+                        </div>
+                        <div class="col-md-6">
+                            <label asp-for="LocationName" class="form-label">Name</label>
+                            <input asp-for="LocationName" class="form-control" id="locationName" maxlength="100" placeholder="e.g. Library Annex" />
+                            <span asp-validation-for="LocationName" class="text-danger small"></span>
+                        </div>
+                        <div class="col-md-6">
+                            <label asp-for="LocationCode" class="form-label">Code</label>
+                            <input asp-for="LocationCode" class="form-control text-uppercase" id="locationCode" maxlength="3" autocomplete="off" placeholder="e.g. LIB" readonly="@((bool)(ViewBag.CodeLocked == true))" />
+                            <div class="form-text">@(ViewBag.CodeLocked == true ? "Locked while assets are here: it's in their barcodes." : "3 letters or digits, unique within the branch.")</div>
+                            <span asp-validation-for="LocationCode" class="text-danger small"></span>
+                        </div>
+                        <div class="col-12">
+                            <label asp-for="Description" class="form-label">Description <span class="register-optional">optional</span></label>
+                            <textarea asp-for="Description" class="form-control" rows="3" maxlength="255" placeholder="e.g. Main Building, 3rd floor, beside the reading room."></textarea>
+                            <span asp-validation-for="Description" class="text-danger small"></span>
+                        </div>
+                    </div>
+                </div>
             </div>
-        }
-        <span asp-validation-for="LocationCode" class="text-danger"></span>
+        </div>
+        <div class="col-lg-4">
+            <div class="asset-card register-step lk-side">
+                <div class="register-step-head"><div class="register-step-title">How it will show</div></div>
+                <div class="register-step-body">
+                    <div class="lk-code-box">
+                        <div class="lk-code-label">In dropdowns and labels</div>
+                        <div class="lk-show-name"><span id="showBranch">Branch</span> &rsaquo; <span id="showName">Name</span></div>
+                        <span class="asset-code-chip" id="showCode">LIB</span>
+                    </div>
+                    <div class="lk-side-facts"><div><span>Units here now</span><strong>@(usage?.UnitsHere ?? 0)</strong></div><div><span>Movements this year</span><strong>@(usage?.MovementsThisYear ?? 0)</strong></div><div><span>Departments using it</span><strong>@(usage?.Departments ?? 0)</strong></div></div>
+                    <a asp-controller="AssetMovements" asp-action="ForLocation" asp-route-id="@recordId" class="lk-link">View movements &rarr;</a>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <div class="mb-3">
-        <label asp-for="Description" class="form-label">Description <span class="text-muted">(optional)</span></label>
-        <textarea asp-for="Description" class="form-control"></textarea>
+    <div class="register-footer">
+        <div class="d-flex align-items-center flex-wrap" style="gap:10px;">
+            <button type="submit" form="lkDelete" class="btn btn-outline-danger" disabled="@(usage?.Blocked is not null)">Delete</button>
+            <span class="lk-why">@(usage?.Blocked ?? "Nothing uses it yet.")</span>
+        </div>
+        <div class="d-flex ms-auto" style="gap:8px;">
+            <a href="@Url.Action("Index")#l-@recordId" class="btn btn-outline-secondary">Cancel</a>
+            <button type="submit" class="btn btn-primary">Save changes</button>
+        </div>
     </div>
+</form>
 
-    <button type="submit" class="btn btn-primary">Save</button>
-    <a asp-action="Index" class="btn btn-secondary">Cancel</a>
+@* Outside the edit form: a form can't hold another. *@
+<form asp-action="Delete" asp-route-id="@recordId" method="post" id="lkDelete" onsubmit="return confirm('Delete this location? This can\'t be undone.');">
+    @Html.AntiForgeryToken()
 </form>
 
 @if (ViewBag.AuditHistory is List<SchoolInventoryManagement.BLL.DTOs.AuditReportRowDTO> history)
@@ -59,5 +102,35 @@
     @{
         await Html.RenderPartialAsync("_ValidationScriptsPartial");
     }
-    <partial name="_LocationCodeScript" />
+    <script>
+        (function () {
+            var branch = document.querySelector('select[name="BranchID"]');
+            var name = document.getElementById('locationName');
+            var code = document.getElementById('locationCode');
+            var typedCode = true;
+
+            // Upper case, letters and digits, 3 at most.
+            function cleanCode() {
+                var clean = code.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 3);
+                if (clean !== code.value) code.value = clean;
+            }
+            // From the name until the code is typed by hand: the initials of
+            // three or more words, else the first three letters.
+            function suggest() {
+                if (typedCode || code.readOnly) return;
+                var words = name.value.toUpperCase().replace(/[^A-Z0-9 ]/g, '').split(/\s+/).filter(Boolean);
+                code.value = (words.length >= 3 ? words.map(function (w) { return w[0]; }).join('') : words.join('')).slice(0, 3);
+            }
+            function show() {
+                var opt = branch.options[branch.selectedIndex];
+                document.getElementById('showBranch').textContent = branch.value ? opt.text : 'Branch';
+                document.getElementById('showName').textContent = name.value.trim() || 'Name';
+                document.getElementById('showCode').textContent = code.value || 'LIB';
+            }
+            code.addEventListener('input', function () { typedCode = !!code.value; cleanCode(); show(); });
+            name.addEventListener('input', function () { suggest(); show(); });
+            branch.addEventListener('change', show);
+            cleanCode(); show();
+        })();
+    </script>
 }

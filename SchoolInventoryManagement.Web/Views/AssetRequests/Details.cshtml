@@ -149,8 +149,8 @@
     </div>
     <dl class="rq-grid">
         <div><dt>@(isBorrow ? "Pickup location" : "Destination")</dt><dd>@(where ?? "Chosen when approved")</dd></div>
-        <div><dt>Needed from</dt><dd>@(Model.NeededFrom?.ToString("MMM d, yyyy · h:mm tt") ?? "—")</dd></div>
-        <div class="@(overdue ? "is-late" : "")"><dt>@(isBorrow ? "Return by" : "Comes back by")</dt><dd>@(isPermanent ? "Never · permanent" : Model.ReturnBy?.ToString("MMM d, yyyy · h:mm tt") ?? "—")</dd></div>
+        <div><dt>Needed from</dt><dd>@DisplayText.Or(Model.NeededFrom?.ToString("MMM d, yyyy · h:mm tt"), "Not given")</dd></div>
+        <div class="@(overdue ? "is-late" : "")"><dt>@(isBorrow ? "Return by" : "Comes back by")</dt><dd>@DisplayText.Or(isPermanent ? "Never · permanent" : Model.ReturnBy?.ToString("MMM d, yyyy · h:mm tt"), "Not given")</dd></div>
         <div><dt>Reason</dt><dd class="@(string.IsNullOrWhiteSpace(Model.Reason) ? "is-empty" : "")">@(string.IsNullOrWhiteSpace(Model.Reason) ? "None given" : Model.Reason)</dd></div>
     </dl>
     <dl class="rq-grid">

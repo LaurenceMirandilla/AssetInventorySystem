@@ -74,10 +74,10 @@
                     <div class="approve-side-body">
                         <div class="register-side-label mb-2">Transferred to</div>
                         <div class="approve-place">
-                            <strong>@(request.RequestedLocationName ?? "—")</strong>
+                            <strong>@DisplayText.Or(request.RequestedLocationName, "Not chosen")</strong>
                         </div>
                         <dl class="approve-facts">
-                            <div><dt>Needed from</dt><dd>@(request.NeededFrom?.ToString("MMM d · h:mm tt") ?? "—")</dd></div>
+                            <div><dt>Needed from</dt><dd>@DisplayText.Or(request.NeededFrom?.ToString("MMM d · h:mm tt"), "Not given")</dd></div>
                             <div><dt>Until</dt><dd>@(request.ReturnBy?.ToString("MMM d · h:mm tt") ?? "Permanent")</dd></div>
                             <div><dt>Units</dt><dd>@asked</dd></div>
                         </dl>

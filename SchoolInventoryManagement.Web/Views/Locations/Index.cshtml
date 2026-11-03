@@ -1,65 +1,148 @@
 ﻿@model List<SchoolInventoryManagement.BLL.DTOs.LocationDTO>
+@using SchoolInventoryManagement.Web.Helpers
 @{
     ViewData["Title"] = "Locations";
+    var usage = ViewBag.Usage as Dictionary<int, LookupUsage.LocationUsage> ?? new();
+    var branches = ViewBag.BranchList as List<SchoolInventoryManagement.BLL.DTOs.BranchDTO> ?? new();
 }
 @if (TempData["ErrorMessage"] != null)
 {
     <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
 }
 
-<div class="sab-page-head">
+<div class="asset-detail-head mb-3 pb-0 border-0">
     <div>
-        <h2>Locations</h2>
-        <p class="sab-page-sub">@Model.Count location@(Model.Count == 1 ? "" : "s") across all branches.</p>
+        <h2 class="asset-detail-title">Locations</h2>
+        <div class="asset-detail-sub">@Model.Count location@(Model.Count == 1 ? "" : "s") in @Model.Select(l => l.BranchID).Distinct().Count() branch@(Model.Select(l => l.BranchID).Distinct().Count() == 1 ? "" : "es")</div>
     </div>
-    <div class="sab-page-actions">
-        <a asp-action="Create" class="btn btn-primary">+ New Location</a>
+    <div class="asset-detail-actions">
+        <a asp-action="Create" class="btn btn-primary">+ New location</a>
     </div>
 </div>
 
-@if (Model.Any())
+@if (!Model.Any())
 {
     <div class="sab-table-card">
-        <table class="table table-striped">
-            <thead>
-                <tr>
-                    <th>Name</th>
-                    <th>Code</th>
-                    <th>Branch</th>
-                    <th>Description</th>
-                    <th></th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var location in Model)
-                {
-                    <tr>
-                        <td>@location.LocationName</td>
-                        <td><span class="sab-code">@location.LocationCode</span></td>
-                        <td>@location.BranchName</td>
-                        <td>@(location.Description ?? "—")</td>
-                        <td>
-                            <a asp-action="Edit" asp-route-id="@location.LocationID">Edit</a>
-                            <a asp-controller="AssetMovements" asp-action="ForLocation" asp-route-id="@location.LocationID" class="ms-2">Movements</a>
-                            <form asp-action="Delete" asp-route-id="@location.LocationID" method="post" class="d-inline" onsubmit="return confirm('Delete this location?');">
-                                @Html.AntiForgeryToken()
-                                <button type="submit" class="btn btn-link text-danger p-0 ms-2">Delete</button>
-                            </form>
-                        </td>
-                    </tr>
-                }
-            </tbody>
-        </table>
+        <div class="sab-empty">
+            <div class="sab-empty-title">No locations yet</div>
+            <p>A location is a room or store where units are kept when nobody is holding them.</p>
+            <a asp-action="Create" class="btn btn-primary">+ New location</a>
+        </div>
     </div>
 }
 else
 {
-    <div class="card">
-        <div class="sab-empty">
-            <div class="sab-empty-title">No locations yet</div>
-            <p>A location is a room or store an asset can sit in when nobody is holding it.</p>
-            <a asp-action="Create" class="btn btn-primary">+ New Location</a>
-        </div>
+    <div class="sab-table-card myassets lk" data-md data-page-size="10" data-noun="locations">
+        <aside class="myassets-list" aria-label="Locations">
+            <div class="md-toolbar">
+                <label class="asset-search">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+                    <input type="text" data-md-search autocomplete="off" placeholder="Search locations..." aria-label="Search locations" />
+                </label>
+            </div>
+            @foreach (var g in Model.GroupBy(y => y.BranchName).OrderBy(k => k.Key))
+            {
+                <div class="myassets-group" data-md-group>
+                    <div class="myassets-group-label">@g.Key · <span data-md-count>@g.Count()</span></div>
+                    @foreach (var x in g.OrderBy(y => y.LocationName))
+                    {
+                        var u = usage.GetValueOrDefault(x.LocationID);
+                    <button type="button" class="myassets-item" data-entry="l-@x.LocationID"
+                            data-search="@($"{x.LocationName} {x.LocationCode} {x.BranchName} {x.Description}".ToLowerInvariant())">
+                        <span class="myassets-item-main">
+                            <span class="myassets-item-title">@x.LocationName</span>
+                            <span class="myassets-item-sub">@x.LocationCode@(string.IsNullOrWhiteSpace(x.Description) ? "" : " · " + x.Description)</span>
+                        </span>
+                        <span class="lk-count">@(u?.UnitsHere ?? 0)</span>
+                    </button>
+                    }
+                </div>
+            }
+            <div class="myassets-nomatch" data-md-empty hidden>No location matches.</div>
+            <div class="md-foot"><span data-md-range></span><div data-md-pager></div></div>
+        </aside>
+
+        <section class="myassets-detail">
+            @foreach (var x in Model)
+            {
+                var u = usage.GetValueOrDefault(x.LocationID);
+                var formId = "edit-l-" + x.LocationID;
+                <article class="myassets-panel" data-panel="l-@x.LocationID" hidden>
+                    <button type="button" class="myassets-back" data-back>&larr; All locations</button>
+                    <h3 class="myassets-panel-title mt-0">@x.LocationName</h3>
+                    <div class="lk-sub">@x.LocationCode · @x.BranchName@(string.IsNullOrWhiteSpace(x.Description) ? "" : " · " + x.Description)</div>
+
+                    <div class="myassets-stats lk-stats-3">
+                        <div>
+                            <span>Units here now</span><strong>@(u?.UnitsHere ?? 0)</strong>
+                            <a asp-controller="Assets" asp-action="Index" asp-route-locationId="@x.LocationID" class="lk-link">View assets &rarr;</a>
+                        </div>
+                        <div>
+                            <span>Movements this year</span><strong>@(u?.MovementsThisYear ?? 0)</strong>
+                            <a asp-controller="AssetMovements" asp-action="ForLocation" asp-route-id="@x.LocationID" class="lk-link">View movements &rarr;</a>
+                        </div>
+                        <div><span>Departments using it</span><strong>@(u?.Departments ?? 0)</strong></div>
+                    </div>
+
+                    <div class="asset-card register-step mt-3">
+                        <div class="register-step-head">
+                            <div class="register-step-title flex-grow-1">Details</div>
+                            <span class="nr-head-note">edit and save</span>
+                        </div>
+                        <form asp-action="Edit" asp-route-id="@x.LocationID" method="post" id="@formId" class="register-step-body">
+                            @Html.AntiForgeryToken()
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label class="form-label" for="@formId-name">Name</label>
+                                    <input id="@formId-name" name="LocationName" value="@x.LocationName" class="form-control" maxlength="100" required />
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label" for="@formId-code">Code</label>
+                                    <input id="@formId-code" name="LocationCode" value="@x.LocationCode" class="form-control text-uppercase lk-code" maxlength="3"
+                                           pattern="[A-Za-z0-9]{3}" required autocomplete="off" readonly="@((u?.UnitsHere ?? 0) > 0)" />
+                                    <div class="form-text">@((u?.UnitsHere ?? 0) > 0 ? "Locked while assets are here: it's in their barcodes." : "3 letters or digits. Shown on labels and in transfers.")</div>
+                                </div>
+                                <div class="col-md-12">
+                                    <label class="form-label" for="@formId-branch">Branch</label>
+                                    <select id="@formId-branch" name="BranchID" class="form-select" required>
+                                        @foreach (var b in branches)
+                                        {
+                                            <option value="@b.BranchID" selected="@(b.BranchID == x.BranchID)">@b.BranchName</option>
+                                        }
+                                    </select>
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label" for="@formId-desc">Description <span class="register-optional">optional</span></label>
+                                    <textarea id="@formId-desc" name="Description" class="form-control" rows="2" maxlength="255">@x.Description</textarea>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+
+                    <div class="lk-foot">
+                        <form asp-action="Delete" asp-route-id="@x.LocationID" method="post" onsubmit="return confirm('Delete @x.LocationName?');">
+                            @Html.AntiForgeryToken()
+                            <button type="submit" class="btn btn-outline-danger" disabled="@(u?.Blocked is not null)">Delete</button>
+                        </form>
+                        <span class="lk-why">@(u?.Blocked ?? "Nothing uses it yet.")</span>
+                        <div class="lk-foot-actions">
+                            <button type="reset" form="@formId" class="btn btn-outline-secondary">Discard changes</button>
+                            <button type="submit" form="@formId" class="btn btn-primary">Save changes</button>
+                        </div>
+                    </div>
+                </article>
+            }
+        </section>
     </div>
 }
-
+@section Scripts {
+    <script>
+        // Location code: upper case, letters and digits, as the service requires.
+        document.querySelectorAll('.lk-code').forEach(function (input) {
+            input.addEventListener('input', function () {
+                var clean = input.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 3);
+                if (clean !== input.value) input.value = clean;
+            });
+        });
+    </script>
+}

@@ -22,6 +22,19 @@ namespace SchoolInventoryManagement.BLL.DTOs
         public int? RequestID { get; set; }
         public RequestType? RequestType { get; set; }
         public DateTime? RequestReturnBy { get; set; }
+        public RequestStatus? RequestStatus { get; set; }
+
+        // How the assignment ended, when it wasn't an ordinary return:
+        // a permanent Transfer closes it on delivery (the unit stayed in
+        // the room, it wasn't given back), and a request cancelled before
+        // pickup or delivery closes it without a handover. The asset's
+        // History shows these instead of "Returned".
+        public bool EndedAsPermanentTransfer =>
+            ReturnDate is not null && RequestType == SchoolInventoryManagement.DAL.Entities.Enums.RequestType.Transfer
+            && RequestReturnBy is null && RequestStatus == SchoolInventoryManagement.DAL.Entities.Enums.RequestStatus.Fulfilled;
+
+        public bool EndedByCancellation =>
+            ReturnDate is not null && RequestStatus == SchoolInventoryManagement.DAL.Entities.Enums.RequestStatus.Cancelled;
 
         public UserSummaryDTO AssignedToUser { get; set; } = null!;
         public UserSummaryDTO AssignedByUser { get; set; } = null!;

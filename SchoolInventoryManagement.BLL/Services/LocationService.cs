@@ -71,15 +71,6 @@ namespace SchoolInventoryManagement.BLL.Services
             return locations.Select(l => l.ToDTO()).ToList();
         }
 
-        public async Task<List<LocationDTO>> GetLocationsByBranchAsync(int branchId)
-        {
-            var locations = await LocationQueryWithIncludes()
-                .Where(l => l.BranchID == branchId)
-                .OrderBy(l => l.LocationName)
-                .ToListAsync();
-            return locations.Select(l => l.ToDTO()).ToList();
-        }
-
         public async Task UpdateLocationAsync(int locationId, UpdateLocationDTO dto, int actingUserId)
         {
             await PermissionHelper.EnsureIsAssetManagerAsync(_context, actingUserId);

@@ -12,11 +12,13 @@ namespace SchoolInventoryManagement.Web.Controllers
     {
         private readonly IAuthService _authService;
         private readonly LoginThrottle _loginThrottle;
+        private readonly AccessDeniedText _accessDeniedText;
 
-        public AccountController(IAuthService authService, LoginThrottle loginThrottle)
+        public AccountController(IAuthService authService, LoginThrottle loginThrottle, AccessDeniedText accessDeniedText)
         {
             _authService = authService;
             _loginThrottle = loginThrottle;
+            _accessDeniedText = accessDeniedText;
         }
 
         [HttpGet]
@@ -34,33 +36,37 @@ namespace SchoolInventoryManagement.Web.Controllers
 
             // Locked out after too many wrong passwords: refused without
             // checking the password, and not counted as another try.
-            var locked = _loginThrottle.LockoutRemaining(model.Email);
+            var locked = _loginThrottle.LockoutRemaining(model.Username);
             if (locked is not null)
                 return LockedOut(model, locked.Value);
 
-            var user = await _authService.ValidateCredentialsAsync(model.Email, model.Password);
+            var user = await _authService.ValidateCredentialsAsync(model.Username, model.Password);
 
             if (user is null)
             {
-                var (lockout, triesLeft) = _loginThrottle.RecordFailure(model.Email);
+                var (lockout, triesLeft) = _loginThrottle.RecordFailure(model.Username);
                 if (lockout is not null)
                     return LockedOut(model, lockout.Value);
 
                 ModelState.AddModelError(string.Empty, triesLeft <= 2
-                    ? $"Invalid email or password. {triesLeft} more {(triesLeft == 1 ? "try" : "tries")} before a {(int)LoginThrottle.LockoutLength.TotalSeconds}-second wait."
-                    : "Invalid email or password.");
+                    ? $"Invalid username or password. {triesLeft} more {(triesLeft == 1 ? "try" : "tries")} before a {(int)LoginThrottle.LockoutLength.TotalSeconds}-second wait."
+                    : "Invalid username or password.");
                 return View(model);
             }
 
-            _loginThrottle.Reset(model.Email);
+            _loginThrottle.Reset(model.Username);
 
             var claims = new List<Claim>
             {
                 new Claim(ClaimTypes.NameIdentifier, user.UserID.ToString()),
                 new Claim(ClaimTypes.Name, $"{user.FirstName} {user.LastName}"),
-                new Claim(ClaimTypes.Email, user.Email),
+                new Claim("username", user.Username),
                 new Claim(ClaimTypes.Role, user.Role.RoleName)
             };
+            // Starting password: every page but Change password is closed
+            // until they choose their own.
+            if (user.MustChangePassword)
+                claims.Add(new Claim(AccountDefaults.ClaimType, "true"));
 
             var claimsIdentity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
 
@@ -69,7 +75,9 @@ namespace SchoolInventoryManagement.Web.Controllers
                 new ClaimsPrincipal(claimsIdentity),
                 new AuthenticationProperties { IsPersistent = model.RememberMe });
 
-            return RedirectToAction("Index", "Home");
+            return user.MustChangePassword
+                ? RedirectToAction("ChangePassword", "Users")
+                : RedirectToAction("Index", "Home");
         }
 
         // The sign-in page again, with the wait shown and the button held
@@ -91,8 +99,12 @@ namespace SchoolInventoryManagement.Web.Controllers
             return RedirectToAction("Login");
         }
 
-        public IActionResult AccessDenied()
+        // Where the sign-in cookie sends a signed-in user whose role a page
+        // doesn't allow, with that page as ReturnUrl. Says who the page is
+        // for and who they're signed in as.
+        public IActionResult AccessDenied(string? returnUrl)
         {
+            ViewBag.WhoItIsFor = Url.IsLocalUrl(returnUrl) ? _accessDeniedText.For(returnUrl) : null;
             return View();
         }
     }

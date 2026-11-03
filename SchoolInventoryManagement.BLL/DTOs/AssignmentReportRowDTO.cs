@@ -14,7 +14,7 @@ namespace SchoolInventoryManagement.BLL.DTOs
         public string AssetName { get; set; } = null!;
 
         public string AssignedToName { get; set; } = null!;
-        public string AssignedToEmail { get; set; } = null!;
+        public string AssignedToUsername { get; set; } = null!;
         public string AssignedToRole { get; set; } = null!;
         public string? DepartmentName { get; set; }
 
@@ -23,5 +23,10 @@ namespace SchoolInventoryManagement.BLL.DTOs
         public int DaysOut { get; set; }
         public ConditionStatus ConditionOnAssignment { get; set; }
         public string? Remarks { get; set; }
+
+        // When it should come back (the request's return date; none for a
+        // direct assignment or a permanent transfer), and whether it's late.
+        public DateTime? DueBack { get; set; }
+        public bool IsOverdue { get; set; }
     }
 }

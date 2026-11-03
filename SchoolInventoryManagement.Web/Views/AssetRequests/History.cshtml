@@ -191,7 +191,7 @@
                             <span class="myassets-item-sub">@Title(r)</span>
                             <span class="md-tags">
                                 <span class="md-tag @(r.RequestType == RequestType.Transfer ? "is-transfer" : "")">@r.RequestType</span>
-                                by @(r.ApprovedByUser?.FullName ?? "—")@(r.ApprovalDate is not null ? " · " + r.ApprovalDate.Value.ToString("h:mm tt") : "")
+                                by @DisplayText.Or(r.ApprovedByUser?.FullName, "nobody recorded")@(r.ApprovalDate is not null ? " · " + r.ApprovalDate.Value.ToString("h:mm tt") : "")
                             </span>
                         </span>
                         <span class="asset-pill asset-status md-pill @Outcome(r).Css">@Outcome(r).Label</span>
@@ -274,7 +274,7 @@
 
                 <div class="decision-card @(rejected ? "is-rejected" : "")">
                     <div class="min-w-0">
-                        <div class="decision-title">@(rejected ? "Rejected" : "Approved") by @(r.ApprovedByUser?.FullName ?? "—")</div>
+                        <div class="decision-title">@(rejected ? "Rejected" : "Approved") by @DisplayText.Or(r.ApprovedByUser?.FullName, "nobody recorded")</div>
                         <div class="decision-meta">
                             @(r.ApprovalDate?.ToString("MMM d, yyyy · h:mm tt") ?? "")@(r.ApprovedByUser != null ? " · " + r.ApprovedByUser.RoleName : "")
                         </div>
@@ -288,10 +288,10 @@
                 <div class="myassets-stats">
                     <div>
                         <span>Now</span>
-                        <strong class="@(rejected ? "" : "text-success")">@(rejected ? "—" : DisplayText.Humanize(r.RequestStatus.ToString()))</strong>
+                        <strong class="@(rejected ? "" : "text-success")">@DisplayText.Or(rejected ? null : DisplayText.Humanize(r.RequestStatus.ToString()), "Never went out")</strong>
                     </div>
-                    <div><span>@(isBorrow ? "Pickup at" : "Move to")</span><strong>@((isBorrow ? r.PickupLocationName ?? r.RequestedLocationName : r.RequestedLocationName) ?? "—")</strong></div>
-                    <div><span>Needed</span><strong>@(r.NeededFrom?.ToString("MMM d") ?? "—")@(r.ReturnBy is not null ? " → " + r.ReturnBy.Value.ToString("MMM d") : "")</strong></div>
+                    <div><span>@(isBorrow ? "Pickup at" : "Move to")</span><strong>@DisplayText.Or(isBorrow ? r.PickupLocationName ?? r.RequestedLocationName : r.RequestedLocationName, "Not chosen")</strong></div>
+                    <div><span>Needed</span><strong>@DisplayText.Or(r.NeededFrom?.ToString("MMM d"), "Not given")@(r.ReturnBy is not null ? " → " + r.ReturnBy.Value.ToString("MMM d") : "")</strong></div>
                     <div><span>Department</span><strong>@r.DepartmentName</strong></div>
                 </div>
 

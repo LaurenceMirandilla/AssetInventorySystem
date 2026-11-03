@@ -8,6 +8,11 @@ namespace SchoolInventoryManagement.BLL.DTOs
         public int MovementID { get; set; }
         public int AssetID { get; set; }
         public string AssetCode { get; set; } = null!;
+        public string AssetName { get; set; } = null!;
+
+        // Which way it went, for a location's In / Out view.
+        public int? SourceLocationID { get; set; }
+        public int DestinationLocationID { get; set; }
 
         public string? SourceLocationName { get; set; }
         public string DestinationLocationName { get; set; } = null!;

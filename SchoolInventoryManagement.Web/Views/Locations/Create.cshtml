@@ -1,51 +1,117 @@
 ﻿@model SchoolInventoryManagement.BLL.DTOs.CreateLocationDTO
+@using SchoolInventoryManagement.Web.Helpers
+@inject LookupUsage Usage
 @{
     ViewData["Title"] = "New Location";
 }
 
-<h2>New Location</h2>
-
-<form asp-action="Create" method="post">
+<form asp-action="Create" method="post" class="register-form page-fill" id="lkForm">
     @Html.AntiForgeryToken()
-    <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
 
-    <div class="mb-3">
-        <label asp-for="BranchID" class="form-label">Branch</label>
-        <select asp-for="BranchID" asp-items="ViewBag.Branches" class="form-select">
-            <option value="">-- Select Branch --</option>
-        </select>
-        <span asp-validation-for="BranchID" class="text-danger"></span>
-    </div>
-
-    <div class="mb-3">
-        <label asp-for="LocationName" class="form-label">Location Name</label>
-        <input asp-for="LocationName" class="form-control" placeholder="e.g. Room 204, IT Storage" />
-        <span asp-validation-for="LocationName" class="text-danger"></span>
-    </div>
-
-    <div class="mb-3" style="max-width:320px;">
-        <label asp-for="LocationCode" class="form-label"></label>
-        <input asp-for="LocationCode" id="locationCode" class="form-control text-uppercase" maxlength="3"
-               placeholder="e.g. LIB or 204" autocomplete="off" />
-        <span asp-validation-for="LocationCode" class="text-danger"></span>
-        <div class="form-text">
-            Exactly 3 letters or digits, unique within the branch. Barcodes made for assets here look like
-            <span class="sab-code">M-<span id="codeExample">LIB</span>-CHR-0001</span>.
+    <div class="asset-detail-head">
+        <div>
+            <nav class="asset-crumbs" aria-label="Breadcrumb">
+                <a asp-action="Index">Locations</a>
+                <span aria-hidden="true">&rsaquo;</span>
+                <span>New location</span>
+            </nav>
+            <h2 class="asset-detail-title">New location</h2>
+            <div class="asset-detail-sub">A room or area where units are kept.</div>
         </div>
     </div>
 
-    <div class="mb-3">
-        <label asp-for="Description" class="form-label">Description <span class="text-muted">(optional)</span></label>
-        <textarea asp-for="Description" class="form-control"></textarea>
+    <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+
+    <div class="row g-3 align-items-start">
+        <div class="col-lg-8">
+            <div class="asset-card register-step">
+                <div class="register-step-head"><div class="register-step-title">Details</div></div>
+                <div class="register-step-body">
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label asp-for="BranchID" class="form-label">Branch</label>
+                            <select asp-for="BranchID" asp-items="ViewBag.Branches" class="form-select">
+                                <option value="">Select a branch</option>
+                            </select>
+                            <div class="form-text">Pick the branch first; codes are unique within it.</div>
+                            <span asp-validation-for="BranchID" class="text-danger small"></span>
+                        </div>
+                        <div class="col-md-6">
+                            <label asp-for="LocationName" class="form-label">Name</label>
+                            <input asp-for="LocationName" class="form-control" id="locationName" maxlength="100" placeholder="e.g. Library Annex" />
+                            <span asp-validation-for="LocationName" class="text-danger small"></span>
+                        </div>
+                        <div class="col-md-6">
+                            <label asp-for="LocationCode" class="form-label">Code</label>
+                            <input asp-for="LocationCode" class="form-control text-uppercase" id="locationCode" maxlength="3" autocomplete="off" placeholder="e.g. LIB" />
+                            <div class="form-text">Suggested from the name. You can change it.</div>
+                            <span asp-validation-for="LocationCode" class="text-danger small"></span>
+                        </div>
+                        <div class="col-12">
+                            <label asp-for="Description" class="form-label">Description <span class="register-optional">optional</span></label>
+                            <textarea asp-for="Description" class="form-control" rows="3" maxlength="255" placeholder="e.g. Main Building, 3rd floor, beside the reading room."></textarea>
+                            <span asp-validation-for="Description" class="text-danger small"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="asset-card register-step lk-side">
+                <div class="register-step-head"><div class="register-step-title">How it will show</div></div>
+                <div class="register-step-body">
+                    <div class="lk-code-box">
+                        <div class="lk-code-label">In dropdowns and labels</div>
+                        <div class="lk-show-name"><span id="showBranch">Branch</span> &rsaquo; <span id="showName">Name</span></div>
+                        <span class="asset-code-chip" id="showCode">LIB</span>
+                    </div>
+                    <p class="lk-side-note">After saving, it can be picked as a pickup point, a transfer destination and a return location.</p>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <button type="submit" class="btn btn-primary">Create</button>
-    <a asp-action="Index" class="btn btn-secondary">Cancel</a>
+    <div class="register-footer">
+        <div class="d-flex ms-auto" style="gap:8px;">
+            <a asp-action="Index" class="btn btn-outline-secondary">Cancel</a>
+            <button type="submit" class="btn btn-primary">Create location</button>
+        </div>
+    </div>
 </form>
 
 @section Scripts {
     @{
         await Html.RenderPartialAsync("_ValidationScriptsPartial");
     }
-    <partial name="_LocationCodeScript" />
+    <script>
+        (function () {
+            var branch = document.querySelector('select[name="BranchID"]');
+            var name = document.getElementById('locationName');
+            var code = document.getElementById('locationCode');
+            var typedCode = !!code.value;
+
+            // Upper case, letters and digits, 3 at most.
+            function cleanCode() {
+                var clean = code.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 3);
+                if (clean !== code.value) code.value = clean;
+            }
+            // From the name until the code is typed by hand: the initials of
+            // three or more words, else the first three letters.
+            function suggest() {
+                if (typedCode || code.readOnly) return;
+                var words = name.value.toUpperCase().replace(/[^A-Z0-9 ]/g, '').split(/\s+/).filter(Boolean);
+                code.value = (words.length >= 3 ? words.map(function (w) { return w[0]; }).join('') : words.join('')).slice(0, 3);
+            }
+            function show() {
+                var opt = branch.options[branch.selectedIndex];
+                document.getElementById('showBranch').textContent = branch.value ? opt.text : 'Branch';
+                document.getElementById('showName').textContent = name.value.trim() || 'Name';
+                document.getElementById('showCode').textContent = code.value || 'LIB';
+            }
+            code.addEventListener('input', function () { typedCode = !!code.value; cleanCode(); show(); });
+            name.addEventListener('input', function () { suggest(); show(); });
+            branch.addEventListener('change', show);
+            cleanCode(); show();
+        })();
+    </script>
 }

@@ -1,73 +1,136 @@
 ﻿@model List<SchoolInventoryManagement.BLL.DTOs.CategoryDTO>
+@using SchoolInventoryManagement.Web.Helpers
 @{
     ViewData["Title"] = "Categories";
+    var usage = ViewBag.Usage as Dictionary<int, LookupUsage.CategoryUsage> ?? new();
+    var categories = Model.OrderBy(c => c.CategoryName).ToList();
 }
 @if (TempData["ErrorMessage"] != null)
 {
     <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
 }
 
-<div class="sab-page-head">
+<div class="asset-detail-head mb-3 pb-0 border-0">
     <div>
-        <h2>Categories</h2>
-        <p class="sab-page-sub">
-            @Model.Count categor@(Model.Count == 1 ? "y" : "ies"), @Model.Sum(c => c.AssetCount) asset@(Model.Sum(c => c.AssetCount) == 1 ? "" : "s") in all.
-            Categories group models; models group the physical units. Each category's prefix starts its asset codes.
-        </p>
+        <h2 class="asset-detail-title">Categories</h2>
+        <div class="asset-detail-sub">@Model.Count categor@(Model.Count == 1 ? "y" : "ies") · the code prefix starts every asset code</div>
     </div>
-    <div class="sab-page-actions">
-        <a asp-action="Create" class="btn btn-primary">+ New Category</a>
+    <div class="asset-detail-actions">
+        <a asp-action="Create" class="btn btn-primary">+ New category</a>
     </div>
 </div>
 
-@if (Model.Any())
+@if (!categories.Any())
 {
     <div class="sab-table-card">
-        <table class="table table-striped">
-            <thead>
-                <tr>
-                    <th>Name</th>
-                    <th>Code</th>
-                    <th class="text-end">Models</th>
-                    <th class="text-end">Assets</th>
-                    <th>Description</th>
-                    <th></th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var category in Model)
-                {
-                    <tr>
-                        <td class="fw-semibold">@category.CategoryName</td>
-                        <td><span class="sab-code">@category.CodePrefix</span></td>
-                        <td class="text-end">@category.ModelCount</td>
-                        <td class="text-end">
-                            @* Clicking the count opens the asset list filtered to the category, disposed
-                               units included so the list matches this count. *@
-                            <a asp-controller="Assets" asp-action="Index" asp-route-categoryId="@category.CategoryID" asp-route-includeDisposed="true" class="fw-semibold">@category.AssetCount</a>
-                            <div class="text-muted small">@category.AvailableCount available</div>
-                        </td>
-                        <td>@(string.IsNullOrWhiteSpace(category.Description) ? "—" : category.Description)</td>
-                        <td class="text-nowrap">
-                            <a asp-action="Edit" asp-route-id="@category.CategoryID">Edit</a>
-                            <form asp-action="Delete" asp-route-id="@category.CategoryID" method="post" class="d-inline" onsubmit="return confirm('Delete this category?');">
-                                @Html.AntiForgeryToken()
-                                <button type="submit" class="btn btn-link text-danger p-0 ms-2">Delete</button>
-                            </form>
-                        </td>
-                    </tr>
-                }
-            </tbody>
-        </table>
+        <div class="sab-empty">
+            <div class="sab-empty-title">No categories yet</div>
+            <p>A category is the top of the catalog. Add one before adding models.</p>
+            <a asp-action="Create" class="btn btn-primary">+ New category</a>
+        </div>
     </div>
 }
 else
 {
-    <div class="card">
-        <div class="sab-empty">
-            <div class="sab-empty-title">No categories yet</div>
-            <p>A category is the top of the catalog — add one before adding models.</p>
-            <a asp-action="Create" class="btn btn-primary">+ New Category</a>
-        </div>
+    <div class="sab-table-card myassets lk" data-md data-page-size="10" data-noun="categories">
+        <aside class="myassets-list" aria-label="Categories">
+            <div class="md-toolbar">
+                <label class="asset-search">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+                    <input type="text" data-md-search autocomplete="off" placeholder="Search categories..." aria-label="Search categories" />
+                </label>
+            </div>
+            <div class="myassets-group" data-md-group>
+                @foreach (var c in categories)
+                {
+                    <button type="button" class="myassets-item" data-entry="c-@c.CategoryID"
+                            data-search="@($"{c.CategoryName} {c.CodePrefix} {c.Description}".ToLowerInvariant())">
+                        <span class="myassets-item-main">
+                            <span class="myassets-item-title">@c.CategoryName</span>
+                            <span class="myassets-item-sub">@c.ModelCount model@(c.ModelCount == 1 ? "" : "s")</span>
+                        </span>
+                        <span class="lk-count">@c.AssetCount asset@(c.AssetCount == 1 ? "" : "s")</span>
+                    </button>
+                }
+            </div>
+            <div class="myassets-nomatch" data-md-empty hidden>No category matches.</div>
+            <div class="md-foot"><span data-md-range></span><div data-md-pager></div></div>
+        </aside>
+
+        <section class="myassets-detail">
+            @foreach (var c in categories)
+            {
+                var u = usage.GetValueOrDefault(c.CategoryID);
+                var formId = "edit-c-" + c.CategoryID;
+                <article class="myassets-panel" data-panel="c-@c.CategoryID" hidden>
+                    <button type="button" class="myassets-back" data-back>&larr; All categories</button>
+                    <h3 class="myassets-panel-title mt-0">@c.CategoryName</h3>
+                    <div class="lk-sub">Code prefix @c.CodePrefix@(u is null ? "" : " · new assets are numbered " + u.NextCode + "...")</div>
+
+                    <div class="myassets-stats lk-stats-3">
+                        <div>
+                            <span>Models</span><strong>@c.ModelCount</strong>
+                            <a asp-controller="Models" asp-action="Index" class="lk-link">View models &rarr;</a>
+                        </div>
+                        <div>
+                            <span>Assets</span><strong>@c.AssetCount</strong>
+                            @* Disposed included, so the list matches this count. *@
+                            <a asp-controller="Assets" asp-action="Index" asp-route-categoryId="@c.CategoryID" asp-route-includeDisposed="true" class="lk-link">View assets &rarr;</a>
+                        </div>
+                        <div><span>Available now</span><strong>@c.AvailableCount</strong></div>
+                    </div>
+
+                    <div class="asset-card register-step mt-3">
+                        <div class="register-step-head">
+                            <div class="register-step-title flex-grow-1">Details</div>
+                            <span class="nr-head-note">edit and save</span>
+                        </div>
+                        <form asp-action="Edit" asp-route-id="@c.CategoryID" method="post" id="@formId" class="register-step-body">
+                            @Html.AntiForgeryToken()
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label class="form-label" for="@formId-name">Name</label>
+                                    <input id="@formId-name" name="CategoryName" value="@c.CategoryName" class="form-control" maxlength="100" required />
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label" for="@formId-code">Code prefix</label>
+                                    <input id="@formId-code" name="CodePrefix" value="@c.CodePrefix" class="form-control text-uppercase lk-prefix" maxlength="3"
+                                           pattern="[A-Za-z]{3}" required autocomplete="off" />
+                                    <div class="form-text">Exactly 3 letters. Changing it only affects new assets.</div>
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label" for="@formId-desc">Description <span class="register-optional">optional</span></label>
+                                    <textarea id="@formId-desc" name="Description" class="form-control" rows="2" maxlength="255">@c.Description</textarea>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+
+                    <div class="lk-foot">
+                        <form asp-action="Delete" asp-route-id="@c.CategoryID" method="post" onsubmit="return confirm('Delete @c.CategoryName?');">
+                            @Html.AntiForgeryToken()
+                            <button type="submit" class="btn btn-outline-danger" disabled="@(u?.Blocked is not null)">Delete</button>
+                        </form>
+                        <span class="lk-why">@(u?.Blocked ?? "Nothing uses it yet.")</span>
+                        <div class="lk-foot-actions">
+                            <button type="reset" form="@formId" class="btn btn-outline-secondary">Discard changes</button>
+                            <button type="submit" form="@formId" class="btn btn-primary">Save changes</button>
+                        </div>
+                    </div>
+                </article>
+            }
+        </section>
     </div>
+}
+
+@section Scripts {
+    <script>
+        // Code prefix: upper case, letters only, as the service requires.
+        document.querySelectorAll('.lk-prefix').forEach(function (input) {
+            input.addEventListener('input', function () {
+                var clean = input.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3);
+                if (clean !== input.value) input.value = clean;
+            });
+        });
+    </script>
 }

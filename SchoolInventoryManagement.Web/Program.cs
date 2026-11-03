@@ -24,6 +24,12 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
     });
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<SchoolInventoryManagement.Web.Helpers.AuditText>();
+// Counts and delete blockers on the catalog / organisation pages.
+builder.Services.AddScoped<SchoolInventoryManagement.Web.Helpers.LookupUsage>();
+// What one person holds and has open (Users pages).
+builder.Services.AddScoped<SchoolInventoryManagement.Web.Helpers.UserFacts>();
+// "Recording returns is for ..." on the Access denied page.
+builder.Services.AddSingleton<SchoolInventoryManagement.Web.Helpers.AccessDeniedText>();
 builder.Services.AddScoped<IAssetService, AssetService>();
 builder.Services.AddScoped<IAssetRequestService, AssetRequestService>();
 builder.Services.AddScoped<IAssetAssignmentService, AssetAssignmentService>();
@@ -38,7 +44,11 @@ builder.Services.AddScoped<IDepartmentService, DepartmentService>();
 builder.Services.AddScoped<ILocationService, LocationService>();
 builder.Services.AddScoped<IReportService, ReportService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
-builder.Services.AddControllersWithViews();
+// Someone on a starting password can only change it (Helpers/MustChangePasswordFilter).
+builder.Services.AddControllersWithViews(options =>
+    options.Filters.Add<SchoolInventoryManagement.Web.Helpers.MustChangePasswordFilter>());
+// The password new accounts start with (appsettings: Accounts:DefaultPassword).
+builder.Services.AddSingleton<SchoolInventoryManagement.Web.Helpers.AccountDefaults>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<AuditSaveChangesInterceptor>();
 builder.Services.AddScoped<INewItemRequestService, NewItemRequestService>();

@@ -21,14 +21,22 @@ namespace SchoolInventoryManagement.DAL.Entities
         [MaxLength(50)]
         public string LastName { get; set; } = null!;
 
-        // The UNIQUE constraint for Email will be mapped in ApplicationDbContext
+        // What the person types to sign in. Unique, case doesn't matter
+        // (unique index in ApplicationDbContext; the rules are in
+        // BLL UsernamePolicy). Replaced the old Email column in script 015.
         [Required]
-        [MaxLength(100)]
-        public string Email { get; set; } = null!;
+        [MaxLength(50)]
+        public string Username { get; set; } = null!;
 
         [Required]
         [MaxLength(255)]
         public string PasswordHash { get; set; } = null!;
+
+        // Set on a new account (it starts with the shared default password)
+        // and after an administrator resets the password. While set, the
+        // person can use nothing but Change password until they choose
+        // their own (Web MustChangePasswordFilter). Added by script 017.
+        public bool MustChangePassword { get; set; }
 
         [Required]
         [MaxLength(20)]

@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using SchoolInventoryManagement.BLL.Services;
 
 namespace SchoolInventoryManagement.Web.ViewModels
 {
@@ -13,11 +14,12 @@ namespace SchoolInventoryManagement.Web.ViewModels
         // Display only, so the form can say whose password is being reset.
         // Never posted back as anything the service trusts.
         public string UserFullName { get; set; } = string.Empty;
-        public string Email { get; set; } = string.Empty;
+        public string Username { get; set; } = string.Empty;
 
         [Required]
         [DataType(DataType.Password)]
-        [MinLength(8, ErrorMessage = "Use at least 8 characters.")]
+        [MinLength(PasswordPolicy.MinLength, ErrorMessage = PasswordPolicy.TooShortMessage)]
+        [RegularExpression(PasswordPolicy.HasNumberPattern, ErrorMessage = PasswordPolicy.NoNumberMessage)]
         [Display(Name = "New Password")]
         public string NewPassword { get; set; } = null!;
 

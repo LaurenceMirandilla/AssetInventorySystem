@@ -3,13 +3,13 @@ using Microsoft.Extensions.Caching.Memory;
 
 namespace SchoolInventoryManagement.Web.Helpers
 {
-    // Slows down password guessing. Every 5th wrong password for an email
-    // (5th, 10th, 15th, ...) locks that email out of signing in for 30
+    // Slows down password guessing. Every 5th wrong password for a username
+    // (5th, 10th, 15th, ...) locks that username out of signing in for 30
     // seconds. A correct sign-in clears the count. Attempts made while
     // locked out are refused without checking the password and do not
     // count.
     //
-    // Kept in memory, keyed by email: nothing to store in the database,
+    // Kept in memory, keyed by username (any case): nothing to store in the database,
     // and an app restart simply starts everyone fresh. A count with no
     // new attempts for 15 minutes is forgotten.
     public class LoginThrottle
@@ -31,13 +31,13 @@ namespace SchoolInventoryManagement.Web.Helpers
             public DateTimeOffset LockedUntil;
         }
 
-        private static string Key(string email) =>
-            "login-failures:" + (email ?? "").Trim().ToUpperInvariant();
+        private static string Key(string username) =>
+            "login-failures:" + (username ?? "").Trim().ToUpperInvariant();
 
-        // Time left on a lockout, or null when the email may try now.
-        public TimeSpan? LockoutRemaining(string email)
+        // Time left on a lockout, or null when the username may try now.
+        public TimeSpan? LockoutRemaining(string username)
         {
-            if (!_cache.TryGetValue(Key(email), out Entry? entry) || entry is null)
+            if (!_cache.TryGetValue(Key(username), out Entry? entry) || entry is null)
                 return null;
 
             lock (entry)
@@ -49,9 +49,9 @@ namespace SchoolInventoryManagement.Web.Helpers
 
         // Counts a wrong password. Returns the lockout it started (every
         // 5th failure), or null with how many tries are left before one.
-        public (TimeSpan? Lockout, int TriesLeft) RecordFailure(string email)
+        public (TimeSpan? Lockout, int TriesLeft) RecordFailure(string username)
         {
-            var entry = _cache.GetOrCreate(Key(email), e =>
+            var entry = _cache.GetOrCreate(Key(username), e =>
             {
                 e.SlidingExpiration = ForgetAfter;
                 return new Entry();
@@ -70,6 +70,6 @@ namespace SchoolInventoryManagement.Web.Helpers
             }
         }
 
-        public void Reset(string email) => _cache.Remove(Key(email));
+        public void Reset(string username) => _cache.Remove(Key(username));
     }
 }

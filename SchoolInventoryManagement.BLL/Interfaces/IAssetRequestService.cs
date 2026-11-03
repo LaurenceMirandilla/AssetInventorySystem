@@ -31,7 +31,5 @@ namespace SchoolInventoryManagement.BLL.Interfaces
         // The requester withdrawing a Pending request. The reason is
         // required and kept on the request (Remarks).
         Task CancelRequestAsync(int requestId, byte[] rowVersion, int actingUserId, string reason);
-        Task FulfillRequestAsync(
-            int requestId, byte[] rowVersion, int actingUserId, bool notifyRequester = true);
     }
 }

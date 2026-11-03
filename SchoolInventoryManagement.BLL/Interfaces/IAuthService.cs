@@ -4,6 +4,6 @@ namespace SchoolInventoryManagement.BLL.Interfaces
 {
     public interface IAuthService
     {
-        Task<User?> ValidateCredentialsAsync(string email, string password);
+        Task<User?> ValidateCredentialsAsync(string username, string password);
     }
 }

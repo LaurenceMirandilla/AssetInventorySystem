@@ -221,17 +221,18 @@
 
         <div class="login-card">
             <h1>Welcome back</h1>
-            <p class="login-lead">Sign in with the school email your account was created with.</p>
+            <p class="login-lead">Sign in with the username your account was created with.</p>
 
             <form asp-controller="Account" asp-action="Login" method="post">
                 @Html.AntiForgeryToken()
                 <div asp-validation-summary="ModelOnly" class="text-danger small mb-3"></div>
 
                 <div class="mb-3">
-                    <label asp-for="Email" class="form-label">Email address</label>
-                    <input asp-for="Email" class="form-control" autocomplete="username"
-                           placeholder="name@steannedebeaupre.edu.ph" />
-                    <span asp-validation-for="Email" class="text-danger small"></span>
+                    <label asp-for="Username" class="form-label">Username</label>
+                    <input asp-for="Username" class="form-control" autocomplete="username"
+                           autocapitalize="none" autocorrect="off" spellcheck="false"
+                           placeholder="e.g. JuanDelaCruz" />
+                    <span asp-validation-for="Username" class="text-danger small"></span>
                 </div>
 
                 <div class="mb-3">

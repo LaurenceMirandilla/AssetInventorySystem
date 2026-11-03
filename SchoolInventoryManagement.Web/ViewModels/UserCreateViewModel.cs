@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel.DataAnnotations;
+using SchoolInventoryManagement.BLL.Services;
 
 namespace SchoolInventoryManagement.Web.ViewModels
 {
@@ -26,20 +27,20 @@ namespace SchoolInventoryManagement.Web.ViewModels
         [Display(Name = "Last Name")]
         public string LastName { get; set; } = null!;
 
-        [Required]
-        [EmailAddress]
-        [MaxLength(100)]
-        public string Email { get; set; } = null!;
+        [Required(ErrorMessage = "Enter a username.")]
+        [RegularExpression(UsernamePolicy.Pattern, ErrorMessage = UsernamePolicy.Message)]
+        [Display(Name = "Username")]
+        public string Username { get; set; } = null!;
 
-        [Required]
+        // The first password. Blank (or left as the shared default) means
+        // the default from AccountDefaults; anything else replaces it and
+        // has to meet the rules and match the confirmation. Checked in
+        // UsersController.Create. Either way they must change it on first
+        // sign-in.
         [DataType(DataType.Password)]
-        [MinLength(8, ErrorMessage = "Use at least 8 characters.")]
-        public string Password { get; set; } = null!;
+        public string? Password { get; set; }
 
-        [Required]
         [DataType(DataType.Password)]
-        [Compare(nameof(Password), ErrorMessage = "The two passwords don't match.")]
-        [Display(Name = "Confirm Password")]
-        public string ConfirmPassword { get; set; } = null!;
+        public string? ConfirmPassword { get; set; }
     }
 }

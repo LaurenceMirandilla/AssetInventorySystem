@@ -30,5 +30,9 @@ namespace SchoolInventoryManagement.BLL.Interfaces
         Task<AssetAssignmentResponseDTO?> GetAssignmentByIdAsync(int assignmentId);
         Task<List<AssetAssignmentResponseDTO>> GetAssignmentHistoryForAssetAsync(int assetId);
         Task<List<AssetAssignmentResponseDTO>> GetActiveAssignmentsForUserAsync(int userId);
+
+        // What they held before and gave back (or was handed on for good),
+        // newest first. For the Users page's "Past items" tab.
+        Task<List<AssetAssignmentResponseDTO>> GetPastAssignmentsForUserAsync(int userId);
     }
 }

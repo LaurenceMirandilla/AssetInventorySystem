@@ -77,8 +77,10 @@ namespace SchoolInventoryManagement.DAL.Seed
                     BranchID = branch.BranchID,
                     FirstName = "System",
                     LastName = "Administrator",
-                    Email = "Admin@sabs.edu.ph",
+                    Username = "Admin",
                     Status = "Active",
+                    // The seeded password is a starting one, like any new account's.
+                    MustChangePassword = true,
                     PasswordHash = string.Empty // placeholder, hashed below
                 };
 
@@ -111,14 +113,14 @@ namespace SchoolInventoryManagement.DAL.Seed
                 if (wasGenerated)
                 {
                     const string warning =
-                        "Seeded administrator {Email} with a GENERATED password: {Password}  " +
+                        "Seeded administrator {Username} with a GENERATED password: {Password}  " +
                         "Sign in and change it now. It is stored nowhere else.";
 
                     if (logger is not null)
-                        logger.LogWarning(warning, admin.Email, seedPassword);
+                        logger.LogWarning(warning, admin.Username, seedPassword);
                     else
                         Console.WriteLine(
-                            $"Seeded administrator {admin.Email} with GENERATED password: " +
+                            $"Seeded administrator {admin.Username} with GENERATED password: " +
                             $"{seedPassword}  Sign in and change it now.");
                 }
             }

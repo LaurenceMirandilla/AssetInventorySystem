@@ -408,7 +408,7 @@ namespace SchoolInventoryManagement.DAL.Context
                 .IsUnique();
 
             modelBuilder.Entity<User>()
-                .HasIndex(u => u.Email)
+                .HasIndex(u => u.Username)
                 .IsUnique();
 
             modelBuilder.Entity<Category>()

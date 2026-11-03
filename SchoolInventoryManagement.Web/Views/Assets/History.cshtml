@@ -89,7 +89,18 @@
                                     <td>@{ Person(a.AssignedByUser.FullName); }</td>
                                     <td>@a.AssignmentDate.ToString("MMM d, yyyy")</td>
                                     <td>
-                                        @if (a.ReturnDate.HasValue)
+                                        @if (a.EndedAsPermanentTransfer)
+                                        {
+                                            @* Delivered for good: it stayed in the room, nobody gave it back. *@
+                                            @a.ReturnDate!.Value.ToString("MMM d, yyyy")
+                                            <div class="history-note">Transferred permanently</div>
+                                        }
+                                        else if (a.EndedByCancellation)
+                                        {
+                                            @a.ReturnDate!.Value.ToString("MMM d, yyyy")
+                                            <div class="history-note">Request cancelled before handover</div>
+                                        }
+                                        else if (a.ReturnDate.HasValue)
                                         {
                                             @a.ReturnDate.Value.ToString("MMM d, yyyy")
                                         }
@@ -100,7 +111,8 @@
                                     </td>
                                     <td>
                                         <span class="asset-pill history-pill @CondClass(a.ConditionOnAssignment)">@DisplayText.Humanize(a.ConditionOnAssignment.ToString())</span>
-                                        @if (a.ConditionOnReturn.HasValue)
+                                        @* The condition "on return" only means something for a real return. *@
+                                        @if (a.ConditionOnReturn.HasValue && !a.EndedAsPermanentTransfer && !a.EndedByCancellation)
                                         {
                                             <span class="history-arrow">&rarr;</span>
                                             <span class="asset-pill history-pill @CondClass(a.ConditionOnReturn.Value)">@DisplayText.Humanize(a.ConditionOnReturn.Value.ToString())</span>
@@ -142,7 +154,7 @@
                             @foreach (var m in Model.Movements)
                             {
                                 <tr data-pager-item>
-                                    <td>@(m.SourceLocationName ?? "—")</td>
+                                    <td>@DisplayText.Or(m.SourceLocationName, "With a person")</td>
                                     <td class="fw-semibold">@m.DestinationLocationName</td>
                                     <td>@{ Person(m.MovedByUser.FullName); }</td>
                                     <td>@m.DateMoved.ToString("MMM d, yyyy")</td>
@@ -239,7 +251,7 @@
                                         <div class="asset-muted small mt-1">@log.User.Role.RoleName</div>
                                     </td>
                                     <td class="text-nowrap">@log.LogDateTime.ToString("MMM d, yyyy h:mm tt")</td>
-                                    <td class="asset-muted history-details">@(await AuditText.FormatAsync(log.Description) ?? "—")</td>
+                                    <td class="asset-muted history-details">@DisplayText.Or(await AuditText.FormatAsync(log.Description), "No details")</td>
                                 </tr>
                             }
                         </tbody>

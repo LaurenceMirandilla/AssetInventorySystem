@@ -1,36 +1,35 @@
 ﻿@model ErrorViewModel
 @{
     ViewData["Title"] = Model.StatusCode == 404 ? "Page not found" : "Error";
+
+    // Same label the sidebar gives the first link for this role.
+    var signedIn = User.Identity?.IsAuthenticated == true;
+    var homeLabel = User.IsInRole("Asset Officer") || User.IsInRole("Administrator") || User.IsInRole("Principal")
+        ? "Dashboard" : "Home";
 }
 
-<div class="row justify-content-center">
-    <div class="col-lg-7">
-        <div class="card">
-            <div class="card-body text-center py-5">
-                <div class="text-muted" style="font-size:2.6rem; font-weight:700; line-height:1;">
-                    @Model.StatusCode
-                </div>
-                <h2 class="mt-3 mb-2">@Model.Heading</h2>
-                <p class="text-muted mb-4">@Model.Detail</p>
+@* 404s and other status codes arrive here through
+   UseStatusCodePagesWithReExecute; a crash on a page arrives through
+   ExceptionHandlingMiddleware as a 500. *@
+<div class="state-page">
+    <div class="state-code" aria-hidden="true">@Model.StatusCode</div>
+    <h2 class="state-title">@Model.Heading</h2>
+    <p class="state-text">@Model.Detail</p>
 
-                @if (User.Identity?.IsAuthenticated == true)
-                {
-                    <a asp-controller="Home" asp-action="Index" class="btn btn-primary">Back to Home</a>
-                    <a asp-controller="Assets" asp-action="Index" class="btn btn-outline-secondary">Browse assets</a>
-                }
-                else
-                {
-                    <a asp-controller="Account" asp-action="Login" class="btn btn-primary">Sign in</a>
-                }
+    @if (Model.ShowRequestId)
+    {
+        <p class="state-ref"><code class="state-code-chip">@Model.RequestId</code></p>
+    }
 
-                @if (Model.ShowRequestId)
-                {
-                    <p class="text-muted small mt-4 mb-0">
-                        Quote this reference if you report it:
-                        <code>@Model.RequestId</code>
-                    </p>
-                }
-            </div>
-        </div>
+    <div class="state-actions">
+        <button type="button" class="btn btn-outline-secondary" onclick="history.back()">&larr; Go back</button>
+        @if (signedIn)
+        {
+            <a asp-controller="Home" asp-action="Index" class="btn btn-primary">Go to @homeLabel</a>
+        }
+        else
+        {
+            <a asp-controller="Account" asp-action="Login" class="btn btn-primary">Sign in</a>
+        }
     </div>
 </div>

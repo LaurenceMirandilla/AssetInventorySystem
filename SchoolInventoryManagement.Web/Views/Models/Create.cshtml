@@ -1,39 +1,126 @@
 ﻿@model SchoolInventoryManagement.BLL.DTOs.CreateModelDTO
+@using SchoolInventoryManagement.Web.Helpers
+@inject LookupUsage Usage
+@inject SchoolInventoryManagement.BLL.Interfaces.IModelService ModelService
 @{
+    var nextCodes = (await Usage.CategoriesAsync()).ToDictionary(k => k.Key, k => k.Value.NextCode);
+    var existing = (await ModelService.GetAllModelsAsync()).Select(m => new { id = m.ModelID, name = m.ModelName, units = m.AssetCount }).ToList();
     ViewData["Title"] = "New Model";
 }
 
-<h2>New Model</h2>
-
-<form asp-action="Create" method="post">
+<form asp-action="Create" method="post" class="register-form page-fill" id="lkForm">
     @Html.AntiForgeryToken()
+
+    <div class="asset-detail-head">
+        <div>
+            <nav class="asset-crumbs" aria-label="Breadcrumb">
+                <a asp-action="Index">Models</a>
+                <span aria-hidden="true">&rsaquo;</span>
+                <span>New model</span>
+            </nav>
+            <h2 class="asset-detail-title">New model</h2>
+            <div class="asset-detail-sub">A kind of item, like "Dutton Metal Folding Chair". Units are registered under it.</div>
+        </div>
+    </div>
+
     <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
 
-    <div class="mb-3">
-        <label asp-for="CategoryID" class="form-label">Category</label>
-        <select asp-for="CategoryID" asp-items="ViewBag.Categories" class="form-select">
-            <option value="">-- Select Category --</option>
-        </select>
-        <span asp-validation-for="CategoryID" class="text-danger"></span>
+    <div class="row g-3 align-items-start">
+        <div class="col-lg-8">
+            <div class="asset-card register-step">
+                <div class="register-step-head"><div class="register-step-title">Details</div></div>
+                <div class="register-step-body">
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label asp-for="CategoryID" class="form-label">Category</label>
+                            <select asp-for="CategoryID" asp-items="ViewBag.Categories" class="form-select" id="modelCategory">
+                                <option value="">Select a category</option>
+                            </select>
+                            <span asp-validation-for="CategoryID" class="text-danger small"></span>
+                        </div>
+                        <div class="col-12">
+                            <label asp-for="ModelName" class="form-label">Name</label>
+                            <input asp-for="ModelName" class="form-control" id="modelName" maxlength="150" autocomplete="off" placeholder="e.g. Dutton Metal Folding Chair" />
+                            <span asp-validation-for="ModelName" class="text-danger small"></span>
+                        </div>
+                        <div class="col-12" id="similarModel" hidden>
+                            <div class="lk-similar">
+                                <span>Similar model already exists: <strong id="similarName"></strong> <span id="similarUnits"></span></span>
+                                <a id="similarLink" href="#">Open it</a>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <label asp-for="Description" class="form-label">Description <span class="register-optional">optional</span></label>
+                            <textarea asp-for="Description" class="form-control" rows="3" maxlength="500" placeholder="e.g. Grey steel frame, folds flat."></textarea>
+                            <span asp-validation-for="Description" class="text-danger small"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="asset-card register-step lk-side">
+                <div class="register-step-head"><div class="register-step-title">Units of this model</div></div>
+                <div class="register-step-body">
+                    <div class="lk-code-box">
+                        <div class="lk-code-label" id="numberedIn">Numbered in its category</div>
+                        <div class="lk-code-big" id="nextCode">Pick a category</div>
+                    </div>
+                    <p class="lk-side-note">New units get the next code of their category. Register them from Assets &rsaquo; New asset or Bulk register.</p>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <div class="mb-3">
-        <label asp-for="ModelName" class="form-label"></label>
-        <input asp-for="ModelName" class="form-control" />
-        <span asp-validation-for="ModelName" class="text-danger"></span>
+    <div class="register-footer">
+        <div class="d-flex ms-auto" style="gap:8px;">
+            <a asp-action="Index" class="btn btn-outline-secondary">Cancel</a>
+            <button type="submit" class="btn btn-primary">Create model</button>
+        </div>
     </div>
-
-    <div class="mb-3">
-        <label asp-for="Description" class="form-label">Description <span class="text-muted">(optional)</span></label>
-        <textarea asp-for="Description" class="form-control"></textarea>
-    </div>
-
-    <button type="submit" class="btn btn-primary">Create</button>
-    <a asp-action="Index" class="btn btn-secondary">Cancel</a>
 </form>
 
 @section Scripts {
     @{
         await Html.RenderPartialAsync("_ValidationScriptsPartial");
     }
+    <script>
+        (function () {
+            var nextCodes = @Json.Serialize(nextCodes);
+            var existing = @Json.Serialize(existing);
+            var selfId = 0;
+            var category = document.getElementById('modelCategory');
+            var name = document.getElementById('modelName');
+
+            // The code the next unit of this category will get.
+            function syncCode() {
+                var opt = category.options[category.selectedIndex];
+                var code = category.value ? nextCodes[category.value] : '';
+                document.getElementById('nextCode').textContent = code || 'Pick a category';
+                document.getElementById('numberedIn').textContent = category.value ? 'Numbered in ' + opt.text : 'Numbered in its category';
+            }
+
+            // A model whose name contains this one (or the other way round),
+            // so the same thing isn't added twice.
+            function norm(s) { return (s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }
+            function syncSimilar() {
+                var typed = norm(name.value);
+                var box = document.getElementById('similarModel');
+                var hit = typed.length >= 4 ? existing.find(function (m) {
+                    var n = norm(m.name);
+                    return m.id !== selfId && (n === typed || n.indexOf(typed) !== -1 || typed.indexOf(n) !== -1);
+                }) : null;
+                box.hidden = !hit;
+                if (!hit) return;
+                document.getElementById('similarName').textContent = hit.name;
+                document.getElementById('similarUnits').textContent = '\u00b7 ' + hit.units + ' unit' + (hit.units === 1 ? '' : 's');
+                document.getElementById('similarLink').href = '@Url.Action("Index")#m-' + hit.id;
+            }
+
+            category.addEventListener('change', syncCode);
+            name.addEventListener('input', syncSimilar);
+            syncCode();
+            syncSimilar();
+        })();
+    </script>
 }

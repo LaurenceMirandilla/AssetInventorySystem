@@ -11,11 +11,12 @@ using SchoolInventoryManagement.BLL.Services;
 
 namespace SchoolInventoryManagement.Web.Middleware
 {
-    // Catches exceptions thrown by BLL services and turns them into a
-    // consistent JSON error response. Applies to requests where the caller
-    // wants JSON back (API-style endpoints) — MVC actions returning Views
-    // handle their own exceptions directly, since they need to re-render
-    // the form with the user's input intact, not just return a status code.
+    // Catches exceptions nothing else handled. A browser asking for a page
+    // gets the app's error page (Views/Shared/Error) with the status code
+    // and, for a 500, a code to pass on. Script calls (fetch) get a JSON
+    // error. MVC actions returning Views still handle their own refusals
+    // directly, since they need to re-render the form with the user's
+    // input intact.
     public class ExceptionHandlingMiddleware
     {
         private readonly RequestDelegate _next;
@@ -57,6 +58,14 @@ namespace SchoolInventoryManagement.Web.Middleware
 
                 var (statusCode, message) = MapException(ex);
 
+                if (WantsPage(context) && !context.Response.HasStarted
+                    && await TryShowErrorPageAsync(context, statusCode))
+                    return;
+
+                if (context.Response.HasStarted)
+                    throw;
+
+                context.Response.Clear();
                 context.Response.ContentType = "application/json";
                 context.Response.StatusCode = statusCode;
 
@@ -69,6 +78,48 @@ namespace SchoolInventoryManagement.Web.Middleware
                 await RecordErrorAsync(context, caught);
         }
 
+        // A browser navigating (Accept: text/html), not a script's fetch.
+        private static bool WantsPage(HttpContext context) =>
+            context.Request.Headers.Accept.ToString().Contains("text/html", StringComparison.OrdinalIgnoreCase);
+
+        // Runs /Home/Error/{code} in place of the failed page, the way
+        // UseStatusCodePagesWithReExecute does for a 404: same URL in the
+        // address bar, the real status code kept. False if the error page
+        // itself fails, and the caller falls back to plain JSON.
+        private async Task<bool> TryShowErrorPageAsync(HttpContext context, int statusCode)
+        {
+            var originalPath = context.Request.Path;
+            var originalQuery = context.Request.QueryString;
+            var originalMethod = context.Request.Method;
+            try
+            {
+                context.Response.Clear();
+                context.Response.StatusCode = statusCode;
+                context.SetEndpoint(null);
+                context.Request.RouteValues.Clear();
+                context.Request.Path = $"/Home/Error/{statusCode}";
+                context.Request.QueryString = QueryString.Empty;
+                // A failed POST must not re-run as a POST: the error page is
+                // a GET action and would not match.
+                context.Request.Method = HttpMethods.Get;
+
+                await _next(context);
+                context.Response.StatusCode = statusCode;
+                return true;
+            }
+            catch (Exception pageEx)
+            {
+                _logger.LogError(pageEx, "The error page itself failed.");
+                return false;
+            }
+            finally
+            {
+                context.Request.Path = originalPath;
+                context.Request.QueryString = originalQuery;
+                context.Request.Method = originalMethod;
+            }
+        }
+
         // Always to the app log (the console / Visual Studio output), and
         // to the audit trail as an "Error" entry when someone is signed in
         // -- audit entries need a user. Readable on Reports > Audit by
@@ -76,7 +127,10 @@ namespace SchoolInventoryManagement.Web.Middleware
         // may be the thing that failed, still holding unsaved changes.
         private async Task RecordErrorAsync(HttpContext context, Exception ex)
         {
-            var where = $"{context.Request.Method} {context.Request.Path}";
+            // Starts with the code the error page shows ("Code
+            // 0HN7Q2KJ8M1:00000004"), so the Administrator can match the
+            // code a user reports to its entry on Reports > Audit.
+            var where = $"Code {context.TraceIdentifier}: {context.Request.Method} {context.Request.Path}";
             _logger.LogError(ex, "Unexpected error on {Where}", where);
 
             if (!int.TryParse(context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var userId))

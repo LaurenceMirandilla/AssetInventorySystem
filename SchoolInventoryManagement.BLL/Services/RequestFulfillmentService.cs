@@ -271,6 +271,9 @@ namespace SchoolInventoryManagement.BLL.Services
             if (request.RequestStatus != RequestStatus.InTransit)
                 throw new InvalidOperationException("Only a request that is In Transit can be marked Assigned.");
 
+            // A permanent delivery moves the unit into this room's branch.
+            var destinationBranchId = request.RequestedLocation?.BranchID;
+
             var openAssignments = request.Assignments
                 .Where(a => a.ReturnDate == null)
                 .ToList();
@@ -309,13 +312,20 @@ namespace SchoolInventoryManagement.BLL.Services
 
                 if (permanent)
                 {
-                    // Handed over for good. Closing the assignment takes the
-                    // unit off the requester's My Assets, and with no holder
-                    // it can never go overdue. It is free to use where it is.
+                    // Handed over for good: the unit now belongs to the
+                    // requester's department (set at approval) and lives in
+                    // the destination room, so its branch is that room's
+                    // (the request form keeps the room in the department's
+                    // branch). Closing the assignment takes it off the
+                    // requester's My Assets, and with no holder it can never
+                    // go overdue. The asset's history labels this closing
+                    // "Transferred permanently", not "Returned".
                     assignment.ReturnDate = now;
                     assignment.ConditionOnReturn = unit.Condition;
                     unit.AssignedUserID = null;
                     unit.Status = AssetStatus.Available;
+                    if (destinationBranchId is int branchId)
+                        unit.BranchID = branchId;
                 }
                 else
                 {
@@ -387,6 +397,7 @@ namespace SchoolInventoryManagement.BLL.Services
                 unit.Condition = conditionOnReturn;
                 unit.Status = AssetStatus.Available;
                 unit.AssignedUserID = null;
+                AssignmentDepartment.Restore(assignment);
 
                 // Back on a shelf, where staff said.
                 MovementHelper.Record(
@@ -513,6 +524,7 @@ namespace SchoolInventoryManagement.BLL.Services
 
                 assignment.Asset.Status = AssetStatus.Available;
                 assignment.Asset.AssignedUserID = null;
+                AssignmentDepartment.Restore(assignment);
 
                 if (isBorrow)
                     MovementHelper.Record(

@@ -9,6 +9,14 @@
     <link rel="icon" href="~/images/favicon.png" type="image/png" />
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    @* The redesign (green and white, square corners, solid tags): one layer
+       over site.css, so removing this line brings the old look back. The
+       sign-in page has its own head and doesn't load it. Inter comes from
+       Google Fonts when online; otherwise the system font is used. *@
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" />
+    <link rel="stylesheet" href="~/css/theme.css" asp-append-version="true" />
 </head>
 <body>
 @{
@@ -283,10 +291,6 @@
         </main>
 
         <footer class="sab-footer">
-            @* No Privacy link here or in the sidebar: HomeController.Privacy is
-               [Authorize(Roles = Administrator)], so for every other role the
-               link only ever landed on Access Denied. The page itself is
-               unchanged and still reachable at /Home/Privacy. *@
             &copy; 2026 &middot; Ste. Anne De Beaupre School
         </footer>
     </div>

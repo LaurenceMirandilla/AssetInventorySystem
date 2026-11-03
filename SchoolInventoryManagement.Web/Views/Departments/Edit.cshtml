@@ -1,35 +1,84 @@
 ﻿@model SchoolInventoryManagement.BLL.DTOs.UpdateDepartmentDTO
+@using SchoolInventoryManagement.Web.Helpers
+@inject LookupUsage Usage
 @{
     ViewData["Title"] = "Edit Department";
+    var recordId = (int)ViewBag.DepartmentID;
+    var usage = (await Usage.DepartmentsAsync()).GetValueOrDefault(recordId);
 }
 
-<h2>Edit Department</h2>
-
-<form asp-action="Edit" asp-route-id="@ViewBag.DepartmentID" method="post">
+<form asp-action="Edit" asp-route-id="@recordId" method="post" class="register-form page-fill" id="lkForm">
     @Html.AntiForgeryToken()
+
+    <div class="asset-detail-head">
+        <div>
+            <nav class="asset-crumbs" aria-label="Breadcrumb">
+                <a asp-action="Index">Departments</a>
+                <span aria-hidden="true">&rsaquo;</span>
+                <a href="@Url.Action("Index")#d-@recordId">@Model.DepartmentName</a>
+                <span aria-hidden="true">&rsaquo;</span>
+                <span>Edit</span>
+            </nav>
+            <h2 class="asset-detail-title">Edit department</h2>
+            <div class="asset-detail-sub">A group of people. Users pick one, and requests are filed under it.</div>
+        </div>
+    </div>
+
     <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
 
-    <div class="mb-3">
-        <label asp-for="BranchID" class="form-label">Branch</label>
-        <select asp-for="BranchID" asp-items="ViewBag.Branches" class="form-select">
-            <option value="">-- Select Branch --</option>
-        </select>
-        <span asp-validation-for="BranchID" class="text-danger"></span>
+    <div class="row g-3 align-items-start">
+        <div class="col-lg-8">
+            <div class="asset-card register-step">
+                <div class="register-step-head"><div class="register-step-title">Details</div></div>
+                <div class="register-step-body">
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label asp-for="BranchID" class="form-label">Branch</label>
+                            <select asp-for="BranchID" asp-items="ViewBag.Branches" class="form-select">
+                                <option value="">Select a branch</option>
+                            </select>
+                            <span asp-validation-for="BranchID" class="text-danger small"></span>
+                        </div>
+                        <div class="col-12">
+                            <label asp-for="DepartmentName" class="form-label">Name</label>
+                            <input asp-for="DepartmentName" class="form-control" maxlength="100" placeholder="e.g. Senior High Department" />
+                            <span asp-validation-for="DepartmentName" class="text-danger small"></span>
+                        </div>
+                        <div class="col-12">
+                            <label asp-for="Description" class="form-label">Description <span class="register-optional">optional</span></label>
+                            <textarea asp-for="Description" class="form-control" rows="3" maxlength="255" placeholder="e.g. Grades 11 and 12."></textarea>
+                            <span asp-validation-for="Description" class="text-danger small"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="asset-card register-step lk-side">
+                <div class="register-step-head"><div class="register-step-title">In use</div></div>
+                <div class="register-step-body">
+                    <div class="lk-side-sub">Head: @DisplayText.Or(usage?.Head, "none yet")</div>
+                    <div class="lk-side-facts"><div><span>Users</span><strong>@(usage?.Users ?? 0)</strong></div><div><span>Assets issued</span><strong>@(usage?.AssetsIssued ?? 0)</strong></div><div><span>Open requests</span><strong>@(usage?.OpenRequests ?? 0)</strong></div></div>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <div class="mb-3">
-        <label asp-for="DepartmentName" class="form-label">Department Name</label>
-        <input asp-for="DepartmentName" class="form-control" />
-        <span asp-validation-for="DepartmentName" class="text-danger"></span>
+    <div class="register-footer">
+        <div class="d-flex align-items-center flex-wrap" style="gap:10px;">
+            <button type="submit" form="lkDelete" class="btn btn-outline-danger" disabled="@(usage?.Blocked is not null)">Delete</button>
+            <span class="lk-why">@(usage?.Blocked ?? "Nothing uses it yet.")</span>
+        </div>
+        <div class="d-flex ms-auto" style="gap:8px;">
+            <a href="@Url.Action("Index")#d-@recordId" class="btn btn-outline-secondary">Cancel</a>
+            <button type="submit" class="btn btn-primary">Save changes</button>
+        </div>
     </div>
+</form>
 
-    <div class="mb-3">
-        <label asp-for="Description" class="form-label">Description <span class="text-muted">(optional)</span></label>
-        <textarea asp-for="Description" class="form-control"></textarea>
-    </div>
-
-    <button type="submit" class="btn btn-primary">Save</button>
-    <a asp-action="Index" class="btn btn-secondary">Cancel</a>
+@* Outside the edit form: a form can't hold another. *@
+<form asp-action="Delete" asp-route-id="@recordId" method="post" id="lkDelete" onsubmit="return confirm('Delete this department? This can\'t be undone.');">
+    @Html.AntiForgeryToken()
 </form>
 
 @if (ViewBag.AuditHistory is List<SchoolInventoryManagement.BLL.DTOs.AuditReportRowDTO> history)
@@ -41,4 +90,5 @@
     @{
         await Html.RenderPartialAsync("_ValidationScriptsPartial");
     }
+
 }

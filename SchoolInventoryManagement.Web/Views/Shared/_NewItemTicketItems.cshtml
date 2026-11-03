@@ -21,7 +21,7 @@
                     <td class="ni-ticket-name">@item.ItemName</td>
                     <td class="num ni-ticket-qty" data-label="Qty">×@item.Quantity</td>
                     <td class="num ni-ticket-each" data-label="Each">@(item.EstimatedUnitPrice is null ? "not priced" : DisplayText.Peso(item.EstimatedUnitPrice))</td>
-                    <td class="num ni-ticket-line" data-label="Total">@(item.LineTotal is null ? "—" : DisplayText.Peso(item.LineTotal))</td>
+                    <td class="num ni-ticket-line" data-label="Total">@DisplayText.Or(item.LineTotal is null ? null : DisplayText.Peso(item.LineTotal), "Not priced")</td>
                 </tr>
             }
         </tbody>

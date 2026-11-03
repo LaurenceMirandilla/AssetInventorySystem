@@ -22,6 +22,16 @@ namespace SchoolInventoryManagement.Web.Helpers
         public static string Peso(decimal? value) =>
             value.HasValue ? Peso(value.Value) : "—";
 
+        // A value, or -- when there is none -- a word saying so in grey
+        // italics ("Not yet", "None given", "On the shelf"), never a bare
+        // dash. The word is passed in because what "missing" means depends
+        // on the field.
+        public static Microsoft.AspNetCore.Html.IHtmlContent Or(string? value, string whenMissing) =>
+            string.IsNullOrWhiteSpace(value)
+                ? new Microsoft.AspNetCore.Html.HtmlString(
+                    "<span class=\"is-empty\">" + System.Net.WebUtility.HtmlEncode(whenMissing) + "</span>")
+                : new Microsoft.AspNetCore.Html.HtmlString(System.Net.WebUtility.HtmlEncode(value));
+
         // A new-item request's stage, as the status pill shows it.
         public static string Stage(NewItemStatus status) => status switch
         {

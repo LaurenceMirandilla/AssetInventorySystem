@@ -1,0 +1,67 @@
+@* Shared by Add user and Edit user: branch narrows department, the role
+   tiles light up, the side card follows what's typed, and the first
+   password's confirmation says whether it matches. *@
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        var branch = document.getElementById('branchSelect');
+        var dept = document.getElementById('departmentSelect');
+        if (branch && dept) sabFilterByBranch(dept, branch, {
+            strip: true,
+            hint: function (b) { return b ? 'Select a department' : '-- Pick a branch first --'; },
+            lock: function (b) { return !b; }
+        });
+
+        // What each role can do, for the side card.
+        var can = {
+            'Teacher': [[1, 'Browse items and borrow them'], [1, 'Ask to move items to a room'], [1, 'Request new items'], [0, 'Approve requests or manage assets']],
+            'Staff': [[1, 'Browse items and borrow them'], [1, 'Ask to move items to a room'], [1, 'Request new items'], [0, 'Approve requests or manage assets']],
+            'Department Head': [[1, 'Borrow and request items'], [1, 'Approve new-item requests for the department'], [0, 'Approve borrow or transfer requests'], [0, 'Manage assets']],
+            'Principal': [[1, 'Approve borrow and transfer requests'], [1, 'Approve new-item budgets'], [1, 'Manage users, branches and departments'], [1, 'See reports'], [0, 'Register or hand out assets']],
+            'Asset Officer': [[1, 'Register and edit assets'], [1, 'Approve requests, hand out and record returns'], [1, 'Manage categories, models and locations'], [1, 'See reports'], [0, 'Manage users']],
+            'Administrator': [[1, 'Everything, including users and settings']]
+        };
+
+        function text(sel) { var o = sel && sel.options[sel.selectedIndex]; return o && o.value ? o.text.replace(/^.*? — /, '') : ''; }
+        function set(id, value, empty) { var el = document.getElementById(id); if (el) sabShow(el, value, empty); }
+
+        function sync() {
+            var first = document.querySelector('[data-sum="first"]'), last = document.querySelector('[data-sum="last"]');
+            var user = document.querySelector('[data-sum="username"]');
+            var name = ((first ? first.value : '') + ' ' + (last ? last.value : '')).trim();
+            set('sumName', name, 'New user');
+            set('sumUsername', user ? user.value.trim() : '', 'No username yet');
+            set('sumBranch', text(branch), 'Not chosen');
+            set('sumDept', text(dept), 'Not chosen');
+
+            var role = document.querySelector('input[name="RoleID"]:checked');
+            var roleName = role ? role.getAttribute('data-role-name') : '';
+            set('sumRole', roleName, 'Not chosen');
+            document.querySelectorAll('.role-card').forEach(function (c) { c.classList.toggle('is-on', c.querySelector('input').checked); });
+
+            var box = document.getElementById('roleCan');
+            if (box) {
+                var list = can[roleName];
+                box.hidden = !list;
+                if (list) {
+                    document.getElementById('roleCanTitle').textContent = (/^[AEIOU]/.test(roleName) ? 'An ' : 'A ') + roleName + ' can';
+                    document.getElementById('roleCanList').innerHTML = list.map(function (x) {
+                        return '<li class="' + (x[0] ? '' : 'is-not') + '">' + x[1] + '</li>';
+                    }).join('');
+                }
+            }
+
+            var pw = document.getElementById('firstPassword'), again = document.getElementById('firstConfirm');
+            var match = document.getElementById('firstMatch');
+            if (pw && again && match) {
+                match.hidden = !again.value;
+                var same = again.value === pw.value;
+                match.className = 'pw-match ' + (same ? 'is-met' : 'is-unmet');
+                match.textContent = same ? 'Matches' : 'Doesn’t match yet';
+            }
+        }
+
+        document.querySelector('form.register-form').addEventListener('input', sync);
+        document.querySelector('form.register-form').addEventListener('change', sync);
+        sync();
+    });
+</script>

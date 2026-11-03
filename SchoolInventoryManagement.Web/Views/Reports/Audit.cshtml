@@ -1,121 +1,118 @@
 ﻿@model List<SchoolInventoryManagement.BLL.DTOs.AuditReportRowDTO>
 @inject SchoolInventoryManagement.Web.Helpers.AuditText AuditText
 @{
-    ViewData["Title"] = "Audit Trail";
+    ViewData["Title"] = "Audit trail";
+    var action = ViewBag.Action as string ?? "";
+    var maxRows = (int)ViewBag.MaxRows;
+
+    // The Action filter's choices; each matches any action containing it.
+    var actions = new List<(string Label, string Value)>
+    {
+        ("Created", "Created"), ("Updated", "Updated"), ("Deleted", "Deleted"),
+        ("Overdue", "Overdue"), ("Report views", "Report Viewed"), ("Exports", "Data Exported"),
+        ("Branches", "Branch"), ("Departments", "Department"), ("Locations", "Location"),
+        ("Roles", "Role"), ("New-item requests", "NewItemRequest"), ("Request lines", "AssetRequestItem")
+    };
+    if (User.IsInRole(SchoolInventoryManagement.DAL.Constants.RoleNames.Administrator))
+        actions.Add(("App errors", "Error"));
+    if (action != "" && !actions.Any(a => a.Value == action))
+        actions.Add((action, action));
+
+    // Tag colour by what kind of action it was.
+    static string Tone(string a) =>
+        a.EndsWith("Deleted") || a.Contains("Error") ? "st-overdue"
+        : a.EndsWith("Created") ? "st-available"
+        : a.Contains("Overdue") ? "cond-poor"
+        : a.Contains("Signed in") || a.Contains("Viewed") || a.Contains("Exported") ? "status-returned"
+        : "st-disposed";
+    static string Short(string a)
+    {
+        var last = a.Split(' ').LastOrDefault() ?? a;
+        return last is "Created" or "Updated" or "Deleted" ? last : a;
+    }
 }
 
-<div class="row g-3 sab-reports-grid">
-    <div class="col-lg-3">
-        @await Html.PartialAsync("_ReportsNav")
+<div class="asset-detail-head mb-2 pb-0 border-0">
+    <div>
+        <h2 class="asset-detail-title">Reports</h2>
+        <div class="asset-detail-sub">Who changed what, newest first. Read-only.</div>
     </div>
-    <div class="col-lg-9">
-        <div class="sab-page-head">
-            <div>
-                <h2>Audit Trail</h2>
-                <p class="sab-page-sub">
-                    Written automatically whenever an asset, request (and its lines), assignment,
-                    movement, disposal, user, category, model, branch, department, location, role
-                    or new-item request changes, whenever someone opens a report or exports data,
-                    and (Administrators only) whenever the app hits an unexpected error. Newest first.
-                </p>
-            </div>
-            <div class="sab-page-actions">
-            <a asp-action="ExportAudit"
-               asp-route-fromDate="@Context.Request.Query["fromDate"]"
-               asp-route-toDate="@Context.Request.Query["toDate"]"
-               asp-route-userId="@Context.Request.Query["userId"]"
-               asp-route-actionContains="@Context.Request.Query["actionContains"]"
-               class="btn btn-primary">Export CSV</a>
-            </div>
-        </div>
+    <div class="asset-detail-actions">
+        <a asp-action="ExportAudit"
+           asp-route-fromDate="@Context.Request.Query["fromDate"]"
+           asp-route-toDate="@Context.Request.Query["toDate"]"
+           asp-route-userId="@Context.Request.Query["userId"]"
+           asp-route-actionContains="@Context.Request.Query["actionContains"]"
+           class="btn btn-primary">&darr; Export CSV</a>
+    </div>
+</div>
 
-        <div class="sab-filter-card">
-            <form method="get" class="row g-2 align-items-end">
-                <div class="col-auto">
-                    <label class="form-label">From</label>
-                    <input type="date" name="fromDate" class="form-control"
-                           value="@(ViewBag.FromDate is DateTime f ? f.ToString("yyyy-MM-dd") : "")" />
-                </div>
-                <div class="col-auto">
-                    <label class="form-label">To</label>
-                    <input type="date" name="toDate" class="form-control"
-                           value="@(ViewBag.ToDate is DateTime t ? t.ToString("yyyy-MM-dd") : "")" />
-                </div>
-                <div class="col-auto">
-                    <label class="form-label">User</label>
-                    @Html.DropDownList("userId", (IEnumerable<SelectListItem>)ViewBag.Users,
-                         "All users", new { @class = "form-select" })
-                </div>
-                <div class="col-auto">
-                    <label class="form-label">Action contains</label>
-                    <input type="text" name="actionContains" class="form-control"
-                           placeholder="e.g. Disposed" value="@ViewBag.Action" />
-                </div>
-                <div class="col-auto">
-                    <label class="form-label">Max rows</label>
-                    <input type="number" name="maxRows" class="form-control" min="1" max="2000"
-                           value="@ViewBag.MaxRows" />
-                </div>
-                <div class="col-auto align-self-end">
-                    <button type="submit" class="btn btn-secondary">Apply</button>
-                    <a asp-action="Audit" class="btn btn-outline-secondary">Reset</a>
-                </div>
-            </form>
-        </div>
+@await Html.PartialAsync("_ReportsNav")
 
-        @* Shortcuts for the "Action contains" filter. *@
-        <div class="mb-3 small">
-            <span class="text-muted me-1">Show:</span>
-            @foreach (var (label, filter) in new[]
+<form method="get" class="rp-filters">
+    <label class="rp-field">
+        <span>From</span>
+        <input type="date" name="fromDate" class="form-control" value="@(ViewBag.FromDate is DateTime f ? f.ToString("yyyy-MM-dd") : "")" />
+    </label>
+    <label class="rp-field">
+        <span>To</span>
+        <input type="date" name="toDate" class="form-control" value="@(ViewBag.ToDate is DateTime t ? t.ToString("yyyy-MM-dd") : "")" />
+    </label>
+    <label class="rp-field">
+        <span>User</span>
+        @Html.DropDownList("userId", (IEnumerable<SelectListItem>)ViewBag.Users, "Everyone", new { @class = "form-select" })
+    </label>
+    <label class="rp-field">
+        <span>Action</span>
+        <select name="actionContains" class="form-select">
+            <option value="">Any action</option>
+            @foreach (var a in actions)
             {
-                ("Branches", "Branch"), ("Departments", "Department"), ("Locations", "Location"),
-                ("Roles", "Role"), ("New-item requests", "NewItemRequest"),
-                ("Request lines", "AssetRequestItem"), ("Report views", "Report Viewed"),
-                ("Exports", "Data Exported"), ("Overdue", "Overdue")
-            }.Concat(User.IsInRole(SchoolInventoryManagement.DAL.Constants.RoleNames.Administrator)
-                ? new[] { ("App errors", "Error") }
-                : Array.Empty<(string, string)>()))
-            {
-                <a asp-action="Audit" asp-route-actionContains="@filter"
-                   class="sab-chip @(ViewBag.Action as string == filter ? "active" : "")">@label</a>
+                <option value="@a.Value" selected="@(a.Value == action)">@a.Label</option>
             }
-        </div>
+        </select>
+    </label>
+    <label class="rp-field">
+        <span>Rows</span>
+        <select name="maxRows" class="form-select">
+            @foreach (var n in new[] { 100, 200, 500, 1000, 2000 }.Union(new[] { maxRows }).OrderBy(n => n))
+            {
+                <option value="@n" selected="@(n == maxRows)">@n max</option>
+            }
+        </select>
+    </label>
+    <div class="rp-actions">
+        <a asp-action="Audit" class="btn btn-outline-secondary">Reset</a>
+        <button type="submit" class="btn btn-primary">Apply</button>
+    </div>
+</form>
 
-        @if (ViewBag.WasTruncated == true)
-        {
-            <div class="alert alert-warning">
-                This view hit its row limit, so older entries are not shown. Narrow the
-                date range, or use Export CSV — it returns up to 2000 rows.
-            </div>
-        }
+@if (ViewBag.WasTruncated == true)
+{
+    <div class="sab-callout sab-callout-warn mb-3">
+        <span class="sab-callout-label">Limit reached</span>
+        Only the newest @maxRows entries are shown. Narrow the dates, raise Rows, or use Export CSV (up to 2000 rows).
+    </div>
+}
 
-        <div class="sab-table-card">
-            <div class="sab-table-head">
-                <h5>Audit entries</h5>
-                <span class="sab-table-count">@Model.Count entr@(Model.Count == 1 ? "y" : "ies") shown.</span>
-            </div>
-            @* Scrolls sideways inside the card on a phone instead of cutting off the last columns. *@
-            <div class="table-responsive">
-            <table class="table table-striped table-sm">
+<div class="sab-table-card" data-pager data-page-size="10" data-noun="entries">
+    @if (Model.Any())
+    {
+        <div class="table-responsive">
+            <table class="table asset-table mb-0">
                 <thead>
-                    <tr>
-                        <th>When</th>
-                        <th>User</th>
-                        <th>Role</th>
-                        <th>Action</th>
-                        <th>Target</th>
-                        <th>Details</th>
-                        <th>IP</th>
-                    </tr>
+                    <tr><th>When</th><th>User</th><th>Action</th><th>Target</th><th>What changed</th><th>IP</th></tr>
                 </thead>
                 <tbody>
                     @foreach (var row in Model)
                     {
-                        <tr>
-                            <td>@row.LogDateTime.ToString("MMM d, yyyy h:mm tt")</td>
-                            <td>@row.UserName</td>
-                            <td>@row.UserRole</td>
-                            <td>@row.ActionPerformed</td>
+                        <tr data-pager-item>
+                            <td class="text-nowrap">@row.LogDateTime.ToString("MMM d · h:mm tt")</td>
+                            <td>
+                                @row.UserName
+                                <div class="text-muted small">@row.UserRole</div>
+                            </td>
+                            <td><span class="asset-pill @Tone(row.ActionPerformed)" title="@row.ActionPerformed">@Short(row.ActionPerformed)</span></td>
                             <td>
                                 @if (row.TargetAssetID.HasValue)
                                 {
@@ -131,21 +128,41 @@
                                 }
                                 else
                                 {
-                                    <text>—</text>
+                                    <span class="is-empty">Not a record</span>
                                 }
                             </td>
-                            <td class="small">@(await AuditText.FormatAsync(row.Description) ?? "—")</td>
-                            <td class="small text-muted">@(row.IPAddress ?? "—")</td>
+                            <td class="history-details">@DisplayText.Or(await AuditText.FormatAsync(row.Description), "No details")</td>
+                            <td>
+                                @if (string.IsNullOrEmpty(row.IPAddress))
+                                {
+                                    <span class="is-empty">Not recorded</span>
+                                }
+                                else
+                                {
+                                    <span class="rp-ip">@row.IPAddress</span>
+                                }
+                            </td>
                         </tr>
                     }
                 </tbody>
             </table>
-            </div>
-            @if (!Model.Any())
-            {
-                <div class="sab-empty"><p class="mb-0">No audit entries match these filters.</p></div>
-            }
         </div>
-
-    </div>
+        <div class="history-foot">
+            <span data-pager-range></span>
+            <div class="d-flex align-items-center flex-wrap" style="gap:8px;">
+                <span class="text-muted">Show</span>
+                <select class="form-select form-select-sm rq-size" data-pager-size aria-label="Rows per page">
+                    <option value="10" selected>10</option>
+                    <option value="20">20</option>
+                    <option value="50">50</option>
+                </select>
+                <span class="text-muted">per page</span>
+                <div class="d-flex flex-wrap" style="gap:6px;" data-pager-buttons></div>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="sab-empty"><p class="mb-0">No audit entries match these filters.</p></div>
+    }
 </div>

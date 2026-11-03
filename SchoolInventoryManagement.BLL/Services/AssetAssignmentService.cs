@@ -99,7 +99,10 @@ namespace SchoolInventoryManagement.BLL.Services
                 AssignedByUserID = actingUser.UserID,
                 ConditionOnAssignment = conditionOnAssignment,
                 Remarks = remarks,
-                RequestID = requestId
+                RequestID = requestId,
+                // So a borrow or temporary transfer can hand the unit back
+                // to its own department on return (AssignmentDepartment).
+                PreviousDepartmentID = asset.DepartmentID
             };
 
             _context.AssetAssignments.Add(assignment);
@@ -161,6 +164,7 @@ namespace SchoolInventoryManagement.BLL.Services
             assignment.Asset.Condition = conditionOnReturn;
             assignment.Asset.Status = AssetStatus.Available;
             assignment.Asset.AssignedUserID = null;
+            AssignmentDepartment.Restore(assignment);
 
             // Back on a shelf, where staff said -- recorded as a movement so
             // the unit's history shows where it went.
@@ -220,6 +224,16 @@ namespace SchoolInventoryManagement.BLL.Services
             var assignments = await AssignmentQueryWithIncludes()
                 .Where(a => a.AssetID == assetId)
                 .OrderByDescending(a => a.AssignmentDate)
+                .ToListAsync();
+
+            return assignments.Select(a => a.ToResponseDTO()).ToList();
+        }
+
+        public async Task<List<AssetAssignmentResponseDTO>> GetPastAssignmentsForUserAsync(int userId)
+        {
+            var assignments = await AssignmentQueryWithIncludes()
+                .Where(a => a.AssignedToUserID == userId && a.ReturnDate != null)
+                .OrderByDescending(a => a.ReturnDate)
                 .ToListAsync();
 
             return assignments.Select(a => a.ToResponseDTO()).ToList();

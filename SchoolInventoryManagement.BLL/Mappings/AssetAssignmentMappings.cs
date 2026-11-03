@@ -23,6 +23,7 @@ namespace SchoolInventoryManagement.BLL.Mappings
                 RequestID = assignment.RequestID,
                 RequestType = assignment.Request?.RequestType,
                 RequestReturnBy = assignment.Request?.ReturnBy,
+                RequestStatus = assignment.Request?.RequestStatus,
                 AssignedToUser = assignment.AssignedToUser.ToSummaryDTO(),
                 AssignedByUser = assignment.AssignedByUser.ToSummaryDTO(),
                 AssignmentDate = assignment.AssignmentDate,

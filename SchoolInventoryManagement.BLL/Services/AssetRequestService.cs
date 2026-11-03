@@ -91,6 +91,27 @@ namespace SchoolInventoryManagement.BLL.Services
             if (returnBy is not null && returnBy.Value <= dto.NeededFrom.Value)
                 throw new ArgumentException("The return date must be after the date you need the item.");
 
+            // A permanent Transfer makes the units the requester's
+            // department's, kept in the destination room. The room has to be
+            // in that department's branch, or the unit would end up owned by
+            // a department of one branch while sitting in (and listed under)
+            // another.
+            if (permanent && dto.RequestedLocationID is int permanentDestinationId)
+            {
+                var home = await _context.Departments
+                    .Where(d => d.DepartmentID == requestingUser.DepartmentID)
+                    .Select(d => new { d.BranchID, d.Branch.BranchName })
+                    .FirstAsync();
+                var destinationBranch = await _context.Locations
+                    .Where(l => l.LocationID == permanentDestinationId)
+                    .Select(l => l.BranchID)
+                    .FirstAsync();
+                if (destinationBranch != home.BranchID)
+                    throw new ArgumentException(
+                        $"A permanent transfer has to go to a room in your own branch ({home.BranchName}). " +
+                        "To move items to another branch for a while, choose \"Until a date\".");
+            }
+
             var modelIds = dto.Items.Select(i => i.ModelID).ToList();
 
             var modelNames = await _context.Models
@@ -275,7 +296,7 @@ namespace SchoolInventoryManagement.BLL.Services
                 {
                     UserID = u.UserID,
                     FullName = u.FirstName + " " + u.LastName,
-                    Email = u.Email,
+                    Username = u.Username,
                     RoleName = u.Role.RoleName
                 })
                 .ToListAsync();
@@ -293,7 +314,7 @@ namespace SchoolInventoryManagement.BLL.Services
                 {
                     UserID = u.UserID,
                     FullName = u.FirstName + " " + u.LastName,
-                    Email = u.Email,
+                    Username = u.Username,
                     RoleName = u.Role.RoleName
                 })
                 .ToListAsync();
@@ -498,38 +519,5 @@ namespace SchoolInventoryManagement.BLL.Services
             }
         }
 
-        public async Task FulfillRequestAsync(
-            int requestId, byte[] rowVersion, int actingUserId, bool notifyRequester = true)
-        {
-            var request = await _context.AssetRequests.FindAsync(requestId);
-            if (request is null)
-                throw new KeyNotFoundException("Request not found.");
-
-            if (request.RequestStatus != RequestStatus.Approved)
-                throw new InvalidOperationException("Only approved requests can be fulfilled.");
-
-            _context.Entry(request).Property(r => r.RowVersion).OriginalValue = rowVersion;
-
-            request.RequestStatus = RequestStatus.Fulfilled;
-
-            if (notifyRequester)
-            {
-                NotificationHelper.Queue(
-                    _context,
-                    request.RequestedByUserID,
-                    $"Your {request.RequestType} request has been fulfilled.",
-                    $"/AssetRequests/Details/{request.RequestID}");
-            }
-
-            try
-            {
-                await _context.SaveChangesAsync();
-            }
-            catch (DbUpdateConcurrencyException)
-            {
-                throw new ConcurrencyConflictException(
-                    "This request was modified by someone else. Please reload and try again.");
-            }
-        }
     }
 }

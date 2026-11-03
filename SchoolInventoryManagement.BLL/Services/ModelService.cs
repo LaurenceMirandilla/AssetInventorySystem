@@ -78,16 +78,6 @@ namespace SchoolInventoryManagement.BLL.Services
                 .ToListAsync();
         }
 
-        public async Task<List<ModelDTO>> GetModelsByCategoryAsync(int categoryId)
-        {
-            var models = await ModelQueryWithIncludes()
-                .Where(m => m.CategoryID == categoryId)
-                .OrderBy(m => m.ModelName)
-                .ToListAsync();
-
-            return models.Select(m => m.ToDTO()).ToList();
-        }
-
         public async Task UpdateModelAsync(int modelId, UpdateModelDTO dto, int actingUserId)
         {
             await PermissionHelper.EnsureIsAssetManagerAsync(_context, actingUserId);

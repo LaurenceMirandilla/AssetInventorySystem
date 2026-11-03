@@ -212,7 +212,10 @@ else
                                 data-loc="|@string.Join("|", e.Locations.Select(l => l.ToLowerInvariant()))|"
                                 aria-controls="panel-@e.Id">
                             <span class="myassets-badge">
-                                <strong>@(e.IsRequest ? "#" + e.First.RequestID : "—")</strong>
+                                @if (e.IsRequest)
+                                {
+                                    <strong>#@e.First.RequestID</strong>
+                                }
                                 <small>@e.TypeLabel</small>
                             </span>
                             <span class="myassets-item-main">

@@ -111,7 +111,7 @@
                     <ul class="recent-moves">
                         @foreach (var m in recent)
                         {
-                            <li><span>@(m.SourceLocationName ?? "—") &rarr; @m.DestinationLocationName</span><span>@m.DateMoved.ToString("MMM d")</span></li>
+                            <li><span>@DisplayText.Or(m.SourceLocationName, "With a person") &rarr; @m.DestinationLocationName</span><span>@m.DateMoved.ToString("MMM d")</span></li>
                         }
                     </ul>
                 }

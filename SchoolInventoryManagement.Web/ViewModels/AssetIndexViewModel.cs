@@ -39,6 +39,9 @@ namespace SchoolInventoryManagement.Web.ViewModels
         public int? ModelId { get; set; }
         public int? BranchId { get; set; }
 
+        // Who holds the unit now (Asset.AssignedUserID).
+        public int? UserId { get; set; }
+
         // Disposed units are left out unless this is ticked, or Disposed is
         // the status being filtered on. Not counted in HasFilters: it shows
         // more, it does not narrow.
@@ -57,6 +60,7 @@ namespace SchoolInventoryManagement.Web.ViewModels
         public List<BranchDTO> BranchOptions { get; set; } = new();
         public List<LocationDTO> LocationOptions { get; set; } = new();
         public List<DepartmentDTO> DepartmentOptions { get; set; } = new();
+        public List<AssetFilterUserOption> UserOptions { get; set; } = new();
 
         // True when anything at all is narrowing the list.
         public bool HasFilters =>
@@ -67,7 +71,8 @@ namespace SchoolInventoryManagement.Web.ViewModels
             Condition.HasValue ||
             LocationId.HasValue ||
             ModelId.HasValue ||
-            BranchId.HasValue;
+            BranchId.HasValue ||
+            UserId.HasValue;
 
         public int Page { get; set; } = 1;
         public int PageSize { get; set; } = 20;
@@ -82,6 +87,7 @@ namespace SchoolInventoryManagement.Web.ViewModels
             (BranchId.HasValue ? 1 : 0) +
             (LocationId.HasValue ? 1 : 0) +
             (DepartmentId.HasValue ? 1 : 0) +
+            (UserId.HasValue ? 1 : 0) +
             (Status.HasValue ? 1 : 0) +
             (Condition.HasValue ? 1 : 0) +
             (IncludeDisposed ? 1 : 0);
@@ -95,5 +101,18 @@ namespace SchoolInventoryManagement.Web.ViewModels
 
         public int FirstRowNumber => TotalFilteredCount == 0 ? 0 : (Page - 1) * PageSize + 1;
         public int LastRowNumber => Math.Min(Page * PageSize, TotalFilteredCount);
+    }
+
+    // One person in the User filter, with the department and branch the
+    // Department and Branch filters narrow it by.
+    public class AssetFilterUserOption
+    {
+        public int UserID { get; set; }
+        public string FullName { get; set; } = null!;
+        public int DepartmentID { get; set; }
+        public string DepartmentName { get; set; } = null!;
+        public int BranchID { get; set; }
+        public string BranchName { get; set; } = null!;
+        public bool IsActive { get; set; }
     }
 }

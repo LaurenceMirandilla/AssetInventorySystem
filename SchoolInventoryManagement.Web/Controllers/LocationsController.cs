@@ -31,9 +31,12 @@ namespace SchoolInventoryManagement.Web.Controllers
             ViewBag.Branches = new SelectList(branches, "BranchID", "BranchName");
         }
 
-        public async Task<IActionResult> Index()
+        public async Task<IActionResult> Index([FromServices] Helpers.LookupUsage usage)
         {
             var locations = await _locationService.GetAllLocationsAsync();
+            ViewBag.Usage = await usage.LocationsAsync();
+            // For the Branch list in each location's edit form.
+            ViewBag.BranchList = (await _branchService.GetAllBranchesAsync()).OrderBy(b => b.BranchName).ToList();
             return View(locations);
         }
 
@@ -103,7 +106,8 @@ namespace SchoolInventoryManagement.Web.Controllers
             try
             {
                 await _locationService.UpdateLocationAsync(id, dto, CurrentUserId);
-                return RedirectToAction(nameof(Index));
+                // Back to the list with this location still open.
+                return Redirect(Url.Action(nameof(Index)) + "#l-" + id);
             }
             catch (Exception ex)
             {

@@ -230,10 +230,10 @@
                         <partial name="_RequestSteps" model="waitSteps" />
 
                         <div class="myassets-stats">
-                            <div><span>@(isBorrow ? "Pickup at" : "Move to")</span><strong>@(r.RequestedLocationName ?? "—")</strong></div>
+                            <div><span>@(isBorrow ? "Pickup at" : "Move to")</span><strong>@DisplayText.Or(r.RequestedLocationName, "Staff will choose")</strong></div>
                             <div>
                                 <span>Needed</span>
-                                <strong>@(r.NeededFrom?.ToString("MMM d") ?? "—")@(r.ReturnBy is not null ? " → " + r.ReturnBy.Value.ToString("MMM d") : "")</strong>
+                                <strong>@DisplayText.Or(r.NeededFrom?.ToString("MMM d"), "Not given")@(r.ReturnBy is not null ? " → " + r.ReturnBy.Value.ToString("MMM d") : "")</strong>
                             </div>
                             <div><span>Units</span><strong>@r.TotalQuantity</strong></div>
                             <div><span>Available now</span><strong class="@(freeForRequest >= r.TotalQuantity ? "text-success" : "text-danger")">@freeForRequest in stock</strong></div>
@@ -387,7 +387,7 @@
                                         <span class="md-tag @(isBorrow ? "" : "is-transfer")">@r.RequestType</span>
                                         @if (g.Key == "transit")
                                         {
-                                            @(isBorrow ? "pick up at " + (r.PickupLocationName ?? "—") : "to " + (r.RequestedLocationName ?? "—"))
+                                            @(isBorrow ? "pick up at " + (r.PickupLocationName ?? "the pickup point") : "to " + (r.RequestedLocationName ?? "the destination"))
                                         }
                                         else
                                         {
@@ -423,7 +423,7 @@
                         new("Submitted", r.RequestDate.ToString("MMM d"), RequestStepState.Done),
                         new("Approved", r.ApprovalDate?.ToString("MMM d"), RequestStepState.Done),
                         new(isBorrow ? "Picked up" : "Delivered",
-                            inTransit ? (isBorrow ? "at " + (r.PickupLocationName ?? "—") : "to " + (r.RequestedLocationName ?? "—")) : r.AssignedDate?.ToString("MMM d"),
+                            inTransit ? (isBorrow ? "at " + (r.PickupLocationName ?? "the pickup point") : "to " + (r.RequestedLocationName ?? "the destination")) : r.AssignedDate?.ToString("MMM d"),
                             inTransit ? RequestStepState.Current : RequestStepState.Done),
                         new("Returned", r.ReturnBy is not null ? "due " + r.ReturnBy.Value.ToString("MMM d") : null,
                             late ? RequestStepState.Late : inTransit ? RequestStepState.Todo : RequestStepState.Current)
@@ -468,20 +468,20 @@
                                 <strong>
                                     @if (isBorrow)
                                     {
-                                        @(inTransit ? "Pick up at " + (r.PickupLocationName ?? "—") : "With requester")
+                                        @(inTransit ? "Pick up at " + (r.PickupLocationName ?? "the pickup point") : "With requester")
                                     }
                                     else
                                     {
-                                        @("→ " + (r.RequestedLocationName ?? "—"))
+                                        @("→ " + (r.RequestedLocationName ?? "the destination"))
                                     }
                                 </strong>
                             </div>
                             <div class="@(late ? "is-late" : "")">
                                 <span>Due back</span>
-                                <strong>@(r.ReturnBy?.ToString("MMM d") ?? "—")@(late ? $" · {Days(daysLate)} late" : "")</strong>
+                                <strong>@DisplayText.Or(r.ReturnBy?.ToString("MMM d"), "No date · permanent")@(late ? $" · {Days(daysLate)} late" : "")</strong>
                             </div>
                             <div><span>Units out</span><strong>@r.UnitsOut of @r.Units.Count</strong></div>
-                            <div><span>Approved by</span><strong>@(r.ApprovedByUser?.FullName ?? "—")</strong></div>
+                            <div><span>Approved by</span><strong>@DisplayText.Or(r.ApprovedByUser?.FullName, "Not recorded")</strong></div>
                         </div>
 
                         @if (r.Items.Count > 1)
@@ -543,7 +543,7 @@
                                         }
                                         else
                                         {
-                                            @("Due back " + (r.ReturnBy?.ToString("MMM d") ?? "—"))
+                                            @(r.ReturnBy is null ? "Kept for good" : "Due back " + r.ReturnBy.Value.ToString("MMM d"))
                                         }
                                     </div>
                                     <div class="req-action-note">

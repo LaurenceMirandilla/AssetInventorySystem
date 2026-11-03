@@ -371,6 +371,24 @@ window.sabFilterByBranch = function (select, branch, opts) {
         var pageSize = parseInt(root.dataset.pageSize || '8', 10);
         var page = 1;
 
+        // "Show [10] per page" beside the pager: the list's own size plus
+        // 10, 20 and 50. Added here so every list gets it.
+        if (pager && !root.querySelector('[data-md-size]')) {
+            var sizes = [pageSize, 10, 20, 50].filter(function (n, i, all) { return all.indexOf(n) === i; })
+                .sort(function (a, b) { return a - b; });
+            var sizeWrap = document.createElement('label');
+            sizeWrap.className = 'md-size';
+            sizeWrap.innerHTML = '<span>Show</span><select class="form-select form-select-sm" data-md-size aria-label="Per page">' +
+                sizes.map(function (n) { return '<option value="' + n + '"' + (n === pageSize ? ' selected' : '') + '>' + n + '</option>'; }).join('') +
+                '</select><span>per page</span>';
+            pager.parentNode.insertBefore(sizeWrap, pager);
+            sizeWrap.querySelector('select').addEventListener('change', function (e) {
+                pageSize = parseInt(e.target.value, 10) || pageSize;
+                page = 1;
+                render();
+            });
+        }
+
         function select(id, fromUser) {
             items.forEach(function (b) {
                 var on = b.dataset.entry === id;
@@ -565,9 +583,13 @@ window.sabFilterByBranch = function (select, branch, opts) {
 // [data-pager-range] label, a [data-pager-buttons] box, and optionally a
 // [data-pager-size] select. data-noun names the items in the label
 // ("1–5 of 5 entries"). Used on a request's page for items and history.
+// A page that filters the list marks left-out items with data-pager-out
+// and fires "pager-refresh" on the root; the pager then counts and pages
+// only the rest, from page 1.
 (function () {
     function init(root) {
-        var items = Array.from(root.querySelectorAll('[data-pager-item]'));
+        var all = Array.from(root.querySelectorAll('[data-pager-item]'));
+        var items = all;
         var range = root.querySelector('[data-pager-range]');
         var buttons = root.querySelector('[data-pager-buttons]');
         var size = root.querySelector('[data-pager-size]');
@@ -576,12 +598,14 @@ window.sabFilterByBranch = function (select, branch, opts) {
         var page = 1;
 
         function render() {
+            items = all.filter(function (it) { return !it.hasAttribute('data-pager-out'); });
+            all.forEach(function (it) { if (it.hasAttribute('data-pager-out')) it.hidden = true; });
             var pages = Math.max(1, Math.ceil(items.length / pageSize));
             page = Math.min(page, pages);
             items.forEach(function (it, i) { it.hidden = i < (page - 1) * pageSize || i >= page * pageSize; });
             if (range) range.textContent = items.length
                 ? ((page - 1) * pageSize + 1) + '–' + Math.min(page * pageSize, items.length) + ' of ' + items.length + ' ' + noun
-                : '';
+                : (all.length ? 'No matches' : '');
             if (!buttons) return;
             buttons.innerHTML = '';
             function add(label, target, cls) {
@@ -611,8 +635,19 @@ window.sabFilterByBranch = function (select, branch, opts) {
         }
 
         if (size) size.addEventListener('change', function () { pageSize = parseInt(size.value, 10); page = 1; render(); });
+        root.addEventListener('pager-refresh', function () { page = 1; render(); });
         render();
     }
-    function start() { document.querySelectorAll('[data-pager]').forEach(init); }
+    // For lists added to the page later (the Users page's activity tabs).
+    window.sabPager = function (root) { if (!root.dataset.pagerOn) { root.dataset.pagerOn = '1'; init(root); } };
+    function start() { document.querySelectorAll('[data-pager]').forEach(window.sabPager); }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
 })();
+
+// Puts a value in a summary field, or a grey italic word when there is
+// none ("Not chosen yet"), never a bare dash.
+window.sabShow = function (el, text, whenEmpty) {
+    if (!el) return;
+    el.textContent = text || whenEmpty;
+    el.classList.toggle('is-empty', !text);
+};

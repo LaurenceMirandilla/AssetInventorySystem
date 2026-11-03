@@ -1,108 +1,158 @@
 ﻿@model SchoolInventoryManagement.Web.ViewModels.UserCreateViewModel
 @{
-    ViewData["Title"] = "New User";
+    ViewData["Title"] = "Add user";
+    var departments = (List<SchoolInventoryManagement.BLL.DTOs.DepartmentDTO>)ViewBag.DepartmentsByBranch;
+    var startPassword = ViewBag.DefaultPassword as string;
 }
 
-<h2>New User</h2>
-
-<form asp-action="Create" method="post">
+<form asp-action="Create" method="post" class="register-form page-fill">
     @Html.AntiForgeryToken()
+
+    <div class="asset-detail-head">
+        <div>
+            <nav class="asset-crumbs" aria-label="Breadcrumb">
+                <a asp-action="Index">Users</a>
+                <span aria-hidden="true">&rsaquo;</span>
+                <span>Add user</span>
+            </nav>
+            <h2 class="asset-detail-title">Add user</h2>
+            <div class="asset-detail-sub">They can sign in as soon as you save, and choose their own password the first time.</div>
+        </div>
+    </div>
+
     <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
 
-    <div class="mb-3">
-        <label asp-for="FirstName" class="form-label"></label>
-        <input asp-for="FirstName" class="form-control" />
-        <span asp-validation-for="FirstName" class="text-danger"></span>
+    <div class="row g-3 align-items-start">
+        <div class="col-lg-8">
+            <div class="asset-card register-step mb-3">
+                <div class="register-step-head"><div class="register-step-title">Name and sign-in</div></div>
+                <div class="register-step-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label asp-for="FirstName" class="form-label">First name</label>
+                            <input asp-for="FirstName" class="form-control" data-sum="first" />
+                            <span asp-validation-for="FirstName" class="text-danger small"></span>
+                        </div>
+                        <div class="col-md-6">
+                            <label asp-for="LastName" class="form-label">Last name</label>
+                            <input asp-for="LastName" class="form-control" data-sum="last" />
+                            <span asp-validation-for="LastName" class="text-danger small"></span>
+                        </div>
+                        <div class="col-12">
+                            <label asp-for="Username" class="form-label"></label>
+                            <input asp-for="Username" class="form-control" autocomplete="off" data-sum="username"
+                                   autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="e.g. lmendoza" />
+                            <div class="form-text">Used to sign in. Must be unique; 3&ndash;50 letters, numbers, dots, dashes or underscores.</div>
+                            <span asp-validation-for="Username" class="text-danger small"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="asset-card register-step mb-3">
+                <div class="register-step-head"><div class="register-step-title">Role</div></div>
+                <div class="register-step-body">
+                    <partial name="_RoleCards" model="Model.RoleID" />
+                    <span asp-validation-for="RoleID" class="text-danger small"></span>
+                </div>
+            </div>
+
+            <div class="asset-card register-step mb-3">
+                <div class="register-step-head"><div class="register-step-title">Where they work</div></div>
+                <div class="register-step-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label asp-for="BranchID" class="form-label">Branch</label>
+                            <select asp-for="BranchID" id="branchSelect" asp-items="ViewBag.Branches" class="form-select" data-combobox>
+                                <option value="">Select a branch</option>
+                            </select>
+                            <span asp-validation-for="BranchID" class="text-danger small"></span>
+                        </div>
+                        <div class="col-md-6">
+                            <label asp-for="DepartmentID" class="form-label">Department</label>
+                            <select asp-for="DepartmentID" id="departmentSelect" class="form-select" data-combobox>
+                                <option value="">-- Pick a branch first --</option>
+                                @foreach (var dept in departments)
+                                {
+                                    <option value="@dept.DepartmentID" data-branch="@dept.BranchID">@dept.BranchName — @dept.DepartmentName</option>
+                                }
+                            </select>
+                            <div class="form-text">Only departments in the chosen branch.</div>
+                            <span asp-validation-for="DepartmentID" class="text-danger small"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="asset-card register-step mb-3">
+                <div class="register-step-head"><div class="register-step-title">First password</div></div>
+                <div class="register-step-body">
+                    @* Filled with the shared default; typing another replaces it.
+                       Either way they choose their own the first time they sign in. *@
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label for="firstPassword" class="form-label">Password</label>
+                            <div class="input-icon">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></svg>
+                                <input type="password" name="Password" id="firstPassword" class="form-control" autocomplete="new-password" value="@startPassword" />
+                            </div>
+                            <span asp-validation-for="Password" class="text-danger small"></span>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="firstConfirm" class="form-label">Confirm password</label>
+                            <div class="input-icon">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></svg>
+                                <input type="password" name="ConfirmPassword" id="firstConfirm" class="form-control" autocomplete="new-password" value="@startPassword" />
+                            </div>
+                            <div class="pw-match" id="firstMatch" hidden></div>
+                            <span asp-validation-for="ConfirmPassword" class="text-danger small"></span>
+                        </div>
+                    </div>
+                    <div class="form-text mt-2" id="firstNote">
+                        @if (startPassword is not null)
+                        {
+                            <text>Starts as the shared default, <span class="asset-code-chip">@startPassword</span>. Type another to replace it. Tell them in person; they'll choose their own the first time they sign in.</text>
+                        }
+                        else
+                        {
+                            <text>No shared default is set, so type one. At least 8 characters, with a number. They'll choose their own the first time they sign in.</text>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="asset-card register-step lk-side">
+                <div class="register-step-head"><div class="register-step-title">New user</div></div>
+                <div class="register-step-body">
+                    <div class="fw-bold" id="sumName">New user</div>
+                    <div class="text-muted small" id="sumUsername">No username yet</div>
+                    <div class="lk-side-facts">
+                        <div><span>Role</span><strong id="sumRole">Not chosen</strong></div>
+                        <div><span>Branch</span><strong id="sumBranch">Not chosen</strong></div>
+                        <div style="grid-column:1/-1;"><span>Department</span><strong id="sumDept">Not chosen</strong></div>
+                    </div>
+                    <div class="role-can" id="roleCan" hidden>
+                        <div class="lk-code-label mb-1" id="roleCanTitle"></div>
+                        <ul class="lk-checks mb-0" id="roleCanList"></ul>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <div class="mb-3">
-        <label asp-for="LastName" class="form-label"></label>
-        <input asp-for="LastName" class="form-control" />
-        <span asp-validation-for="LastName" class="text-danger"></span>
+    <div class="register-footer">
+        <div class="d-flex ms-auto" style="gap:8px;">
+            <a asp-action="Index" class="btn btn-outline-secondary">Cancel</a>
+            <button type="submit" class="btn btn-primary">Create user</button>
+        </div>
     </div>
-
-    <div class="mb-3">
-        <label asp-for="Email" class="form-label"></label>
-        <input asp-for="Email" class="form-control" autocomplete="off" />
-        <div class="form-text">This is the user's login. It can't be changed later.</div>
-        <span asp-validation-for="Email" class="text-danger"></span>
-    </div>
-
-    <div class="mb-3">
-        <label asp-for="RoleID" class="form-label"></label>
-        <select asp-for="RoleID" asp-items="ViewBag.Roles" class="form-select">
-            <option value="">-- Select Role --</option>
-        </select>
-        <span asp-validation-for="RoleID" class="text-danger"></span>
-    </div>
-
-    <div class="mb-3">
-        <label asp-for="BranchID" class="form-label"></label>
-        <select asp-for="BranchID" id="branchSelect" asp-items="ViewBag.Branches" class="form-select">
-            <option value="">-- Select Branch --</option>
-        </select>
-        <span asp-validation-for="BranchID" class="text-danger"></span>
-        <div class="form-text">Pick a branch first — Department below will narrow to it.</div>
-    </div>
-
-    <div class="mb-3">
-        <label asp-for="DepartmentID" class="form-label"></label>
-        <select asp-for="DepartmentID" id="departmentSelect" class="form-select">
-            <option value="">-- Select Department --</option>
-            @foreach (var dept in (List<SchoolInventoryManagement.BLL.DTOs.DepartmentDTO>)ViewBag.DepartmentsByBranch)
-            {
-                <option value="@dept.DepartmentID" data-branch="@dept.BranchID">@dept.DepartmentName</option>
-            }
-        </select>
-        <span asp-validation-for="DepartmentID" class="text-danger"></span>
-    </div>
-
-    <div class="mb-3">
-        <label asp-for="Password" class="form-label"></label>
-        <input asp-for="Password" class="form-control" autocomplete="new-password" />
-        <span asp-validation-for="Password" class="text-danger"></span>
-    </div>
-
-    <div class="mb-3">
-        <label asp-for="ConfirmPassword" class="form-label"></label>
-        <input asp-for="ConfirmPassword" class="form-control" autocomplete="new-password" />
-        <span asp-validation-for="ConfirmPassword" class="text-danger"></span>
-    </div>
-
-    <button type="submit" class="btn btn-primary">Create User</button>
-    <a asp-action="Index" class="btn btn-secondary">Cancel</a>
 </form>
 
 @section Scripts {
     @{
         await Html.RenderPartialAsync("_ValidationScriptsPartial");
     }
-    <script>
-        // Same approach as Assets/Create: every department is rendered with
-        // a data-branch tag, and choosing a branch hides the ones that belong
-        // elsewhere. UserService re-checks the pair on save.
-        (function () {
-            var branchSelect = document.getElementById('branchSelect');
-            var departmentSelect = document.getElementById('departmentSelect');
-            if (!branchSelect || !departmentSelect) return;
-
-            function filterDepartments() {
-                var branchId = branchSelect.value;
-
-                Array.from(departmentSelect.options).forEach(function (opt) {
-                    if (!opt.value) { opt.hidden = false; return; } // keep the placeholder
-                    opt.hidden = branchId === '' || opt.getAttribute('data-branch') !== branchId;
-                });
-
-                // Switching branch must not leave a department from the old one selected.
-                var selected = departmentSelect.options[departmentSelect.selectedIndex];
-                if (selected && selected.hidden) {
-                    departmentSelect.value = '';
-                }
-            }
-
-            branchSelect.addEventListener('change', filterDepartments);
-            filterDepartments(); // also on load, so a failed-validation redisplay stays filtered
-        })();
-    </script>
+    <partial name="_UserFormScript" />
 }

@@ -13,7 +13,7 @@ namespace SchoolInventoryManagement.BLL.Mappings
                 UserID = user.UserID,
                 FirstName = user.FirstName,
                 LastName = user.LastName,
-                Email = user.Email,
+                Username = user.Username,
                 Status = user.Status,
                 RoleID = user.RoleID,
                 RoleName = user.Role.RoleName,
@@ -32,7 +32,7 @@ namespace SchoolInventoryManagement.BLL.Mappings
             {
                 UserID = user.UserID,
                 FullName = $"{user.FirstName} {user.LastName}",
-                Email = user.Email,
+                Username = user.Username,
                 RoleName = user.Role.RoleName
             };
         }

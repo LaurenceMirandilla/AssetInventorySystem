@@ -72,7 +72,7 @@
                     </div>
                     <div class="text-end">
                         <div class="text-muted small">Due back</div>
-                        <div class="fw-bold small @(request.ReturnBy < DateTime.Now ? "text-danger" : "")">@(request.ReturnBy?.ToString("MMM d · h:mm tt") ?? "—")</div>
+                        <div class="fw-bold small @(request.ReturnBy < DateTime.Now ? "text-danger" : "")">@DisplayText.Or(request.ReturnBy?.ToString("MMM d · h:mm tt"), "No date")</div>
                     </div>
                 </div>
             }
@@ -194,10 +194,10 @@
                     @if (request is not null)
                     {
                         <dl class="approve-facts rr-facts">
-                            <div><dt>@(request.RequestType == SchoolInventoryManagement.DAL.Entities.Enums.RequestType.Borrow ? "Borrowed" : "Delivered")</dt><dd>@(request.AssignedDate?.ToString("MMM d, yyyy") ?? "—")</dd></div>
-                            <div><dt>Due back</dt><dd>@(request.ReturnBy?.ToString("MMM d, yyyy") ?? "—")</dd></div>
+                            <div><dt>@(request.RequestType == SchoolInventoryManagement.DAL.Entities.Enums.RequestType.Borrow ? "Borrowed" : "Delivered")</dt><dd>@DisplayText.Or(request.AssignedDate?.ToString("MMM d, yyyy"), "Not yet")</dd></div>
+                            <div><dt>Due back</dt><dd>@DisplayText.Or(request.ReturnBy?.ToString("MMM d, yyyy"), "No date")</dd></div>
                             <div><dt>Out</dt><dd>@outUnits.Count unit@(outUnits.Count == 1 ? "" : "s")</dd></div>
-                            <div><dt>Still out after</dt><dd id="stillOut">—</dd></div>
+                            <div><dt>Still out after</dt><dd id="stillOut" class="is-empty">Nothing ticked yet</dd></div>
                         </dl>
                         @if (!string.IsNullOrWhiteSpace(request.Reason))
                         {
@@ -248,6 +248,7 @@
                 if (still) {
                     still.textContent = (total - on) + ' unit' + (total - on === 1 ? '' : 's');
                     still.classList.toggle('text-warning-emphasis', total - on > 0);
+                    still.classList.remove('is-empty');
                 }
                 document.getElementById('confirmBtn').textContent = on ? 'Confirm return of ' + on + ' unit' + (on === 1 ? '' : 's') : 'Confirm return';
                 document.getElementById('confirmBtn').disabled = on === 0;

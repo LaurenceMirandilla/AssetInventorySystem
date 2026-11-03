@@ -119,13 +119,6 @@ namespace SchoolInventoryManagement.BLL.Services
             }
         }
 
-        public async Task<DisposalRecordResponseDTO?> GetDisposalByIdAsync(int disposalId)
-        {
-            var disposal = await DisposalQueryWithIncludes()
-                .FirstOrDefaultAsync(d => d.DisposalID == disposalId);
-            return disposal?.ToResponseDTO();
-        }
-
         public async Task<List<DisposalRecordResponseDTO>> GetDisposalHistoryForAssetAsync(int assetId)
         {
             var disposals = await DisposalQueryWithIncludes()
@@ -136,14 +129,5 @@ namespace SchoolInventoryManagement.BLL.Services
             return disposals.Select(d => d.ToResponseDTO()).ToList();
         }
 
-        public async Task<List<DisposalRecordResponseDTO>> GetActiveDisposalsAsync()
-        {
-            var disposals = await DisposalQueryWithIncludes()
-                .Where(d => d.RestoredDate == null)
-                .OrderByDescending(d => d.DisposalDate)
-                .ToListAsync();
-
-            return disposals.Select(d => d.ToResponseDTO()).ToList();
-        }
     }
 }

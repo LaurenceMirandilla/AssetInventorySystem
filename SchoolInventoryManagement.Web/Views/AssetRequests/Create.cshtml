@@ -23,6 +23,8 @@
 
     var isTransfer = Model.RequestType == RequestType.Transfer;
     var startBranch = locations.FirstOrDefault(l => l.LocationID == Model.RequestedLocationID)?.BranchID;
+    var homeBranchId = ViewBag.HomeBranchId as int?;
+    var homeBranchName = ViewBag.HomeBranchName as string;
 
     string Sub(RequestModelOption m) =>
         !showAvailability ? m.CategoryName
@@ -228,7 +230,8 @@
                     <div class="row g-3">
                         <div class="col-md-5">
                             <label for="branchSelect" class="register-side-label d-block mb-2">Branch</label>
-                            <select id="branchSelect" class="form-select" data-combobox>
+                            <select id="branchSelect" class="form-select" data-combobox
+                                    data-home-branch="@homeBranchId" data-home-name="@homeBranchName">
                                 <option value="">Select a branch</option>
                                 @foreach (var br in branches)
                                 {
@@ -275,10 +278,10 @@
                 <div class="asset-card-title">Your request</div>
                 <dl class="approve-facts nr-summary-body">
                     <div><dt>Type</dt><dd id="sumType">Borrow</dd></div>
-                    <div><dt>Items</dt><dd id="sumItems">—</dd></div>
-                    <div><dt>Needed</dt><dd id="sumNeeded">—</dd></div>
-                    <div><dt id="sumUntilLabel">Return by</dt><dd id="sumUntil">—</dd></div>
-                    <div class="nr-summary-wide"><dt id="sumWhereLabel">Pickup</dt><dd id="sumWhere">—</dd></div>
+                    <div><dt>Items</dt><dd id="sumItems" class="is-empty">None yet</dd></div>
+                    <div><dt>Needed</dt><dd id="sumNeeded" class="is-empty">Not chosen yet</dd></div>
+                    <div><dt id="sumUntilLabel">Return by</dt><dd id="sumUntil" class="is-empty">Not chosen yet</dd></div>
+                    <div class="nr-summary-wide"><dt id="sumWhereLabel">Pickup</dt><dd id="sumWhere" class="is-empty">Not chosen yet</dd></div>
                 </dl>
             </div>
         </div>
@@ -321,9 +324,9 @@
 
             function pad(n) { return String(n).padStart(2, '0'); }
             function nice(v) {
-                if (!v) return '—';
+                if (!v) return '';
                 var d = new Date(v);
-                if (isNaN(d)) return '—';
+                if (isNaN(d)) return '';
                 var h = d.getHours(), ampm = h >= 12 ? 'PM' : 'AM';
                 h = h % 12 || 12;
                 return d.toLocaleString('en-US', { month: 'short' }) + ' ' + d.getDate() + ' · ' + h + ':' + pad(d.getMinutes()) + ' ' + ampm;
@@ -371,9 +374,26 @@
                 returnByWrap.hidden = permanent;
                 permanentHint.hidden = !permanent;
                 if (permanent) returnBy.value = '';
+                lockHomeBranch(permanent);
                 untilChoice.querySelectorAll('input').forEach(function (r) { r.nextElementSibling.classList.toggle('is-on', r.checked); });
                 summary();
             }
+            // A permanent transfer makes the items your department's, so the
+            // room has to be in your own branch: the other branches are
+            // greyed out and yours is picked. "Until a date" frees them
+            // again. The server refuses another branch anyway.
+            var homeBranch = branch.getAttribute('data-home-branch') || '';
+            function lockHomeBranch(lock) {
+                if (!homeBranch) return;
+                Array.from(branch.options).forEach(function (o) {
+                    if (o.value) o.disabled = lock && o.value !== homeBranch;
+                });
+                if (lock && branch.value !== homeBranch) {
+                    branch.value = homeBranch;
+                    branch.dispatchEvent(new Event('change'));
+                }
+            }
+
             untilDate.addEventListener('change', syncPermanent);
             untilPermanent.addEventListener('change', syncPermanent);
 
@@ -519,13 +539,13 @@
                 var permanent = !borrow && untilPermanent.checked;
                 var filled = allRows().filter(function (r) { return r.querySelector('.model-select').value; });
                 var units = filled.reduce(function (s, r) { return s + (parseInt(r.querySelector('.qty-input').value, 10) || 0); }, 0);
-                var itemsText = filled.length ? filled.length + ' model' + (filled.length === 1 ? '' : 's') + ' · ' + units + ' unit' + (units === 1 ? '' : 's') : '—';
+                var itemsText = filled.length ? filled.length + ' model' + (filled.length === 1 ? '' : 's') + ' · ' + units + ' unit' + (units === 1 ? '' : 's') : '';
                 document.getElementById('itemsCount').textContent = filled.length ? itemsText : '';
-                document.getElementById('sumItems').textContent = itemsText;
+                sabShow(document.getElementById('sumItems'), itemsText, 'None yet');
                 document.getElementById('sumType').textContent = borrow ? 'Borrow' : 'Transfer';
-                document.getElementById('sumNeeded').textContent = nice(neededFrom.value);
+                sabShow(document.getElementById('sumNeeded'), nice(neededFrom.value), 'Not chosen yet');
                 document.getElementById('sumUntilLabel').textContent = borrow ? 'Return by' : 'Until';
-                document.getElementById('sumUntil').textContent = permanent ? 'Permanent' : nice(returnBy.value);
+                sabShow(document.getElementById('sumUntil'), permanent ? 'Permanent' : nice(returnBy.value), 'Not chosen yet');
 
                 var opt = location.options[location.selectedIndex];
                 var bOpt = branch.options[branch.selectedIndex];
@@ -550,7 +570,10 @@
                 whenBadge.hidden = !badge;
 
                 var room = opt && opt.value ? opt.dataset.name : 'the destination';
-                permanentHint.textContent = 'No return date. Once delivered, the units stay in ' + room + ' for good and are never marked overdue.';
+                var homeName = branch.getAttribute('data-home-name');
+                permanentHint.textContent = 'No return date. Once delivered, the units stay in ' + room +
+                    ' for good as your department\'s, and are never marked overdue.' +
+                    (homeName ? ' Only rooms in your own branch (' + homeName + ') can be chosen.' : '');
             }
 
             renumber();

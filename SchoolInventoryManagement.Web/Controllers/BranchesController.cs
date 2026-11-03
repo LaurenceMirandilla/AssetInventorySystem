@@ -25,9 +25,10 @@ namespace SchoolInventoryManagement.Web.Controllers
         private int CurrentUserId =>
             int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
-        public async Task<IActionResult> Index()
+        public async Task<IActionResult> Index([FromServices] Helpers.LookupUsage usage)
         {
             var branches = await _branchService.GetAllBranchesAsync();
+            ViewBag.Usage = await usage.BranchesAsync();
             return View(branches);
         }
 
@@ -89,7 +90,8 @@ namespace SchoolInventoryManagement.Web.Controllers
             try
             {
                 await _branchService.UpdateBranchAsync(id, dto, CurrentUserId);
-                return RedirectToAction(nameof(Index));
+                // Back to the list with this branch still open.
+                return Redirect(Url.Action(nameof(Index)) + "#b-" + id);
             }
             catch (Exception ex)
             {

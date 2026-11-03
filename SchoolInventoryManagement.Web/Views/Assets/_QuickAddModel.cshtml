@@ -1,67 +1,77 @@
+@inject SchoolInventoryManagement.BLL.Interfaces.IModelService ModelService
 @* The "+ New model" popup on Register and Bulk register (the button is in
    _ModelPicker). Rendered after the asset form, not inside it -- a form
    inside a form is not allowed. Saves through Models/QuickCreate without
    leaving the page, so nothing typed into the asset form is lost. On
    success it raises "model-added", which the picker turns into a new,
-   already-picked entry. *@
+   already-picked entry; "Use that instead" raises "model-use", which picks
+   the existing model. *@
 @{
     var categories = (List<SchoolInventoryManagement.BLL.DTOs.CategoryDTO>)ViewBag.QuickAddCategories;
+    var existing = (await ModelService.GetAllModelsAsync())
+        .Select(m => new { id = m.ModelID, name = m.ModelName, units = m.AssetCount })
+        .ToList();
 }
 
 <div class="modal fade" id="quickAddModel" tabindex="-1" aria-labelledby="quickAddModelTitle" aria-hidden="true">
-    <div class="modal-dialog">
-        <form class="modal-content" id="quickAddForm" novalidate>
+    <div class="modal-dialog modal-dialog-centered cancel-dialog">
+        <form class="modal-content cancel-modal" id="quickAddForm" novalidate>
             @Html.AntiForgeryToken()
-            <div class="modal-header">
-                <h5 class="modal-title" id="quickAddModelTitle">New model</h5>
+            <div class="cancel-head">
+                <div class="flex-grow-1 min-w-0">
+                    <h3 class="cancel-title" id="quickAddModelTitle">Add a new model</h3>
+                </div>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
 
-            <div class="modal-body">
-                <div id="qaError" class="alert alert-danger d-none"></div>
+            <div class="modal-body cancel-body">
+                <div id="qaError" class="text-danger small mb-2 d-none"></div>
 
-                <div class="mb-3">
-                    <label for="qaModelName" class="form-label">Model name</label>
-                    <input id="qaModelName" name="ModelName" maxlength="150" class="form-control" placeholder="e.g. Monobloc Chair" />
+                <label for="qaModelName" class="form-label">Model name</label>
+                <input id="qaModelName" name="ModelName" maxlength="150" class="form-control" autocomplete="off" placeholder="e.g. Magnetic Whiteboard, 4 × 8 ft" />
+                <div class="lk-similar mt-2" id="qaSimilar" hidden>
+                    <span>Similar model already exists: <strong id="qaSimilarName"></strong> <span id="qaSimilarUnits"></span></span>
+                    <a href="#" id="qaUseExisting">Use that instead</a>
                 </div>
 
-                <div class="mb-3" id="qaExistingCategory">
-                    <label for="qaCategory" class="form-label">Category</label>
-                    <select id="qaCategory" name="CategoryID" class="form-select">
-                        <option value="">-- Select Category --</option>
-                        @foreach (var c in categories)
-                        {
-                            <option value="@c.CategoryID">@c.CategoryName (@c.CodePrefix)</option>
-                        }
-                    </select>
-                    <button type="button" id="qaShowNewCategory" class="btn btn-link btn-sm p-0 mt-1">+ New category</button>
-                </div>
+                <label for="qaCategory" class="form-label mt-3">Category</label>
+                <select id="qaCategory" name="CategoryID" class="form-select">
+                    <option value="">Select a category</option>
+                    @foreach (var c in categories)
+                    {
+                        <option value="@c.CategoryID">@c.CategoryName (@c.CodePrefix)</option>
+                    }
+                    <option value="new">+ New category&hellip;</option>
+                </select>
 
-                <div class="mb-3 p-3 d-none" id="qaNewCategory" style="background:var(--sab-bg); border-radius:var(--sab-radius-sm);">
+                <div class="qa-newcat mt-2 d-none" id="qaNewCategory">
                     <div class="d-flex justify-content-between align-items-center mb-2">
-                        <span class="fw-semibold">New category</span>
-                        <button type="button" id="qaUseExisting" class="btn btn-link btn-sm p-0">Use an existing one</button>
+                        <span class="lk-code-label">New category</span>
+                        <a href="#" id="qaPickExisting" class="small">Pick an existing one instead</a>
                     </div>
-                    <div class="mb-2">
-                        <label for="qaCategoryName" class="form-label">Category name</label>
-                        <input id="qaCategoryName" name="NewCategoryName" maxlength="100" class="form-control" placeholder="e.g. Chairs" />
-                    </div>
-                    <div>
-                        <label for="qaCodePrefix" class="form-label">Category code</label>
-                        <input id="qaCodePrefix" name="NewCodePrefix" maxlength="3" class="form-control text-uppercase" placeholder="e.g. CHR" />
-                        <div class="form-text">Exactly 3 letters. Assets get codes like <span id="qaPrefixPreview" class="sab-code">CHR</span>-0001.</div>
+                    <div class="row g-2">
+                        <div class="col-sm-6">
+                            <label for="qaCategoryName" class="form-label">Category name</label>
+                            <input id="qaCategoryName" name="NewCategoryName" maxlength="100" class="form-control" placeholder="e.g. Whiteboards" />
+                        </div>
+                        <div class="col-sm-6">
+                            <label for="qaCodePrefix" class="form-label">Code prefix</label>
+                            <input id="qaCodePrefix" name="NewCodePrefix" maxlength="3" class="form-control text-uppercase" placeholder="e.g. WBD" autocomplete="off" />
+                            <div class="form-text">Assets will be <span id="qaPrefixPreview">WBD</span>-0001, <span class="qa-prefix-again">WBD</span>-0002&hellip;</div>
+                        </div>
                     </div>
                 </div>
 
-                <div>
-                    <label for="qaDescription" class="form-label">Description <span class="text-muted">(optional)</span></label>
-                    <textarea id="qaDescription" name="Description" maxlength="500" rows="2" class="form-control"></textarea>
-                </div>
+                <label for="qaDescription" class="form-label mt-3">Description <span class="register-optional">optional</span></label>
+                <textarea id="qaDescription" name="Description" maxlength="500" rows="2" class="form-control" placeholder="e.g. Magnetic, with marker tray and wall brackets."></textarea>
             </div>
 
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="submit" id="qaSave" class="btn btn-primary">Save model</button>
+            <div class="cancel-foot">
+                <span class="text-muted small">Also shows up in Catalog &rsaquo; Models.</span>
+                <div class="d-flex" style="gap:8px;">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" id="qaSave" class="btn btn-primary">Add model</button>
+                </div>
             </div>
         </form>
     </div>
@@ -74,12 +84,12 @@
         var errorBox = document.getElementById('qaError');
         var modelName = document.getElementById('qaModelName');
         var categorySelect = document.getElementById('qaCategory');
-        var existingBox = document.getElementById('qaExistingCategory');
         var newBox = document.getElementById('qaNewCategory');
         var categoryName = document.getElementById('qaCategoryName');
         var prefix = document.getElementById('qaCodePrefix');
-        var prefixPreview = document.getElementById('qaPrefixPreview');
         var saveBtn = document.getElementById('qaSave');
+        var existing = @Json.Serialize(existing);
+        var similar = null;
         var url = '@Url.Action("QuickCreate", "Models")';
 
         function showError(text) {
@@ -87,28 +97,50 @@
             errorBox.classList.toggle('d-none', !text);
         }
 
-        // Existing category, or the fields for a new one -- never both, so
-        // the server is never unsure which was meant.
+        // "+ New category..." in the list opens the fields for one; never
+        // both, so the server is never unsure which was meant.
         function useNewCategory(on) {
             newBox.classList.toggle('d-none', !on);
-            existingBox.classList.toggle('d-none', on);
             if (on) {
-                categorySelect.value = '';
+                categorySelect.value = 'new';
                 categoryName.focus();
             } else {
+                if (categorySelect.value === 'new') categorySelect.value = '';
                 categoryName.value = '';
                 prefix.value = '';
-                prefixPreview.textContent = 'CHR';
+                syncPrefix();
             }
         }
+        categorySelect.addEventListener('change', function () { useNewCategory(categorySelect.value === 'new'); });
+        document.getElementById('qaPickExisting').addEventListener('click', function (e) { e.preventDefault(); useNewCategory(false); });
 
-        document.getElementById('qaShowNewCategory').addEventListener('click', function () { useNewCategory(true); });
-        document.getElementById('qaUseExisting').addEventListener('click', function () { useNewCategory(false); });
-
-        prefix.addEventListener('input', function () {
+        function syncPrefix() {
             var clean = prefix.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3);
             if (clean !== prefix.value) prefix.value = clean;
-            prefixPreview.textContent = clean || 'CHR';
+            document.getElementById('qaPrefixPreview').textContent = clean || 'WBD';
+            document.querySelector('.qa-prefix-again').textContent = clean || 'WBD';
+        }
+        prefix.addEventListener('input', syncPrefix);
+
+        // A model whose name contains this one (or the other way round).
+        function norm(s) { return (s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }
+        function syncSimilar() {
+            var typed = norm(modelName.value);
+            similar = typed.length >= 4 ? existing.find(function (m) {
+                var n = norm(m.name);
+                return n === typed || n.indexOf(typed) !== -1 || typed.indexOf(n) !== -1;
+            }) : null;
+            document.getElementById('qaSimilar').hidden = !similar;
+            if (!similar) return;
+            document.getElementById('qaSimilarName').textContent = similar.name;
+            document.getElementById('qaSimilarUnits').textContent = '· ' + similar.units + ' unit' + (similar.units === 1 ? '' : 's');
+        }
+        modelName.addEventListener('input', syncSimilar);
+        document.getElementById('qaUseExisting').addEventListener('click', function (e) {
+            e.preventDefault();
+            if (!similar) return;
+            document.dispatchEvent(new CustomEvent('model-use', { detail: { modelId: similar.id } }));
+            bootstrap.Modal.getOrCreateInstance(modalEl).hide();
         });
 
         // Starts clean every time it opens.
@@ -116,6 +148,7 @@
             form.reset();
             useNewCategory(false);
             showError('');
+            syncSimilar();
         });
         modalEl.addEventListener('shown.bs.modal', function () { modelName.focus(); });
 
@@ -124,7 +157,10 @@
             showError('');
             saveBtn.disabled = true;
 
-            fetch(url, { method: 'POST', body: new FormData(form), credentials: 'same-origin' })
+            var data = new FormData(form);
+            if (data.get('CategoryID') === 'new') data.delete('CategoryID');
+
+            fetch(url, { method: 'POST', body: data, credentials: 'same-origin' })
                 .then(function (response) {
                     // A signed-out session answers with the login page, not
                     // JSON -- that lands in the catch below as "no reply".
@@ -145,8 +181,9 @@
                         var opt = document.createElement('option');
                         opt.value = m.categoryId;
                         opt.text = m.categoryName + ' (' + m.prefix + ')';
-                        categorySelect.appendChild(opt);
+                        categorySelect.insertBefore(opt, categorySelect.querySelector('option[value="new"]'));
                     }
+                    existing.push({ id: m.modelId, name: m.modelName, units: 0 });
 
                     document.dispatchEvent(new CustomEvent('model-added', { detail: m }));
                     bootstrap.Modal.getOrCreateInstance(modalEl).hide();

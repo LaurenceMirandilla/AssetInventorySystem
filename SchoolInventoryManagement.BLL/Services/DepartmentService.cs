@@ -69,15 +69,6 @@ namespace SchoolInventoryManagement.BLL.Services
             return departments.Select(d => d.ToDTO()).ToList();
         }
 
-        public async Task<List<DepartmentDTO>> GetDepartmentsByBranchAsync(int branchId)
-        {
-            var departments = await DepartmentQueryWithIncludes()
-                .Where(d => d.BranchID == branchId)
-                .OrderBy(d => d.DepartmentName)
-                .ToListAsync();
-            return departments.Select(d => d.ToDTO()).ToList();
-        }
-
         public async Task UpdateDepartmentAsync(int departmentId, UpdateDepartmentDTO dto, int actingUserId)
         {
             await PermissionHelper.EnsureIsUserManagerAsync(_context, actingUserId, "departments");
@@ -113,11 +104,14 @@ namespace SchoolInventoryManagement.BLL.Services
 
             var inUse = await _context.Users.AnyAsync(u => u.DepartmentID == departmentId)
                 || await _context.Assets.AnyAsync(a => a.DepartmentID == departmentId)
-                || await _context.AssetRequests.AnyAsync(ar => ar.DepartmentID == departmentId);
+                || await _context.AssetRequests.AnyAsync(ar => ar.DepartmentID == departmentId)
+                // Units out on a borrow or transfer that go back to this
+                // department when returned (AssignmentDepartment).
+                || await _context.AssetAssignments.AnyAsync(a => a.ReturnDate == null && a.PreviousDepartmentID == departmentId);
 
             if (inUse)
                 throw new InvalidOperationException(
-                    "This department cannot be deleted because it has users, assets, or asset requests under it.");
+                    "This department cannot be deleted because it has users, assets (including ones out on loan), or asset requests under it.");
 
             _context.Departments.Remove(department);
             await _context.SaveChangesAsync();

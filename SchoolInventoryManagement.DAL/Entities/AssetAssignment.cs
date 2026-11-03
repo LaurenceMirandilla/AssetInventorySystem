@@ -30,6 +30,12 @@ namespace SchoolInventoryManagement.DAL.Entities
         // assignment made from the asset page.
         public int? RequestID { get; set; }
 
+        // The unit's department just before this assignment. A unit that
+        // went out on a borrow or temporary transfer goes back to it on
+        // return (BLL AssignmentDepartment). Added by script 016; null on
+        // older rows.
+        public int? PreviousDepartmentID { get; set; }
+
         [Timestamp]
         public byte[] RowVersion { get; set; } = null!;
 

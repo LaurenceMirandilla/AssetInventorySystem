@@ -44,7 +44,7 @@
                 <div class="cancel-facts">
                     <div>
                         <span>Needed</span>
-                        <strong>@(r.NeededFrom?.ToString("MMM d") ?? "—")@(r.ReturnBy is not null ? " – " + r.ReturnBy.Value.ToString("MMM d") : "")</strong>
+                        <strong>@DisplayText.Or(r.NeededFrom?.ToString("MMM d"), "Not given")@(r.ReturnBy is not null ? " – " + r.ReturnBy.Value.ToString("MMM d") : "")</strong>
                     </div>
                     <div><span>Items</span><strong>@r.Items.Count model@(r.Items.Count == 1 ? "" : "s") · @r.TotalQuantity unit@(r.TotalQuantity == 1 ? "" : "s")</strong></div>
                     <div><span>Status</span><strong>@DisplayText.Humanize(r.RequestStatus.ToString())</strong></div>

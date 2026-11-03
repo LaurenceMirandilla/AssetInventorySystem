@@ -1,0 +1,374 @@
+/* ==========================================================================
+   Redesign layer (handoff: "green and white, square, solid tags").
+   Loaded after site.css. Restyles; the pages' markup and behaviour are
+   unchanged. The sign-in page doesn't load it.
+   ========================================================================== */
+
+:root {
+  --sab-green: #2E8B47;          /* accent: solid bars, success tags, links */
+  --sab-green-dark: #1E5B2E;     /* primary: headings, buttons, active */
+  --sab-green-darker: #174A25;
+  --sab-green-light: #EAF3EC;
+  --sab-green-border: #9CC7A8;
+  --sab-bg: #F2F6F3;
+  --sab-sidebar-bg: #FAFCFA;
+  --sab-surface: #FFFFFF;
+  --sab-border: #E1E9E3;
+  --sab-text: #1F2D24;
+  --sab-text-muted: #5A6B60;
+  --sab-text-faint: #7D8F83;
+  --sab-red-text: #A1261F;
+  --sab-radius: 0;
+  --sab-radius-sm: 0;
+  --sab-shadow: 0 1px 2px rgba(20, 63, 32, .05), 0 4px 14px rgba(20, 63, 32, .06);
+
+  --tag-green: #2E8B47;
+  --tag-red: #C0392B;
+  --tag-grey: #7D8F83;
+  --tag-grey-light: #9AAFA1;
+  --tag-amber: #B0601C;
+  --tag-teal: #2F8F8A;
+  --tag-navy: #2F4C6E;
+  --line-soft: #EEF3EF;
+  --input-border: #D8E4DC;
+}
+
+html, body {
+  font-family: "Inter", -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  color: var(--sab-text);
+  background: var(--sab-bg);
+}
+
+/* ---- Square corners everywhere ------------------------------------------ */
+*, *::before, *::after { border-radius: 0 !important; }
+/* The few round things that stay round: step-tracker circles, radio
+   buttons, the signed-in user's initials at the foot of the sidebar. */
+.req-step-dot,
+.ni-step-num,
+.form-check-input[type="radio"],
+.sab-sidebar-user .sab-avatar,
+.spinner-border,
+.sab-bell-dot { border-radius: 50% !important; }
+
+/* ---- Shell --------------------------------------------------------------- */
+.sab-sidebar { width: 232px; background: var(--sab-sidebar-bg); border-right: 1px solid var(--sab-border); }
+.sab-nav-link { color: var(--sab-text-muted); font-size: 13.5px; }
+.sab-nav-link:hover { background: var(--sab-green-light); color: var(--sab-text); }
+.sab-nav-link.active { background: var(--sab-green-dark) !important; color: #fff !important; font-weight: 600; }
+.sab-nav-link.active svg { color: #fff !important; }
+.sab-main { padding: 14px 14px 0 0; }
+.sab-content {
+  background: var(--sab-surface);
+  border: 1px solid var(--sab-border);
+  box-shadow: var(--sab-shadow);
+  padding: 22px 24px 28px;
+}
+@media (max-width: 991.98px) {
+  .sab-main { padding: 0; }
+  .sab-content { border: 0; box-shadow: none; padding: 16px; }
+}
+
+/* Page title 22px; small grey sub-line. */
+.asset-detail-title, .sab-page-head h2 { font-size: 22px; font-weight: 700; color: var(--sab-text); }
+.asset-detail-sub, .sab-page-sub { color: var(--sab-text-muted); font-size: 13px; }
+.asset-crumbs a { color: var(--sab-green); }
+
+/* ---- Cards, tables: soft shadow, soft fill ------------------------------- */
+.asset-card, .sab-table-card, .myassets-stats > div, .register-footer, .rq-summary {
+  border: 1px solid var(--sab-border);
+  box-shadow: var(--sab-shadow);
+}
+.sab-table-card .table thead th, .asset-table thead th {
+  background: #FAFCFA; color: var(--sab-text-faint);
+}
+
+/* Card headings: a solid green strip, white uppercase title on the left,
+   count or link on the right. */
+.asset-card-title, .register-step-head, .rq-card-head, .sab-table-head,
+.myassets-panel .md-section-title {
+  background: var(--sab-green);
+  border-bottom: 0;
+  color: #fff;
+  padding: 10px 16px;
+}
+.asset-card-title, .register-step-title, .rq-card-head h3, .sab-table-head h4, .sab-table-head h5 {
+  color: #fff; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; margin: 0;
+}
+.rq-card-head > span, .sab-table-head .sab-table-count, .register-step-head .nr-head-note,
+.register-step-head .register-step-sub { color: rgba(255,255,255,.88) !important; font-size: 12px; }
+.register-step-head a, .rq-card-head a, .sab-table-head a { color: #fff; text-decoration: underline; }
+.register-step-num { background: #fff; color: var(--sab-green-dark); }
+
+/* List group headings: solid green bar, white spaced capitals. */
+.myassets-group-label {
+  background: var(--sab-green); color: #fff !important;
+  padding: 5px 10px; font-size: 10.5px; letter-spacing: .1em;
+}
+.myassets-group-label::before { display: none; }
+
+/* Tabs inside a card sit on the strip; the active one is white with a
+   white underline, each with a count. */
+.page-tabs, .history-tabs {
+  background: var(--sab-green); border-bottom: 0; margin: 0 0 16px; padding: 0 8px; gap: 2px;
+}
+.page-tabs button, .history-tabs .nav-link {
+  color: rgba(255,255,255,.72) !important; border-bottom: 3px solid transparent !important;
+  padding: 10px 14px; font-size: 13px;
+}
+.page-tabs button.active, .history-tabs .nav-link.active {
+  color: #fff !important; border-bottom-color: #fff !important; background: transparent !important;
+}
+.history-tab-count, .page-tabs .history-tab-count {
+  background: rgba(255,255,255,.18) !important; color: #fff !important; padding: 0 6px; font-size: 11px;
+}
+
+/* Selected list row */
+.myassets-item { border: 1px solid transparent; }
+.myassets-item:hover { background: var(--sab-sidebar-bg); }
+.myassets-item.active, .myassets-item[aria-current="true"], .myassets-item.is-active {
+  background: #fff; border-color: var(--sab-border); border-left: 3px solid var(--sab-green-dark);
+  box-shadow: 0 1px 2px rgba(20,63,32,.06), 0 4px 12px rgba(20,63,32,.08);
+}
+
+/* ---- Solid tags (no pills, no tinted badges) ----------------------------- */
+.asset-pill, .status-pill, .md-pill, .history-pill, .rq-badge, .md-tag, .md-age, .md-wait,
+.dash-activity-pill, .rq-kind, .nr-badge, .myassets-type {
+  display: inline-flex !important; align-items: center; height: 20px; min-width: 0 !important;
+  padding: 0 8px !important; border: 0 !important;
+  background: var(--tag-grey) !important; color: #fff !important;
+  font-size: 11px !important; font-weight: 700 !important; line-height: 20px; white-space: nowrap;
+  box-shadow: none !important;
+}
+.asset-pill::before, .md-pill::before, .dash-activity-pill svg { display: none !important; }
+
+/* green */
+.st-available, .st-assigned, .status-active, .status-approved, .status-fulfilled, .status-assigned,
+.cond-new, .cond-excellent, .cond-good, .rq-badge.is-green, .rq-kind.is-created, .md-tag:not(.is-transfer):not(.is-newitem),
+.md-age.is-soon, .nr-badge { background: var(--tag-green) !important; }
+/* red */
+.st-overdue, .status-rejected, .status-overdue, .cond-damaged, .rq-badge.is-red, .rq-kind.is-deleted,
+.md-age.is-late, .md-wait:not(.is-calm) { background: var(--tag-red) !important; }
+/* grey */
+.st-disposed, .status-pending, .status-cancelled, .cond-fair, .rq-badge.is-gray, .rq-kind.is-updated,
+.md-age, .md-wait.is-calm, .st-undermaintenance { background: var(--tag-grey) !important; }
+.status-inactive { background: var(--tag-grey-light) !important; }
+/* amber */
+.cond-poor, .md-tag.is-newitem, .status-waiting { background: var(--tag-amber) !important; }
+/* teal */
+.st-intransit, .status-intransit, .md-tag.is-transfer, .rq-badge.is-teal, .md-age.is-transit { background: var(--tag-teal) !important; }
+/* navy */
+.status-returned, .rq-kind.is-event, .cond-repaired { background: var(--tag-navy) !important; }
+
+/* ---- No avatars ------------------------------------------------------------ */
+.md-avatar, .history-avatar, .handover-avatar, .asset-holder-avatar, .person-avatar, .holder-avatar,
+.sab-avatar, .req-item-icon { display: none !important; }
+.sab-sidebar-user .sab-avatar { display: inline-flex !important; }
+.asset-holder { border: 0; padding: 0; background: none; font-weight: 600; }
+.dash-activity li::before { display: none; }
+
+/* Codes: small grey monospace label, no colour. */
+.asset-code-chip, .dash-activity-code {
+  display: inline-block; padding: 1px 6px; border: 0; background: #EEF3EF; color: var(--sab-text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11.5px;
+}
+
+/* ---- Buttons ------------------------------------------------------------- */
+.btn { font-weight: 600; font-size: 13.5px; }
+.btn-primary { background: var(--sab-green-dark); border-color: var(--sab-green-dark); box-shadow: 0 2px 6px rgba(30,91,46,.25); }
+.btn-primary:hover, .btn-primary:focus { background: var(--sab-green-darker); border-color: var(--sab-green-darker); }
+.btn-outline-secondary, .asset-tool-btn { background: #fff; border: 1px solid var(--input-border); color: var(--sab-text); }
+.btn-outline-secondary:hover, .asset-tool-btn:hover { background: var(--sab-sidebar-bg); border-color: #C5D6CA; color: var(--sab-text); }
+.btn-outline-danger, .btn-danger-outline { background: #fff; border: 1px solid var(--tag-red); color: var(--sab-red-text); }
+.btn-outline-danger:hover { background: #FBEDEB; color: var(--sab-red-text); border-color: var(--tag-red); }
+
+/* ---- Forms ----------------------------------------------------------------- */
+.form-label, .register-side-label { font-size: 12.5px; font-weight: 600; color: var(--sab-text); }
+.form-control, .form-select, .combo-input, .asset-search {
+  min-height: 42px; border: 1px solid var(--input-border);
+}
+.form-control-sm, .form-select-sm, .asset-filter-panel .combo-input, .rq-size, .asset-page-size { min-height: 34px; }
+.form-control:focus, .form-select:focus, .combo-input:focus, .asset-search:focus-within {
+  border-color: var(--sab-green); box-shadow: 0 0 0 3px rgba(46, 139, 71, .15);
+}
+.asset-search { height: 42px; }
+
+/* Empty values: grey italics. */
+.is-empty, .rq-grid dd.is-empty, .asset-none { color: var(--sab-text-faint) !important; font-style: italic; font-weight: 500 !important; }
+
+/* ---- Pagers ------------------------------------------------------------ */
+.asset-page { border: 1px solid var(--input-border); }
+.asset-page.current, .asset-page[aria-current="page"] { background: var(--sab-green-dark); border-color: var(--sab-green-dark); color: #fff; }
+
+/* ---- Step tracker ------------------------------------------------------ */
+.req-step.is-done .req-step-dot { background: var(--sab-green); border-color: var(--sab-green); color: #fff; }
+.req-step.is-current .req-step-dot { border-color: var(--sab-green-dark); color: var(--sab-green-dark); box-shadow: 0 0 0 4px rgba(46,139,71,.15); }
+.req-step.is-late .req-step-dot, .req-step.is-stopped .req-step-dot { background: var(--tag-red); border-color: var(--tag-red); color: #fff; }
+.req-step.is-done::before, .req-step.is-current::before, .req-step.is-late::before { background: var(--sab-green); }
+
+/* ---- Fixed bottom action bar ------------------------------------------ */
+.register-footer { background: #fff; }
+
+/* ---- Dialogs ------------------------------------------------------------ */
+.modal-content { border: 1px solid var(--sab-border); box-shadow: 0 10px 40px rgba(20,63,32,.18); }
+.modal-header { background: var(--sab-green); color: #fff; border-bottom: 0; }
+.modal-header .modal-title { color: #fff; font-size: 13px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+.modal-header .btn-close { filter: invert(1) grayscale(1) brightness(2); }
+
+/* ---- Small fact boxes -------------------------------------------------- */
+.myassets-stats > div { background: #fff; }
+.req-items, .req-note, .rq-remarks, .state-note { border: 1px solid var(--sab-border); background: var(--sab-sidebar-bg); }
+
+/* Sidebar count badges and quantities: solid, no tint. */
+:root { --sidebar-width: 232px; }
+.sab-nav-badge { background: var(--tag-red) !important; color: #fff !important; height: 18px; min-width: 20px; font-size: 11px; }
+.rq-item-qty span, .req-item-qty { background: none !important; color: var(--sab-text) !important; font-weight: 800; padding: 0 !important; }
+.myassets-panel .md-section-title {
+  margin: 20px 0 0; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+}
+.myassets-panel .md-section-title + .req-items { border-top: 0; }
+
+/* "Show [10] per page" in the split-view lists' footer (site.js). */
+.md-size { display: inline-flex; align-items: center; gap: 6px; margin: 0 0 0 auto; color: var(--sab-text-muted); font-size: 12.5px; }
+.md-size .form-select { width: auto; min-height: 30px; padding-top: 2px; padding-bottom: 2px; }
+
+/* My Assets: the #number / type block is text, not a coloured tile. */
+.myassets-badge { background: none !important; color: var(--sab-text-muted) !important; border-right: 1px solid var(--line-soft); }
+.myassets-badge strong { color: var(--sab-text); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11.5px; }
+
+/* Dialogs (Cancel / Reject request, Reset password): a green header strip,
+   no coloured icon tiles. */
+.cancel-head { background: var(--sab-green); color: #fff; padding: 14px 20px; align-items: center; }
+.cancel-head .cancel-title { color: #fff; font-size: 13px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; margin: 0; }
+.cancel-head .cancel-meta { color: rgba(255,255,255,.88); }
+.cancel-head .btn-close { filter: invert(1) grayscale(1) brightness(2); }
+.cancel-icon, .cancel-item-abbr { display: none !important; }
+.cancel-body { padding-top: 16px; }
+.modal-backdrop.show { opacity: .45; }
+
+/* Users: the account's destructive action, kept apart. */
+.user-danger {
+  display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;
+  margin-top: 18px; padding: 14px 16px; border: 1px solid #F0D3CF; border-left: 3px solid var(--tag-red); background: #FFF;
+}
+.user-danger form { margin: 0; }
+.myassets-item > .status-pill { flex: none; align-self: center; }
+
+/* Assets list: every filter in one dropdown under the Filters button. */
+.asset-filter-menu { width: min(640px, calc(100vw - 32px)); padding: 0; border: 1px solid var(--sab-border); box-shadow: 0 10px 30px rgba(20,63,32,.14); }
+.asset-filter-menu .asset-filter-panel { border-bottom: 0; background: #fff; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
+
+/* Catalog / organisation lists (Categories, Models, Locations, Branches,
+   Departments): split view with the record's edit form on the right. */
+.lk-count { flex: none; align-self: flex-start; color: var(--sab-text-muted); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.lk-sub { margin: 2px 0 14px; color: var(--sab-text-muted); font-size: 13px; }
+.lk-link { display: inline-block; margin-top: 4px; font-size: 12.5px; font-weight: 600; color: var(--sab-green); }
+.myassets-stats.lk-stats-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.myassets-stats.lk-stats-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 575.98px) { .myassets-stats.lk-stats-3, .myassets-stats.lk-stats-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.lk-foot {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 10px;
+  margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--line-soft);
+}
+.lk-foot form { margin: 0; }
+.lk-why { color: var(--sab-text-muted); font-size: 13px; }
+.lk-foot-actions { display: flex; gap: 8px; margin-left: auto; }
+.btn-outline-danger:disabled { opacity: .45; }
+
+/* Catalog / organisation add and edit pages: the side card. */
+.lk-code-box { padding: 14px 16px; border: 1px solid var(--sab-green-border); background: var(--sab-green-light); }
+.lk-code-label { color: var(--sab-text-muted); font-size: 10.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.lk-code-big { margin-top: 4px; color: var(--sab-green-dark); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 26px; font-weight: 700; overflow-wrap: anywhere; }
+.lk-show-name { margin: 4px 0 6px; font-size: 16px; font-weight: 700; overflow-wrap: anywhere; }
+.lk-side-note { margin: 12px 0 0; color: var(--sab-text-muted); font-size: 13px; }
+.lk-side-sub { margin-bottom: 10px; color: var(--sab-text-muted); font-size: 13px; }
+.lk-side-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
+.lk-side-facts span { display: block; color: var(--sab-text-muted); font-size: 12px; }
+.lk-side-facts strong { font-size: 15px; }
+.lk-steps { margin: 0; padding-left: 18px; color: var(--sab-text-faint); font-size: 13px; }
+.lk-steps li { padding: 2px 0; }
+.lk-steps li.is-now { color: var(--sab-green); font-weight: 600; }
+.lk-checks { list-style: none; margin: 0; padding: 0; font-size: 13px; color: var(--sab-green-dark); }
+.lk-checks li { display: flex; gap: 6px; padding: 3px 0; }
+.lk-checks li::before { content: "\2713"; flex: none; }
+.lk-similar {
+  display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;
+  padding: 9px 12px; border: 1px solid #F1D9B5; background: #FDF6EA; color: var(--tag-amber); font-size: 13px;
+}
+.lk-similar strong { color: #8A4A12; }
+.lk-similar a { color: var(--sab-green-dark); font-weight: 700; }
+
+/* Location movements: direction tabs, date range, search. */
+.mv-tools { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; }
+.mv-dir { padding: 3px; background: var(--line-soft); }
+.mv-dir button { border: 0; background: none; padding: 6px 12px; font-size: 13px; font-weight: 600; color: var(--sab-text-muted); }
+.mv-dir button.active { background: #fff; color: var(--sab-text); box-shadow: 0 1px 2px rgba(20,63,32,.08); }
+.mv-dates { display: flex; gap: 8px; margin-left: auto; }
+.mv-date { display: flex; flex-direction: column; align-items: center; padding: 3px 10px 4px; border: 1px solid var(--input-border); background: #fff; margin: 0; }
+.mv-date span { font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--sab-text-muted); }
+.mv-date input { border: 0; padding: 0; font-size: 13px; font-weight: 600; background: none; }
+.mv-search { width: 260px; }
+@media (max-width: 767.98px) { .mv-dates { margin-left: 0; } .mv-search { width: 100%; } }
+
+/* Reports: plain tabs under the title (not the green strip), filters as
+   small labelled boxes, then facts and the table. */
+.page-tabs.report-tabs { background: transparent; padding: 0; margin: 0 0 16px; gap: 4px; border-bottom: 1px solid var(--sab-border); }
+.page-tabs.report-tabs .page-tab {
+  display: inline-flex; align-items: center; gap: 7px; padding: 10px 14px; border-bottom: 3px solid transparent;
+  color: var(--sab-text-muted) !important; font-size: 13.5px; font-weight: 600; text-decoration: none; white-space: nowrap;
+}
+.page-tabs.report-tabs .page-tab.active { color: var(--sab-green-dark) !important; border-bottom-color: var(--sab-green-dark); }
+.rp-filters { display: flex; align-items: stretch; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
+.rp-field { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 150px; padding: 4px 10px 6px; border: 1px solid var(--input-border); background: #fff; margin: 0; }
+.rp-field > span { font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--sab-text-muted); }
+.rp-field .form-select, .rp-field .form-control { min-height: 0 !important; height: auto; padding: 1px 24px 1px 6px; border: 0 !important; box-shadow: none !important; font-size: 13px; font-weight: 600; text-align: center; background-position: right 4px center; }
+.rp-field .form-control { padding-right: 6px; }
+.rp-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.rp-late { display: block; color: var(--sab-red-text); font-size: 11px; font-weight: 700; }
+.rp-days { font-weight: 700; }
+.rp-days.is-late { color: var(--sab-red-text); }
+.rp-total td { background: #FAFCFA !important; font-weight: 700; }
+.rp-bars { padding: 6px 16px 14px; }
+.rp-bar { display: grid; grid-template-columns: 110px minmax(0, 1fr) 40px; align-items: center; gap: 12px; padding: 5px 0; font-size: 13px; }
+.rp-bar-track { height: 8px; background: var(--line-soft); }
+.rp-bar-fill { height: 8px; background: var(--tag-grey); }
+.rp-bar strong { text-align: right; }
+.rp-big { padding: 14px 16px; }
+.rp-big strong { display: block; color: var(--sab-green-dark); font-size: 30px; line-height: 1.1; }
+.rp-big span { color: var(--sab-text-muted); font-size: 13px; }
+.rp-ip { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11.5px; padding: 1px 6px; background: var(--line-soft); color: var(--sab-text-muted); }
+
+/* Users page: the person's activity card, tabs on the green strip with
+   a search box at the right. */
+.ua-strip { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding: 6px 12px; background: var(--sab-green); }
+.ua-tabs { display: flex; gap: 2px; flex-wrap: wrap; }
+.ua-tabs button { border: 0; border-bottom: 3px solid transparent; background: none; padding: 9px 12px; color: rgba(255,255,255,.75); font-size: 13px; font-weight: 600; }
+.ua-tabs button.active { color: #fff; border-bottom-color: #fff; }
+.ua-search { width: 230px; height: 34px !important; min-height: 34px !important; border: 0; }
+@media (max-width: 575.98px) { .ua-search { width: 100%; } }
+.user-danger .lk-why { flex: 1 1 220px; }
+
+/* Add / Edit user: role tiles and what the role can do. */
+.role-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 767.98px) { .role-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 419.98px) { .role-cards { grid-template-columns: 1fr; } }
+.role-card { position: relative; display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 12px 14px; border: 1px solid var(--sab-border); background: #fff; cursor: pointer; }
+.role-card input { position: absolute; opacity: 0; pointer-events: none; }
+.role-card-name { font-weight: 700; font-size: 14px; }
+.role-card-about { color: var(--sab-text-muted); font-size: 12.5px; }
+.role-card:hover { border-color: #C5D6CA; }
+.role-card.is-on { border: 2px solid var(--sab-green); padding: 11px 13px; background: var(--sab-green-light); }
+.role-card:focus-within { box-shadow: 0 0 0 3px rgba(46, 139, 71, .15); }
+.role-can { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
+.lk-checks li.is-not { color: var(--sab-text-faint); }
+.lk-checks li.is-not::before { content: "\2717"; }
+
+/* "+ New model" popup: the new-category fields. */
+.qa-newcat { padding: 12px; border: 1px dashed var(--sab-green-border); background: var(--sab-green-light); }
+/* Phones: the two date boxes share the row instead of overflowing it. */
+@media (max-width: 575.98px) {
+  .mv-dates { width: 100%; }
+  .mv-date { flex: 1 1 0; min-width: 0; }
+  .mv-date input { width: 100%; min-width: 0; }
+  .rp-field { flex: 1 1 140px; min-width: 0; }
+  .rp-field .form-select, .rp-field .form-control { width: 100%; }
+}

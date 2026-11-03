@@ -32,7 +32,7 @@
                             <div class="text-muted small">@row.UserRole</div>
                         </td>
                         <td>@row.ActionPerformed</td>
-                        <td class="small">@(await AuditText.FormatAsync(row.Description) ?? "—")</td>
+                        <td class="small">@DisplayText.Or(await AuditText.FormatAsync(row.Description), "No details")</td>
                     </tr>
                 }
             </tbody>

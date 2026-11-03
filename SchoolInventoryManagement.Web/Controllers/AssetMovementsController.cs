@@ -87,13 +87,14 @@ namespace SchoolInventoryManagement.Web.Controllers
         // GET /AssetMovements/ForLocation/3
         // The other side of an asset's movement history: everything that has
         // come into or gone out of one room.
-        public async Task<IActionResult> ForLocation(int id)
+        public async Task<IActionResult> ForLocation(int id, [FromServices] Helpers.LookupUsage usage)
         {
             var location = await _locationService.GetLocationByIdAsync(id);
             if (location is null)
                 return NotFound();
 
-            ViewBag.LocationName = $"{location.BranchName} — {location.LocationName}";
+            ViewBag.Location = location;
+            ViewBag.UnitsHere = (await usage.LocationsAsync()).GetValueOrDefault(id)?.UnitsHere ?? 0;
 
             var movements = await _movementService.GetMovementHistoryForLocationAsync(id);
             return View(movements);

@@ -141,9 +141,9 @@
                             </div>
                         }
                         <dl class="approve-facts">
-                            <div><dt>Needed from</dt><dd>@(request.NeededFrom?.ToString("MMM d · h:mm tt") ?? "—")</dd></div>
-                            <div><dt>Until</dt><dd>@(request.ReturnBy?.ToString("MMM d · h:mm tt") ?? "—")</dd></div>
-                            <div><dt>Borrowing for</dt><dd>@(days is null ? "—" : days == 1 ? "1 day" : days + " days")</dd></div>
+                            <div><dt>Needed from</dt><dd>@DisplayText.Or(request.NeededFrom?.ToString("MMM d · h:mm tt"), "Not given")</dd></div>
+                            <div><dt>Until</dt><dd>@DisplayText.Or(request.ReturnBy?.ToString("MMM d · h:mm tt"), "Not given")</dd></div>
+                            <div><dt>Borrowing for</dt><dd>@DisplayText.Or(days is null ? null : days == 1 ? "1 day" : days + " days", "Not known")</dd></div>
                             <div><dt>Units</dt><dd>@asked</dd></div>
                         </dl>
                         @if (!string.IsNullOrWhiteSpace(request.Reason))

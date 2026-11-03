@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel.DataAnnotations;
+using SchoolInventoryManagement.BLL.Services;
 
 namespace SchoolInventoryManagement.Web.ViewModels
 {
@@ -6,9 +7,12 @@ namespace SchoolInventoryManagement.Web.ViewModels
     {
         public int UserID { get; set; }
 
-        // Shown read-only: Email is the login identity and changing it
-        // needs its own flow, so UpdateUserDTO deliberately omits it.
-        public string Email { get; set; } = null!;
+        // The sign-in name. Editable; a change is kept in the History box
+        // below the form (and on Reports > Audit) with the old value.
+        [Required(ErrorMessage = "Enter a username.")]
+        [RegularExpression(UsernamePolicy.Pattern, ErrorMessage = UsernamePolicy.Message)]
+        [Display(Name = "Username")]
+        public string Username { get; set; } = null!;
 
         [Required]
         [Display(Name = "Role")]

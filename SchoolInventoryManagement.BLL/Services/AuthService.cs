@@ -17,13 +17,18 @@ namespace SchoolInventoryManagement.BLL.Services
             _passwordHasher = new PasswordHasher<User>();
         }
 
-        public async Task<User?> ValidateCredentialsAsync(string email, string password)
+        // Case doesn't matter: "admin" signs in as "Admin". Lower-cased on
+        // both sides rather than trusting the column's collation; usernames
+        // are kept unique the same way (UserService.EnsureUsernameFreeAsync).
+        public async Task<User?> ValidateCredentialsAsync(string username, string password)
         {
+            var wanted = UsernamePolicy.Normalize(username).ToLower();
+
             var user = await _context.Users
                 .Include(u => u.Role)
                 .Include(u => u.Department)
                 .Include(u => u.Branch)
-                .FirstOrDefaultAsync(u => u.Email == email);
+                .FirstOrDefaultAsync(u => u.Username.ToLower() == wanted);
 
             if (user is null)
                 return null;

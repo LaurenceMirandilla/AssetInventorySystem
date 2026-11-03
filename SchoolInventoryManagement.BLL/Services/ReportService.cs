@@ -148,6 +148,7 @@ namespace SchoolInventoryManagement.BLL.Services
                 .Include(a => a.AssignedToUser)
                     .ThenInclude(u => u.Role)
                 .Include(a => a.AssignedByUser)
+                .Include(a => a.Request)
                 .Where(a => a.ReturnDate == null);
 
             if (departmentId.HasValue)
@@ -169,14 +170,17 @@ namespace SchoolInventoryManagement.BLL.Services
                 AssetCode = a.Asset.AssetCode,
                 AssetName = a.Asset.AssetName,
                 AssignedToName = $"{a.AssignedToUser.FirstName} {a.AssignedToUser.LastName}",
-                AssignedToEmail = a.AssignedToUser.Email,
+                AssignedToUsername = a.AssignedToUser.Username,
                 AssignedToRole = a.AssignedToUser.Role.RoleName,
                 DepartmentName = a.Asset.Department?.DepartmentName,
                 AssignedByName = $"{a.AssignedByUser.FirstName} {a.AssignedByUser.LastName}",
                 AssignmentDate = a.AssignmentDate,
                 DaysOut = Math.Max(0, (int)(now.Date - a.AssignmentDate.Date).TotalDays),
                 ConditionOnAssignment = a.ConditionOnAssignment,
-                Remarks = a.Remarks
+                Remarks = a.Remarks,
+                DueBack = a.Request?.ReturnBy,
+                IsOverdue = a.Asset.Status == AssetStatus.Overdue
+                    || (a.Request?.ReturnBy is DateTime due && due < now && a.Asset.Status == AssetStatus.Assigned)
             }).ToList();
         }
 

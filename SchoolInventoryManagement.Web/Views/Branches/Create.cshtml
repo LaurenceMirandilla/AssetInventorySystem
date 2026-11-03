@@ -1,43 +1,93 @@
 @model SchoolInventoryManagement.BLL.DTOs.CreateBranchDTO
+@using SchoolInventoryManagement.Web.Helpers
+@inject LookupUsage Usage
 @{
     ViewData["Title"] = "New Branch";
 }
 
-<h2>New Branch</h2>
-
-<form asp-action="Create" method="post">
+<form asp-action="Create" method="post" class="register-form page-fill" id="lkForm">
     @Html.AntiForgeryToken()
+
+    <div class="asset-detail-head">
+        <div>
+            <nav class="asset-crumbs" aria-label="Breadcrumb">
+                <a asp-action="Index">Branches</a>
+                <span aria-hidden="true">&rsaquo;</span>
+                <span>New branch</span>
+            </nav>
+            <h2 class="asset-detail-title">New branch</h2>
+            <div class="asset-detail-sub">A campus of the school. Locations, departments and users belong to one.</div>
+        </div>
+    </div>
+
     <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
 
-    <div class="mb-3">
-        <label asp-for="BranchName" class="form-label"></label>
-        <input asp-for="BranchName" class="form-control" />
-        <span asp-validation-for="BranchName" class="text-danger"></span>
+    <div class="row g-3 align-items-start">
+        <div class="col-lg-8">
+            <div class="asset-card register-step">
+                <div class="register-step-head"><div class="register-step-title">Details</div></div>
+                <div class="register-step-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label asp-for="BranchName" class="form-label">Name</label>
+                            <input asp-for="BranchName" class="form-control" maxlength="100" placeholder="e.g. North Campus" />
+                            <span asp-validation-for="BranchName" class="text-danger small"></span>
+                        </div>
+                        <div class="col-md-6">
+                            <label asp-for="BranchCode" class="form-label">Code</label>
+                            <input asp-for="BranchCode" class="form-control text-uppercase" maxlength="1" autocomplete="off" placeholder="e.g. N" id="branchCode" />
+                            <div class="form-text">One letter. Must be unique. It starts every barcode made in this branch.</div>
+                            <span asp-validation-for="BranchCode" class="text-danger small"></span>
+                        </div>
+                        <div class="col-12">
+                            <label asp-for="Address" class="form-label">Address <span class="register-optional">optional</span></label>
+                            <input asp-for="Address" class="form-control" maxlength="255" placeholder="e.g. 45 Mabini St., Quezon City" />
+                            <span asp-validation-for="Address" class="text-danger small"></span>
+                        </div>
+                        <div class="col-12">
+                            <label asp-for="ContactInfo" class="form-label">Contact info <span class="register-optional">optional</span></label>
+                            <input asp-for="ContactInfo" class="form-control" maxlength="100" placeholder="e.g. (02) 8765 4321" />
+                            <span asp-validation-for="ContactInfo" class="text-danger small"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="asset-card register-step lk-side">
+                <div class="register-step-head"><div class="register-step-title">Next steps</div></div>
+                <div class="register-step-body">
+                    <ol class="lk-steps">
+                        <li class="is-now">Save the branch</li>
+                        <li>Add its locations</li>
+                        <li>Add its departments</li>
+                        <li>Add or move users to it</li>
+                    </ol>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <div class="mb-3" style="max-width:320px;">
-        <label asp-for="BranchCode" class="form-label"></label>
-        <input asp-for="BranchCode" class="form-control text-uppercase" maxlength="1" placeholder="e.g. M" autocomplete="off" />
-        <span asp-validation-for="BranchCode" class="text-danger"></span>
-        <div class="form-text">One letter, unique. Starts every barcode made in this branch: <span class="sab-code">M-LIB-CHR-0001</span>.</div>
+    <div class="register-footer">
+        <div class="d-flex ms-auto" style="gap:8px;">
+            <a asp-action="Index" class="btn btn-outline-secondary">Cancel</a>
+            <button type="submit" class="btn btn-primary">Create branch</button>
+        </div>
     </div>
-
-    <div class="mb-3">
-        <label asp-for="Address" class="form-label">Address <span class="text-muted">(optional)</span></label>
-        <textarea asp-for="Address" class="form-control"></textarea>
-    </div>
-
-    <div class="mb-3">
-        <label asp-for="ContactInfo" class="form-label">Contact Info <span class="text-muted">(optional)</span></label>
-        <input asp-for="ContactInfo" class="form-control" />
-    </div>
-
-    <button type="submit" class="btn btn-primary">Create</button>
-    <a asp-action="Index" class="btn btn-secondary">Cancel</a>
 </form>
 
 @section Scripts {
     @{
         await Html.RenderPartialAsync("_ValidationScriptsPartial");
     }
+    <script>
+        (function () {
+            var code = document.getElementById('branchCode');
+            if (!code) return;
+            code.addEventListener('input', function () {
+                var clean = code.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 1);
+                if (clean !== code.value) code.value = clean;
+            });
+        })();
+    </script>
 }

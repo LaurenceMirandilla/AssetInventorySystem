@@ -1,60 +1,173 @@
 ﻿@model SchoolInventoryManagement.Web.ViewModels.UserEditViewModel
+@inject SchoolInventoryManagement.Web.Helpers.UserFacts UserFacts
 @{
-    ViewData["Title"] = "Edit User";
+    ViewData["Title"] = "Edit user";
+    var departments = (List<SchoolInventoryManagement.BLL.DTOs.DepartmentDTO>)ViewBag.DepartmentsByBranch;
+    var facts = await UserFacts.ForAsync(Model.UserID);
+    var isActive = facts?.Status == "Active";
+    var isSelf = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value == Model.UserID.ToString();
+    var roleName = ((IEnumerable<SelectListItem>)ViewBag.Roles).FirstOrDefault(r => r.Value == Model.RoleID.ToString())?.Text ?? "";
+    var fullName = $"{Model.FirstName} {Model.LastName}";
 }
 
-<h2>Edit User</h2>
-<p class="text-muted">@Model.Email</p>
-
-<form asp-action="Edit" asp-route-id="@Model.UserID" method="post">
+<form asp-action="Edit" asp-route-id="@Model.UserID" method="post" class="register-form page-fill">
     @Html.AntiForgeryToken()
     <input type="hidden" asp-for="UserID" />
-    <input type="hidden" asp-for="Email" />
     <input type="hidden" asp-for="RowVersionBase64" />
+
+    <div class="asset-detail-head">
+        <div>
+            <nav class="asset-crumbs" aria-label="Breadcrumb">
+                <a asp-action="Index">Users</a>
+                <span aria-hidden="true">&rsaquo;</span>
+                <a href="@Url.Action("Index")#u-@Model.UserID">@fullName</a>
+                <span aria-hidden="true">&rsaquo;</span>
+                <span>Edit</span>
+            </nav>
+            <h2 class="asset-detail-title">Edit @fullName</h2>
+            <div class="asset-detail-sub">Changes apply the next time they sign in. Every change is kept in the History below.</div>
+        </div>
+    </div>
+
     <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
 
-    <div class="mb-3">
-        <label asp-for="FirstName" class="form-label"></label>
-        <input asp-for="FirstName" class="form-control" />
-        <span asp-validation-for="FirstName" class="text-danger"></span>
+    <div class="row g-3 align-items-start">
+        <div class="col-lg-8">
+            <div class="asset-card register-step mb-3">
+                <div class="register-step-head"><div class="register-step-title">Name and sign-in</div></div>
+                <div class="register-step-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label asp-for="FirstName" class="form-label">First name</label>
+                            <input asp-for="FirstName" class="form-control" />
+                            <span asp-validation-for="FirstName" class="text-danger small"></span>
+                        </div>
+                        <div class="col-md-6">
+                            <label asp-for="LastName" class="form-label">Last name</label>
+                            <input asp-for="LastName" class="form-control" />
+                            <span asp-validation-for="LastName" class="text-danger small"></span>
+                        </div>
+                        <div class="col-12">
+                            <label asp-for="Username" class="form-label"></label>
+                            <input asp-for="Username" class="form-control" autocomplete="off"
+                                   autocapitalize="none" autocorrect="off" spellcheck="false" />
+                            <div class="form-text">Used to sign in. Must be unique. If you change it, they use the new one next time; the old one stays in the History.</div>
+                            <span asp-validation-for="Username" class="text-danger small"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="asset-card register-step mb-3">
+                <div class="register-step-head">
+                    <div class="register-step-title flex-grow-1">Role</div>
+                    <span class="nr-head-note">changing it changes what they can see and approve</span>
+                </div>
+                <div class="register-step-body">
+                    <partial name="_RoleCards" model="Model.RoleID" />
+                    <span asp-validation-for="RoleID" class="text-danger small"></span>
+                </div>
+            </div>
+
+            <div class="asset-card register-step mb-3">
+                <div class="register-step-head"><div class="register-step-title">Where they work</div></div>
+                <div class="register-step-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label asp-for="BranchID" class="form-label">Branch</label>
+                            <select asp-for="BranchID" id="branchSelect" asp-items="ViewBag.Branches" class="form-select" data-combobox>
+                                <option value="">Select a branch</option>
+                            </select>
+                            <span asp-validation-for="BranchID" class="text-danger small"></span>
+                        </div>
+                        <div class="col-md-6">
+                            <label asp-for="DepartmentID" class="form-label">Department</label>
+                            <select asp-for="DepartmentID" id="departmentSelect" class="form-select" data-combobox>
+                                <option value="">-- Pick a branch first --</option>
+                                @foreach (var dept in departments)
+                                {
+                                    <option value="@dept.DepartmentID" data-branch="@dept.BranchID" selected="@(Model.DepartmentID == dept.DepartmentID)">@dept.BranchName — @dept.DepartmentName</option>
+                                }
+                            </select>
+                            <div class="form-text">Only departments in the chosen branch.</div>
+                            <span asp-validation-for="DepartmentID" class="text-danger small"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="asset-card register-step mb-3">
+                <div class="register-step-head"><div class="register-step-title">Password</div></div>
+                <div class="register-step-body d-flex align-items-center justify-content-between flex-wrap" style="gap:12px;">
+                    <span class="text-muted">Passwords are never shown or changed here. Give them a new one if they forgot it.</span>
+                    @if (isSelf)
+                    {
+                        <a asp-action="ChangePassword" class="btn btn-outline-secondary">Change your password&hellip;</a>
+                    }
+                    else
+                    {
+                        <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#resetPasswordModal"
+                                data-reset-url="@Url.Action("ResetPassword", new { id = Model.UserID })"
+                                data-reset-name="@fullName" data-reset-username="@Model.Username"
+                                data-reset-role="@roleName" data-reset-version="@Model.RowVersionBase64">
+                            Reset password&hellip;
+                        </button>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="asset-card register-step lk-side">
+                <div class="register-step-head"><div class="register-step-title">Account</div></div>
+                <div class="register-step-body">
+                    <div class="fw-bold">@fullName</div>
+                    @if (facts is not null)
+                    {
+                        <span class="status-pill status-@facts.Status.ToLowerInvariant()">@facts.Status</span>
+                        <div class="lk-side-facts">
+                            <div><span>Holding now</span><strong>@facts.Holding item@(facts.Holding == 1 ? "" : "s")@(facts.Late > 0 ? $" · {facts.Late} late" : "")</strong></div>
+                            <div><span>Open requests</span><strong>@facts.OpenRequests</strong></div>
+                            <div style="grid-column:1/-1;"><span>Member since</span><strong>@DisplayText.Or(facts.MemberSince?.ToString("MMM d, yyyy"), "Before the history began")</strong></div>
+                        </div>
+                    }
+                    <p class="lk-side-note">Moving them to another department doesn't move the items they hold.</p>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <div class="mb-3">
-        <label asp-for="LastName" class="form-label"></label>
-        <input asp-for="LastName" class="form-control" />
-        <span asp-validation-for="LastName" class="text-danger"></span>
+    <div class="register-footer">
+        @if (!isSelf)
+        {
+            <button type="submit" form="statusForm" class="btn @(isActive ? "btn-outline-danger" : "btn-outline-secondary")">@(isActive ? "Deactivate" : "Reactivate")</button>
+        }
+        <div class="d-flex ms-auto" style="gap:8px;">
+            <a href="@Url.Action("Index")#u-@Model.UserID" class="btn btn-outline-secondary">Cancel</a>
+            <button type="submit" class="btn btn-primary">Save changes</button>
+        </div>
     </div>
-
-    <div class="mb-3">
-        <label asp-for="RoleID" class="form-label"></label>
-        <select asp-for="RoleID" asp-items="ViewBag.Roles" class="form-select">
-            <option value="">-- Select Role --</option>
-        </select>
-        <span asp-validation-for="RoleID" class="text-danger"></span>
-    </div>
-
-    <div class="mb-3">
-        <label asp-for="BranchID" class="form-label"></label>
-        <select asp-for="BranchID" asp-items="ViewBag.Branches" class="form-select">
-            <option value="">-- Select Branch --</option>
-        </select>
-        <span asp-validation-for="BranchID" class="text-danger"></span>
-    </div>
-
-    <div class="mb-3">
-        <label asp-for="DepartmentID" class="form-label"></label>
-        <select asp-for="DepartmentID" asp-items="ViewBag.Departments" class="form-select">
-            <option value="">-- Select Department --</option>
-        </select>
-        <span asp-validation-for="DepartmentID" class="text-danger"></span>
-    </div>
-
-    <button type="submit" class="btn btn-primary">Save</button>
-    <a asp-action="Index" class="btn btn-secondary">Cancel</a>
 </form>
+
+@* Outside the edit form: a form can't hold another. *@
+@if (!isSelf)
+{
+    <form asp-action="@(isActive ? "Deactivate" : "Reactivate")" asp-route-id="@Model.UserID" method="post" id="statusForm"
+          onsubmit="return @(isActive ? "confirm('Deactivate " + Model.Username + "? They are signed out at once.')" : "true");">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="rowVersionBase64" value="@Model.RowVersionBase64" />
+    </form>
+    <partial name="_ResetPasswordModal" />
+}
+
+@if (ViewBag.AuditHistory is List<SchoolInventoryManagement.BLL.DTOs.AuditReportRowDTO> history)
+{
+    <partial name="_AuditHistory" model="history" />
+}
 
 @section Scripts {
     @{
         await Html.RenderPartialAsync("_ValidationScriptsPartial");
     }
+    <partial name="_UserFormScript" />
 }

@@ -89,9 +89,6 @@ namespace SchoolInventoryManagement.Web.Controllers
             return View(model);
         }
 
-        [Authorize(Roles = RoleNames.Administrator)]
-        public IActionResult Privacy() { return View(); }
-
         // Target of UseStatusCodePagesWithReExecute in Program.cs, so a
         // NotFound() from any controller renders a real page in the app's
         // shell instead of the browser's blank default. AllowAnonymous
@@ -104,7 +101,9 @@ namespace SchoolInventoryManagement.Web.Controllers
             return View(new ErrorViewModel
             {
                 StatusCode = id ?? 500,
-                RequestId = Activity.Current?.Id ?? HttpContext.TraceIdentifier
+                // The same code ExceptionHandlingMiddleware writes into the
+                // error's audit entry, so the two can be matched up.
+                RequestId = HttpContext.TraceIdentifier
             });
         }
     }

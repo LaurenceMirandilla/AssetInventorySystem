@@ -1,44 +1,137 @@
 ﻿@model List<SchoolInventoryManagement.BLL.DTOs.AssetMovementResponseDTO>
 @{
-    ViewData["Title"] = "Location Movements";
+    var location = (SchoolInventoryManagement.BLL.DTOs.LocationDTO)ViewBag.Location;
+    var unitsHere = (int)ViewBag.UnitsHere;
+    ViewData["Title"] = "Movements - " + location.LocationName;
+
+    var rows = Model.OrderByDescending(m => m.DateMoved).ToList();
+    bool IsIn(SchoolInventoryManagement.BLL.DTOs.AssetMovementResponseDTO m) => m.DestinationLocationID == location.LocationID;
+    var comingIn = rows.Count(IsIn);
+    var thisYear = rows.Count(m => m.DateMoved.Year == DateTime.Today.Year);
+    var earliest = rows.Any() ? rows.Min(m => m.DateMoved).ToString("yyyy-MM-dd") : DateTime.Today.ToString("yyyy-MM-dd");
 }
 
-<h2>Movements — @ViewBag.LocationName</h2>
-<p class="text-muted">Everything that has come into or gone out of this location.</p>
+<div class="asset-detail-head mb-3">
+    <div>
+        <nav class="asset-crumbs" aria-label="Breadcrumb">
+            <a asp-controller="Locations" asp-action="Index">Locations</a>
+            <span aria-hidden="true">&rsaquo;</span>
+            <a href="@Url.Action("Index", "Locations")#l-@location.LocationID">@location.LocationName</a>
+            <span aria-hidden="true">&rsaquo;</span>
+            <span>Movements</span>
+        </nav>
+        <h2 class="asset-detail-title">Movements &mdash; @location.LocationName</h2>
+        <div class="asset-detail-sub">Every unit that came into or left this location, newest first.</div>
+    </div>
+    <div class="asset-detail-actions">
+        <a asp-controller="Locations" asp-action="Index" class="btn btn-outline-secondary">&larr; Locations</a>
+    </div>
+</div>
 
-<table class="table table-striped">
-    <thead>
-        <tr>
-            <th>Asset</th>
-            <th>From</th>
-            <th>To</th>
-            <th>Moved By</th>
-            <th>Date</th>
-            <th>Reason</th>
-        </tr>
-    </thead>
-    <tbody>
-        @foreach (var movement in Model)
-        {
-            <tr>
-                <td>
-                    <a asp-controller="Assets" asp-action="Details" asp-route-id="@movement.AssetID">
-                        @movement.AssetCode
-                    </a>
-                </td>
-                <td>@(movement.SourceLocationName ?? "—")</td>
-                <td>@movement.DestinationLocationName</td>
-                <td>@movement.MovedByUser.FullName</td>
-                <td>@movement.DateMoved.ToString("MMM d, yyyy h:mm tt")</td>
-                <td>@movement.ReasonForTransfer</td>
-            </tr>
-        }
-    </tbody>
-</table>
+<div class="myassets-stats lk-stats-4 mt-0 mb-3">
+    <div><span>Code</span><strong>@location.LocationCode</strong></div>
+    <div><span>Branch</span><strong>@location.BranchName</strong></div>
+    <div><span>Units here now</span><strong>@unitsHere</strong></div>
+    <div><span>Movements</span><strong>@thisYear this year</strong></div>
+</div>
 
-@if (!Model.Any())
-{
-    <p class="text-muted">Nothing has moved through this location yet.</p>
+<div class="mv-tools">
+    <div class="sab-seg mv-dir" role="tablist" aria-label="Direction">
+        <button type="button" class="active" data-dir="">All @rows.Count</button>
+        <button type="button" data-dir="in">Coming in @comingIn</button>
+        <button type="button" data-dir="out">Going out @(rows.Count - comingIn)</button>
+    </div>
+    <div class="mv-dates">
+        <label class="mv-date"><span>From</span><input type="date" id="mvFrom" value="@earliest" /></label>
+        <label class="mv-date"><span>To</span><input type="date" id="mvTo" value="@DateTime.Today.ToString("yyyy-MM-dd")" /></label>
+    </div>
+    <label class="asset-search mv-search">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+        <input type="text" id="mvSearch" autocomplete="off" placeholder="Asset code or name..." aria-label="Search by asset code or name" />
+    </label>
+</div>
+
+<div class="sab-table-card" data-pager data-page-size="10" data-noun="movements" id="mvTable">
+    @if (rows.Any())
+    {
+        <div class="table-responsive">
+            <table class="table asset-table history-table mb-0">
+                <thead>
+                    <tr><th>When</th><th>Asset</th><th>Direction</th><th>From &rarr; To</th><th>Moved by</th><th>Reason</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var m in rows)
+                    {
+                        var inward = IsIn(m);
+                        <tr data-pager-item data-dir="@(inward ? "in" : "out")" data-date="@m.DateMoved.ToString("yyyy-MM-dd")"
+                            data-search="@($"{m.AssetCode} {m.AssetName}".ToLowerInvariant())">
+                            <td>@m.DateMoved.ToString("MMM d · h:mm tt")</td>
+                            <td>
+                                <a asp-controller="Assets" asp-action="Details" asp-route-id="@m.AssetID" class="asset-code-chip">@m.AssetCode</a>
+                                <div class="text-muted small">@m.AssetName</div>
+                            </td>
+                            <td><span class="asset-pill @(inward ? "st-available" : "st-disposed")">@(inward ? "↘ In" : "↗ Out")</span></td>
+                            <td>@DisplayText.Or(m.SourceLocationName, "With a person") &rarr; @m.DestinationLocationName</td>
+                            <td>@m.MovedByUser.FullName</td>
+                            <td class="history-details">@m.ReasonForTransfer</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <div class="history-foot">
+            <span data-pager-range></span>
+            <div class="d-flex align-items-center flex-wrap" style="gap:8px;">
+                <span class="text-muted">Show</span>
+                <select class="form-select form-select-sm rq-size" data-pager-size aria-label="Rows per page">
+                    <option value="10" selected>10</option>
+                    <option value="20">20</option>
+                    <option value="50">50</option>
+                </select>
+                <span class="text-muted">per page</span>
+                <div class="d-flex flex-wrap" style="gap:6px;" data-pager-buttons></div>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="sab-empty"><p class="mb-0">Nothing has moved through this location yet.</p></div>
+    }
+</div>
+
+@section Scripts {
+    <script>
+        // Direction, date range and search narrow the rows; the pager
+        // (site.js) pages what is left.
+        (function () {
+            var table = document.getElementById('mvTable');
+            var rows = Array.from(table.querySelectorAll('[data-pager-item]'));
+            var dir = '';
+            var from = document.getElementById('mvFrom');
+            var to = document.getElementById('mvTo');
+            var search = document.getElementById('mvSearch');
+
+            function apply() {
+                var q = search.value.trim().toLowerCase();
+                rows.forEach(function (r) {
+                    var keep = (!dir || r.dataset.dir === dir)
+                        && (!from.value || r.dataset.date >= from.value)
+                        && (!to.value || r.dataset.date <= to.value)
+                        && (!q || r.dataset.search.indexOf(q) !== -1);
+                    r.toggleAttribute('data-pager-out', !keep);
+                });
+                table.dispatchEvent(new Event('pager-refresh'));
+            }
+
+            document.querySelectorAll('.mv-dir button').forEach(function (b) {
+                b.addEventListener('click', function () {
+                    document.querySelectorAll('.mv-dir button').forEach(function (x) { x.classList.toggle('active', x === b); });
+                    dir = b.dataset.dir;
+                    apply();
+                });
+            });
+            [from, to].forEach(function (i) { i.addEventListener('change', apply); });
+            search.addEventListener('input', apply);
+        })();
+    </script>
 }
-
-<a asp-controller="Locations" asp-action="Index" class="btn btn-secondary">Back to Locations</a>

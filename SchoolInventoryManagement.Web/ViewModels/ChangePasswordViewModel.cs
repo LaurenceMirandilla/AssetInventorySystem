@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel.DataAnnotations;
+using SchoolInventoryManagement.BLL.Services;
 
 namespace SchoolInventoryManagement.Web.ViewModels
 {
@@ -11,19 +12,20 @@ namespace SchoolInventoryManagement.Web.ViewModels
     {
         [Required]
         [DataType(DataType.Password)]
-        [Display(Name = "Current Password")]
+        [Display(Name = "Current password")]
         public string CurrentPassword { get; set; } = null!;
 
         [Required]
         [DataType(DataType.Password)]
-        [MinLength(8, ErrorMessage = "Use at least 8 characters.")]
-        [Display(Name = "New Password")]
+        [MinLength(PasswordPolicy.MinLength, ErrorMessage = PasswordPolicy.TooShortMessage)]
+        [RegularExpression(PasswordPolicy.HasNumberPattern, ErrorMessage = PasswordPolicy.NoNumberMessage)]
+        [Display(Name = "New password")]
         public string NewPassword { get; set; } = null!;
 
         [Required]
         [DataType(DataType.Password)]
         [Compare(nameof(NewPassword), ErrorMessage = "The two passwords don't match.")]
-        [Display(Name = "Confirm New Password")]
+        [Display(Name = "Confirm new password")]
         public string ConfirmPassword { get; set; } = null!;
     }
 }

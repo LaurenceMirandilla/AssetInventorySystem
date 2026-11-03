@@ -199,6 +199,26 @@ namespace SchoolInventoryManagement.Web.Controllers
                 })
                 .ToListAsync();
 
+            // The User filter: everyone active, plus anyone inactive who
+            // still holds something (so their units can still be found).
+            // Each carries their department and branch, which narrow the
+            // list on the page.
+            model.UserOptions = await _context.Users
+                .Where(u => u.Status == "Active" || u.AssignedAssets.Any())
+                .OrderBy(u => u.Branch.BranchName).ThenBy(u => u.Department.DepartmentName)
+                .ThenBy(u => u.FirstName).ThenBy(u => u.LastName)
+                .Select(u => new AssetFilterUserOption
+                {
+                    UserID = u.UserID,
+                    FullName = u.FirstName + " " + u.LastName,
+                    DepartmentID = u.DepartmentID,
+                    DepartmentName = u.Department.DepartmentName,
+                    BranchID = u.BranchID,
+                    BranchName = u.Branch.BranchName,
+                    IsActive = u.Status == "Active"
+                })
+                .ToListAsync();
+
             ViewBag.StatusFilter = new SelectList(
                 Enum.GetValues(typeof(AssetStatus)).Cast<AssetStatus>()
                     .Select(s => new { Value = s.ToString(), Text = s.ToString() }),
@@ -214,7 +234,7 @@ namespace SchoolInventoryManagement.Web.Controllers
         public async Task<IActionResult> Index(
             string? keyword, int? categoryId, int? departmentId,
             AssetStatus? status, ConditionStatus? condition, int? locationId, int? modelId,
-            int? branchId, bool includeDisposed = false, int page = 1, int? pageSize = null)
+            int? branchId, int? userId = null, bool includeDisposed = false, int page = 1, int? pageSize = null)
         {
             var size = pageSize.HasValue && PageSizeOptions.Contains(pageSize.Value)
                 ? pageSize.Value
@@ -228,7 +248,7 @@ namespace SchoolInventoryManagement.Web.Controllers
             // included, narrows this set, and the tiles are just its
             // breakdown. With a status selected the others read zero.
             var matches = await _assetService.SearchAssetsAsync(
-                keyword, categoryId, modelId, branchId, departmentId, status, condition, locationId);
+                keyword, categoryId, modelId, branchId, departmentId, status, condition, locationId, userId);
 
             // Disposed units are hidden unless asked for. Done here, not in
             // SearchAssetsAsync, because the request screens and barcode scan use
@@ -249,7 +269,7 @@ namespace SchoolInventoryManagement.Web.Controllers
                 .ToList();
 
             // Unfiltered headcount, for the "N of M" caption above the tiles.
-            // A COUNT(*) rather than another GetAllAssetsAsync -- the page
+            // A COUNT(*) rather than loading every asset -- the page
             // needs the number, not the rows. Leaves out disposed units when
             // the list does, so the two numbers describe the same set.
             var grandTotal = showDisposed
@@ -275,6 +295,7 @@ namespace SchoolInventoryManagement.Web.Controllers
                 LocationId = locationId,
                 ModelId = modelId,
                 BranchId = branchId,
+                UserId = userId,
                 Page = currentPage,
                 PageSize = size,
                 PageSizeOptions = PageSizeOptions,
@@ -290,13 +311,13 @@ namespace SchoolInventoryManagement.Web.Controllers
         public async Task<IActionResult> ExportAssets(
             string? keyword, int? categoryId, int? departmentId,
             AssetStatus? status, ConditionStatus? condition, int? locationId, int? modelId,
-            int? branchId, bool includeDisposed = false)
+            int? branchId, int? userId = null, bool includeDisposed = false)
         {
             if (IsRequesterOnly)
                 return Forbid();
 
             var assets = await _assetService.SearchAssetsAsync(
-                keyword, categoryId, modelId, branchId, departmentId, status, condition, locationId);
+                keyword, categoryId, modelId, branchId, departmentId, status, condition, locationId, userId);
 
             // Same rule as the list, so the file matches what was on screen.
             if (!includeDisposed && status != AssetStatus.Disposed)

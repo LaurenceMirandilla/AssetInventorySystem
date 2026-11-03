@@ -12,7 +12,7 @@
     var isBorrow = r.RequestType == RequestType.Borrow;
     var total = r.TotalQuantity;
     var title = r.ItemsSummary + (r.RequestType == RequestType.Transfer && r.RequestedLocationName != null ? " → " + r.RequestedLocationName : "");
-    var when = r.NeededFrom is null ? "—" : r.NeededFrom.Value.ToString("MMM d") + (r.ReturnBy is not null ? " – " + r.ReturnBy.Value.ToString("MMM d") : "");
+    var when = r.NeededFrom is null ? "No dates given" : r.NeededFrom.Value.ToString("MMM d") + (r.ReturnBy is not null ? " – " + r.ReturnBy.Value.ToString("MMM d") : "");
 }
 
 <div class="modal fade" id="cancel-@r.RequestID" tabindex="-1" aria-labelledby="cancelTitle-@r.RequestID" aria-hidden="true">
@@ -39,7 +39,7 @@
             <div class="modal-body cancel-body">
                 <div class="cancel-facts">
                     <div><span>When</span><strong>@when</strong></div>
-                    <div><span>@(isBorrow ? "Pick up at" : "Move to")</span><strong>@((isBorrow ? r.PickupLocationName ?? r.RequestedLocationName : r.RequestedLocationName) ?? "—")</strong></div>
+                    <div><span>@(isBorrow ? "Pick up at" : "Move to")</span><strong>@DisplayText.Or(isBorrow ? r.PickupLocationName ?? r.RequestedLocationName : r.RequestedLocationName, "Chosen when approved")</strong></div>
                     <div><span>Status</span><strong>Pending</strong></div>
                 </div>
 

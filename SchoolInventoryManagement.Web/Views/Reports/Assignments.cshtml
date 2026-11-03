@@ -1,60 +1,72 @@
 ﻿@model List<SchoolInventoryManagement.BLL.DTOs.AssignmentReportRowDTO>
 @{
-    ViewData["Title"] = "Borrowed Items";
+    ViewData["Title"] = "Borrowed items";
+    var rows = Model.OrderByDescending(r => r.DaysOut).ToList();
+    var overdue = rows.Count(r => r.IsOverdue);
+    var avgDays = rows.Any() ? (int)Math.Round(rows.Average(r => r.DaysOut)) : 0;
+    var people = rows.Select(r => r.AssignedToUsername).Distinct().Count();
 }
 
-<div class="row g-3 sab-reports-grid">
-    <div class="col-lg-3">
-        @await Html.PartialAsync("_ReportsNav")
+<div class="asset-detail-head mb-2 pb-0 border-0">
+    <div>
+        <h2 class="asset-detail-title">Reports</h2>
+        <div class="asset-detail-sub">Everything out with someone right now, longest out first.</div>
     </div>
-    <div class="col-lg-9">
-        <div class="sab-page-head">
-            <div>
-                <h2>Borrowed Items</h2>
-                <p class="sab-page-sub">
-                    Every asset currently out with someone — an assignment with no return date.
-                    Oldest first, so the longest-held units are at the top.
-                </p>
-            </div>
-            <div class="sab-page-actions">
-            <a asp-action="ExportAssignments"
-               asp-route-branchId="@Context.Request.Query["branchId"]"
-               asp-route-departmentId="@Context.Request.Query["departmentId"]"
-               class="btn btn-primary">Export CSV</a>
-            </div>
-        </div>
+    <div class="asset-detail-actions">
+        <a asp-action="ExportAssignments"
+           asp-route-branchId="@Context.Request.Query["branchId"]"
+           asp-route-departmentId="@Context.Request.Query["departmentId"]"
+           class="btn btn-primary">&darr; Export CSV</a>
+    </div>
+</div>
 
-        <div class="sab-filter-card">
-            <form method="get" class="row g-2 align-items-end">
-                <div class="col-auto">
-                    <label class="form-label">Branch</label>
-                    @Html.DropDownList("branchId", (IEnumerable<SelectListItem>)ViewBag.Branches,
-                         "All branches", new { @class = "form-select" })
-                </div>
-                <div class="col-auto">
-                    <label class="form-label">Department</label>
-                    @Html.DropDownList("departmentId", (IEnumerable<SelectListItem>)ViewBag.Departments,
-                         "All departments", new { @class = "form-select" })
-                </div>
-                <div class="col-auto align-self-end">
-                    <button type="submit" class="btn btn-secondary">Apply</button>
-                    <a asp-action="Assignments" class="btn btn-outline-secondary">Reset</a>
-                </div>
-            </form>
-        </div>
+@await Html.PartialAsync("_ReportsNav")
 
-        <div class="sab-table-card">
-            <div class="sab-table-head">
-                <h5>Borrowed items</h5>
-                <span class="sab-table-count">@Model.Count asset(s) currently out.</span>
-            </div>
-            <table class="table table-striped">
+<form method="get" class="rp-filters">
+    <label class="rp-field">
+        <span>Branch</span>
+        @Html.DropDownList("branchId", (IEnumerable<SelectListItem>)ViewBag.Branches, "All branches", new { @class = "form-select" })
+    </label>
+    <label class="rp-field">
+        <span>Department</span>
+        @Html.DropDownList("departmentId", (IEnumerable<SelectListItem>)ViewBag.Departments, "All departments", new { @class = "form-select" })
+    </label>
+    <label class="rp-field">
+        <span>Show</span>
+        @* Narrows the list on the page; the export always has everything out. *@
+        <select class="form-select" id="rpShow">
+            <option value="">Everything out</option>
+            <option value="late">Only overdue</option>
+        </select>
+    </label>
+    <div class="rp-actions">
+        <a asp-action="Assignments" class="btn btn-outline-secondary">Reset</a>
+        <button type="submit" class="btn btn-primary">Apply</button>
+    </div>
+</form>
+
+<div class="myassets-stats lk-stats-4 mt-0 mb-3">
+    <div><span>Out now</span><strong>@rows.Count unit@(rows.Count == 1 ? "" : "s")</strong></div>
+    <div>
+        <span>Overdue</span><strong class="@(overdue > 0 ? "text-danger" : "")">@overdue unit@(overdue == 1 ? "" : "s")</strong>
+        @if (overdue > 0)
+        {
+            <a href="#" class="lk-link" id="rpOnlyLate">Show only overdue &rarr;</a>
+        }
+    </div>
+    <div><span>Average days out</span><strong>@avgDays</strong></div>
+    <div><span>People holding items</span><strong>@people</strong></div>
+</div>
+
+<div class="sab-table-card" data-pager data-page-size="10" data-noun="units" id="rpTable">
+    @if (rows.Any())
+    {
+        <div class="table-responsive">
+            <table class="table asset-table mb-0">
                 <thead>
                     <tr>
                         <th>Asset</th>
                         <th>Held by</th>
-                        <th>Role</th>
-                        <th>Department</th>
                         <th>Issued by</th>
                         <th>Issued</th>
                         <th class="text-end">Days out</th>
@@ -63,35 +75,70 @@
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var row in Model)
+                    @foreach (var row in rows)
                     {
-                        <tr>
+                        <tr data-pager-item data-late="@(row.IsOverdue ? "1" : "0")">
                             <td>
-                                <a asp-controller="Assets" asp-action="Details" asp-route-id="@row.AssetID">@row.AssetCode</a>
+                                <a asp-controller="Assets" asp-action="Details" asp-route-id="@row.AssetID" class="asset-code-chip">@row.AssetCode</a>
                                 <div class="text-muted small">@row.AssetName</div>
                             </td>
                             <td>
                                 @row.AssignedToName
-                                <div class="text-muted small">@row.AssignedToEmail</div>
+                                <div class="text-muted small">@row.AssignedToRole · @DisplayText.Or(row.DepartmentName, "no department")</div>
                             </td>
-                            <td>@row.AssignedToRole</td>
-                            <td>@(row.DepartmentName ?? "—")</td>
                             <td>@row.AssignedByName</td>
-                            <td>@row.AssignmentDate.ToString("MMM d, yyyy")</td>
-                            <td class="text-end">@row.DaysOut</td>
-                            <td><span class="status-pill status-@row.ConditionOnAssignment.ToString().ToLowerInvariant()">@DisplayText.Humanize(row.ConditionOnAssignment.ToString())</span></td>
-                            <td>
+                            <td>@row.AssignmentDate.ToString("MMM d")</td>
+                            <td class="text-end">
+                                <span class="rp-days @(row.IsOverdue ? "is-late" : "")">@row.DaysOut</span>
+                                @if (row.IsOverdue)
+                                {
+                                    <span class="rp-late">late</span>
+                                }
+                            </td>
+                            <td>@DisplayText.Humanize(row.ConditionOnAssignment.ToString())</td>
+                            <td class="text-end">
                                 <a asp-controller="AssetAssignments" asp-action="Return" asp-route-id="@row.AssignmentID">Return</a>
                             </td>
                         </tr>
                     }
                 </tbody>
             </table>
-            @if (!Model.Any())
-            {
-                <div class="sab-empty"><p class="mb-0">Nothing is currently out.</p></div>
-            }
         </div>
-
-    </div>
+        <div class="history-foot">
+            <span data-pager-range></span>
+            <div class="d-flex align-items-center flex-wrap" style="gap:8px;">
+                <span class="text-muted">Show</span>
+                <select class="form-select form-select-sm rq-size" data-pager-size aria-label="Rows per page">
+                    <option value="10" selected>10</option>
+                    <option value="20">20</option>
+                    <option value="50">50</option>
+                </select>
+                <span class="text-muted">per page</span>
+                <div class="d-flex flex-wrap" style="gap:6px;" data-pager-buttons></div>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="sab-empty"><p class="mb-0">Nothing is out with anyone right now.</p></div>
+    }
 </div>
+
+@section Scripts {
+    <script>
+        // "Only overdue": hides the rest on the page (site.js pager).
+        (function () {
+            var show = document.getElementById('rpShow');
+            var table = document.getElementById('rpTable');
+            function apply() {
+                table.querySelectorAll('[data-pager-item]').forEach(function (r) {
+                    r.toggleAttribute('data-pager-out', show.value === 'late' && r.dataset.late !== '1');
+                });
+                table.dispatchEvent(new Event('pager-refresh'));
+            }
+            show.addEventListener('change', apply);
+            var link = document.getElementById('rpOnlyLate');
+            if (link) link.addEventListener('click', function (e) { e.preventDefault(); show.value = 'late'; apply(); });
+        })();
+    </script>
+}

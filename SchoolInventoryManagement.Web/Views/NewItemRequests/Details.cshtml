@@ -141,7 +141,7 @@
     </div>
     <dl class="rq-grid">
         <div class="@(Model.NeededBy is not null && Model.NeededBy.Value.Date < DateTime.Today && !isStopped && Model.RequestStatus != NewItemStatus.Arrived ? "is-late" : "")">
-            <dt>Needed by</dt><dd>@(Model.NeededBy?.ToString("MMM d, yyyy") ?? "—")</dd>
+            <dt>Needed by</dt><dd>@DisplayText.Or(Model.NeededBy?.ToString("MMM d, yyyy"), "No date given")</dd>
         </div>
         <div><dt>Items</dt><dd>@Model.Items.Count · @units unit@(units == 1 ? "" : "s")</dd></div>
         <div><dt>Estimated total</dt><dd class="text-success">@(Model.EstimatedTotal is null ? "not priced" : DisplayText.Peso(Model.EstimatedTotal))</dd></div>

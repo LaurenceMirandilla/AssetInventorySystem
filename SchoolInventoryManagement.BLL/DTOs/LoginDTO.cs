@@ -4,9 +4,9 @@ namespace SchoolInventoryManagement.BLL.DTOs
 {
     public class LoginDTO
     {
-        [Required]
-        [EmailAddress]
-        public string Email { get; set; } = null!;
+        [Required(ErrorMessage = "Enter your username.")]
+        [MaxLength(50)]
+        public string Username { get; set; } = null!;
 
         [Required]
         [DataType(DataType.Password)]

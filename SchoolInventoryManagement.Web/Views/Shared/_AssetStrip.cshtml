@@ -28,8 +28,8 @@
         </div>
     </div>
     <dl class="asset-strip-facts">
-        <div><dt>Location</dt><dd>@(Model.CurrentLocationName ?? "—")</dd></div>
+        <div><dt>Location</dt><dd>@DisplayText.Or(Model.CurrentLocationName, "With the holder")</dd></div>
         <div><dt>Condition</dt><dd>@DisplayText.Humanize(Model.Condition.ToString())</dd></div>
-        <div><dt>Department</dt><dd>@(Model.DepartmentName ?? "—")</dd></div>
+        <div><dt>Department</dt><dd>@DisplayText.Or(Model.DepartmentName, "None")</dd></div>
     </dl>
 </div>

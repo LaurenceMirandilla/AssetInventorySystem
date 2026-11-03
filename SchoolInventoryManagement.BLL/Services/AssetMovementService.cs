@@ -76,13 +76,6 @@ namespace SchoolInventoryManagement.BLL.Services
             return created.ToResponseDTO();
         }
 
-        public async Task<AssetMovementResponseDTO?> GetMovementByIdAsync(int movementId)
-        {
-            var movement = await MovementQueryWithIncludes()
-                .FirstOrDefaultAsync(m => m.MovementID == movementId);
-            return movement?.ToResponseDTO();
-        }
-
         public async Task<List<AssetMovementResponseDTO>> GetMovementHistoryForAssetAsync(int assetId)
         {
             var movements = await MovementQueryWithIncludes()

@@ -1,8 +1,7 @@
 @{
     // Which report is on screen. All five live on ReportsController, so the
-    // action name alone identifies the active tab. Shown as a tab strip
-    // across the top; the report pages' side column stacks above their
-    // content (see .sab-reports-grid in site.css), so it fits every page.
+    // action name alone identifies the active tab. A row of tabs under the
+    // page title, the active one underlined.
     var current = ViewContext.RouteData.Values["action"]?.ToString() ?? "Index";
     Func<string, string> navClass = action =>
         string.Equals(action, current, StringComparison.OrdinalIgnoreCase) ? "active" : "";

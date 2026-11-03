@@ -1,0 +1,143 @@
+@model SchoolInventoryManagement.Web.ViewModels.UserActivityViewModel
+@using SchoolInventoryManagement.DAL.Entities.Enums
+@* One person's Holding now / Requests / Past items, loaded into the Users
+   page (Users/Activity). The page's script switches the tabs and searches;
+   the pagers are site.js's. *@
+@{
+    var today = DateTime.Today;
+    var late = Model.Holding.Count(h => h.AssetStatus == AssetStatus.Overdue);
+}
+@functions {
+    static string Days(int n) => n == 1 ? "1 day" : n + " days";
+}
+
+<div class="asset-card ua" data-holding="@Model.Holding.Count" data-late="@late">
+    <div class="ua-strip">
+        <div class="ua-tabs" role="tablist">
+            <button type="button" class="active" data-ua-tab="holding">Holding now <span class="history-tab-count">@Model.Holding.Count</span></button>
+            <button type="button" data-ua-tab="requests">Requests <span class="history-tab-count">@Model.Requests.Count</span></button>
+            <button type="button" data-ua-tab="past">Past items <span class="history-tab-count">@Model.Past.Count</span></button>
+        </div>
+        <label class="asset-search ua-search">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+            <input type="text" data-ua-search autocomplete="off" placeholder="Code or item..." aria-label="Search by code or item" />
+        </label>
+    </div>
+
+    @* ---- Holding now ---- *@
+    <div data-ua-pane="holding" data-pager data-page-size="10" data-noun="items">
+        @if (Model.Holding.Any())
+        {
+            <div class="table-responsive">
+                <table class="table asset-table mb-0">
+                    <thead><tr><th>Code</th><th>Item</th><th>Since</th><th>Due back</th><th>Status</th></tr></thead>
+                    <tbody>
+                        @foreach (var h in Model.Holding)
+                        {
+                            var overdue = h.AssetStatus == AssetStatus.Overdue;
+                            var (tag, css) = overdue ? ("Late", "st-overdue")
+                                : h.AssetStatus == AssetStatus.InTransit ? ("In transit", "st-intransit")
+                                : h.RequestID is null ? ("Assigned", "st-available")
+                                : ("Out", "st-disposed");
+                            <tr data-pager-item data-search="@($"{h.AssetCode} {h.AssetName} {h.ModelName}".ToLowerInvariant())">
+                                <td><a asp-controller="Assets" asp-action="Details" asp-route-id="@h.AssetID" class="asset-code-chip">@h.AssetCode</a></td>
+                                <td>
+                                    <span class="fw-semibold">@h.ModelName</span>
+                                    <div class="text-muted small">@(h.RequestID is null ? "Assigned directly" : $"{h.RequestType} #{h.RequestID}")</div>
+                                </td>
+                                <td>@h.AssignmentDate.ToString("MMM d")</td>
+                                <td>
+                                    @if (h.RequestReturnBy is DateTime due)
+                                    {
+                                        <span class="@(overdue ? "text-danger fw-semibold" : "")">@due.ToString("MMM d")@(overdue && due.Date < today ? " · " + Days((today - due.Date).Days) + " late" : "")</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="is-empty">No due date</span>
+                                    }
+                                </td>
+                                <td><span class="asset-pill @css">@tag</span></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <partial name="_UserActivityFoot" />
+        }
+        else
+        {
+            <div class="sab-empty"><p class="mb-0">Holding nothing right now.</p></div>
+        }
+    </div>
+
+    @* ---- Requests ---- *@
+    <div data-ua-pane="requests" data-pager data-page-size="10" data-noun="requests" hidden>
+        @if (Model.Requests.Any())
+        {
+            <div class="table-responsive">
+                <table class="table asset-table mb-0">
+                    <thead><tr><th>#</th><th>Type</th><th>Items</th><th>Submitted</th><th>Status</th></tr></thead>
+                    <tbody>
+                        @foreach (var r in Model.Requests)
+                        {
+                            <tr data-pager-item data-search="@($"#{r.RequestID} {r.ItemsSummary} {string.Join(" ", r.Units.Select(u => u.AssetCode))}".ToLowerInvariant())">
+                                <td><a asp-controller="AssetRequests" asp-action="Details" asp-route-id="@r.RequestID" asp-route-from="approvals" class="fw-bold">#@r.RequestID</a></td>
+                                <td><span class="md-tag @(r.RequestType == RequestType.Transfer ? "is-transfer" : "")">@r.RequestType</span></td>
+                                <td>@r.ItemsSummary</td>
+                                <td>@r.RequestDate.ToString("MMM d")</td>
+                                <td><span class="status-pill status-@r.RequestStatus.ToString().ToLowerInvariant()">@DisplayText.Humanize(r.RequestStatus.ToString())</span></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <partial name="_UserActivityFoot" />
+        }
+        else
+        {
+            <div class="sab-empty"><p class="mb-0">No requests yet.</p></div>
+        }
+    </div>
+
+    @* ---- Past items ---- *@
+    <div data-ua-pane="past" data-pager data-page-size="10" data-noun="items" hidden>
+        @if (Model.Past.Any())
+        {
+            <div class="table-responsive">
+                <table class="table asset-table mb-0">
+                    <thead><tr><th>Code</th><th>Item</th><th>Held</th><th>Ended</th><th>Condition back</th></tr></thead>
+                    <tbody>
+                        @foreach (var p in Model.Past)
+                        {
+                            <tr data-pager-item data-search="@($"{p.AssetCode} {p.AssetName} {p.ModelName}".ToLowerInvariant())">
+                                <td><a asp-controller="Assets" asp-action="Details" asp-route-id="@p.AssetID" class="asset-code-chip">@p.AssetCode</a></td>
+                                <td>
+                                    <span class="fw-semibold">@p.ModelName</span>
+                                    <div class="text-muted small">@(p.RequestID is null ? "Assigned directly" : $"{p.RequestType} #{p.RequestID}")</div>
+                                </td>
+                                <td>@p.AssignmentDate.ToString("MMM d, yyyy")</td>
+                                <td>
+                                    @p.ReturnDate!.Value.ToString("MMM d, yyyy")
+                                    @if (p.EndedAsPermanentTransfer)
+                                    {
+                                        <div class="text-muted small">Transferred permanently</div>
+                                    }
+                                    else if (p.EndedByCancellation)
+                                    {
+                                        <div class="text-muted small">Cancelled before handover</div>
+                                    }
+                                </td>
+                                <td>@DisplayText.Or(p.ConditionOnReturn is null || p.EndedAsPermanentTransfer || p.EndedByCancellation ? null : DisplayText.Humanize(p.ConditionOnReturn.Value.ToString()), "Not recorded")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <partial name="_UserActivityFoot" />
+        }
+        else
+        {
+            <div class="sab-empty"><p class="mb-0">Nothing returned yet.</p></div>
+        }
+    </div>
+</div>

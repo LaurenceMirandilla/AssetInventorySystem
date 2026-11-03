@@ -36,6 +36,7 @@ namespace SchoolInventoryManagement.Web.Controllers
         private readonly IModelService _modelService;
         private readonly ILocationService _locationService;
         private readonly IDepartmentService _departmentService;
+        private readonly IUserService _userService;
 
         public AssetRequestsController(
             IAssetRequestService requestService,
@@ -43,7 +44,8 @@ namespace SchoolInventoryManagement.Web.Controllers
             IAssetService assetService,
             IModelService modelService,
             ILocationService locationService,
-            IDepartmentService departmentService)
+            IDepartmentService departmentService,
+            IUserService userService)
         {
             _requestService = requestService;
             _fulfillmentService = fulfillmentService;
@@ -51,6 +53,7 @@ namespace SchoolInventoryManagement.Web.Controllers
             _modelService = modelService;
             _locationService = locationService;
             _departmentService = departmentService;
+            _userService = userService;
         }
 
         private int CurrentUserId =>
@@ -722,6 +725,14 @@ namespace SchoolInventoryManagement.Web.Controllers
             // second list by the first).
             ViewBag.LocationList = (await _locationService.GetAllLocationsAsync())
                 .OrderBy(l => l.LocationName).ToList();
+
+            // A permanent Transfer has to stay in the requester's own branch
+            // (their department's), which the page locks the branch to.
+            // AssetRequestService enforces it.
+            var me = await _userService.GetUserByIdAsync(CurrentUserId);
+            var myDepartment = me is null ? null : await _departmentService.GetDepartmentByIdAsync(me.DepartmentID);
+            ViewBag.HomeBranchId = myDepartment?.BranchID;
+            ViewBag.HomeBranchName = myDepartment?.BranchName;
         }
 
         // One entry per line of the ticket: its model, how many to pick,

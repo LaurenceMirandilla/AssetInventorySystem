@@ -1,140 +1,259 @@
 ﻿@using SchoolInventoryManagement.Web.Controllers
 @using SchoolInventoryManagement.DAL.Constants
+@using SchoolInventoryManagement.BLL.Services
 @model List<SchoolInventoryManagement.BLL.DTOs.UserResponseDTO>
 @{
     ViewData["Title"] = "Users";
 
     // Reset Password refuses to act on your own account (UserService sends
-    // you to Change Password instead), so don't offer the link there.
+    // you to Change Password instead), and you can't deactivate yourself,
+    // so neither is offered there.
     var currentUserId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
 
+    // Every account is on the page; the Status filter starts on what the
+    // address asked for (Active unless ?status=Inactive or All).
     var statusFilter = (ViewData["StatusFilter"] as string) ?? UsersController.StatusFilterActive;
+    var startStatus = statusFilter == UsersController.StatusFilterAll ? "" : statusFilter.ToLowerInvariant();
+
+    var users = Model.OrderBy(u => u.FirstName).ThenBy(u => u.LastName).ToList();
+    var branches = users.Select(u => (u.BranchID, u.BranchName)).Distinct().OrderBy(b => b.BranchName).ToList();
+    var departments = users.Select(u => (u.DepartmentID, u.DepartmentName, u.BranchID, u.BranchName)).Distinct()
+        .OrderBy(d => d.BranchName).ThenBy(d => d.DepartmentName).ToList();
+    var roles = users.Select(u => u.RoleName).Distinct().OrderBy(r => r).ToList();
+
+    static string Search(SchoolInventoryManagement.BLL.DTOs.UserResponseDTO u) =>
+        $"{u.FirstName} {u.LastName} {u.Username} {u.RoleName} {u.DepartmentName} {u.BranchName}".ToLowerInvariant();
 }
 @if (TempData["ErrorMessage"] != null)
 {
     <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
 }
 
-<div class="sab-page-head">
+<div class="asset-detail-head mb-3 pb-0 border-0">
     <div>
-        <h2>Users</h2>
-        <p class="sab-page-sub">
-            Accounts are never deleted. Deactivating blocks sign-in and every privileged
-            action immediately, while keeping the person's history intact.
-        </p>
+        <h2 class="asset-detail-title">Users</h2>
+        <div class="asset-detail-sub">@users.Count(u => u.Status == "Active") can sign in · @users.Count(u => u.Status != "Active") inactive</div>
     </div>
-    <div class="sab-page-actions">
-        <a asp-action="Create" class="btn btn-primary">+ New User</a>
+    <div class="asset-detail-actions">
+        <a asp-action="Create" class="btn btn-primary">+ Add user</a>
     </div>
 </div>
 
-<div class="d-flex justify-content-between align-items-center flex-wrap mb-3" style="gap:12px;">
-    <div class="sab-seg">
-        <a asp-action="Index" asp-route-status="@UsersController.StatusFilterActive"
-           class="@(statusFilter == UsersController.StatusFilterActive ? "active" : "")">Active</a>
-        <a asp-action="Index" asp-route-status="@UsersController.StatusFilterInactive"
-           class="@(statusFilter == UsersController.StatusFilterInactive ? "active" : "")">Inactive</a>
-        <a asp-action="Index" asp-route-status="@UsersController.StatusFilterAll"
-           class="@(statusFilter == UsersController.StatusFilterAll ? "active" : "")">All</a>
+@if (!users.Any())
+{
+    <div class="sab-table-card">
+        <div class="sab-empty">
+            <div class="sab-empty-title">No users yet</div>
+            <p>Add the first account with + New user.</p>
+        </div>
     </div>
-    <span class="text-muted small">
-        @Model.Count account@(Model.Count == 1 ? "" : "s") shown
-    </span>
-</div>
-
-<div class="sab-table-card">
-    <table class="table table-striped">
-        <thead>
-            <tr>
-                <th>Name</th>
-                <th>Email</th>
-                <th>Role</th>
-                <th>Department</th>
-                <th>Branch</th>
-                <th>Status</th>
-                <th></th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var user in Model)
-            {
-                var isSelf = user.UserID.ToString() == currentUserId;
-
-                <tr>
-                    <td>
-                        <div class="d-flex align-items-center" style="gap:9px;">
-                            @{
-                                var full = $"{user.FirstName} {user.LastName}".Trim();
-                                var userInitials = string.Concat(full
-                                    .Split(' ', StringSplitOptions.RemoveEmptyEntries)
-                                    .Select(part => part[0])).ToUpperInvariant();
-                                if (userInitials.Length > 2) { userInitials = userInitials[..2]; }
+}
+else
+{
+    <div class="sab-table-card myassets" data-md data-page-size="10" data-noun="users">
+        <aside class="myassets-list" aria-label="Users">
+            <div class="md-toolbar">
+                <label class="asset-search">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+                    <input type="text" data-md-search autocomplete="off" placeholder="Name, username or department..." aria-label="Search users" />
+                </label>
+                <div class="dropdown">
+                    <button type="button" class="asset-tool-btn" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18l-7 8.5V19l-4 2v-7.5z" /></svg>
+                        Filters
+                    </button>
+                    <div class="dropdown-menu dropdown-menu-end md-filter-menu">
+                        <label class="form-label">Status</label>
+                        <select class="form-select form-select-sm mb-2" data-md-filter="status">
+                            <option value="">Any</option>
+                            <option value="active" selected="@(startStatus == "active")">Active</option>
+                            <option value="inactive" selected="@(startStatus == "inactive")">Inactive</option>
+                        </select>
+                        <label class="form-label">Role</label>
+                        <select class="form-select form-select-sm mb-2" data-md-filter="role">
+                            <option value="">Any</option>
+                            @foreach (var r in roles)
+                            {
+                                <option value="@r.ToLowerInvariant()">@r</option>
                             }
-                            <span class="sab-avatar sab-avatar-soft sab-avatar-sm">@userInitials</span>
-                            <div>
-                                <div class="fw-semibold">@full</div>
+                        </select>
+                        <label class="form-label">Branch</label>
+                        <div class="mb-2">
+                            <select class="form-select form-select-sm" data-md-filter="branch" id="userBranch" data-combobox>
+                                <option value="">Any</option>
+                                @foreach (var b in branches)
+                                {
+                                    <option value="@b.BranchID">@b.BranchName</option>
+                                }
+                            </select>
+                        </div>
+                        <label class="form-label">Department</label>
+                        <select class="form-select form-select-sm" data-md-filter="dept" id="userDept" data-combobox>
+                            <option value="">Any</option>
+                            @foreach (var d in departments)
+                            {
+                                <option value="@d.DepartmentID" data-branch="@d.BranchID">@d.BranchName — @d.DepartmentName</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="myassets-group" data-md-group>
+                <div class="myassets-group-label">All users · <span data-md-count>@users.Count</span></div>
+                @foreach (var u in users)
+                {
+                    <button type="button" class="myassets-item" data-entry="u-@u.UserID" data-search="@Search(u)"
+                            data-status="@u.Status.ToLowerInvariant()" data-role="@u.RoleName.ToLowerInvariant()"
+                            data-branch="@u.BranchID" data-dept="@u.DepartmentID">
+                        <span class="myassets-item-main">
+                            <span class="myassets-item-title">@u.FirstName @u.LastName@(u.UserID.ToString() == currentUserId ? " (you)" : "")</span>
+                            <span class="myassets-item-sub">@u.RoleName · @u.DepartmentName</span>
+                        </span>
+                        <span class="status-pill status-@u.Status.ToLowerInvariant()">@u.Status</span>
+                    </button>
+                }
+            </div>
+            <div class="myassets-nomatch" data-md-empty hidden>Nobody matches.</div>
+
+            <div class="md-foot">
+                <span data-md-range></span>
+                <div data-md-pager></div>
+            </div>
+        </aside>
+
+        <section class="myassets-detail">
+            @foreach (var u in users)
+            {
+                var isSelf = u.UserID.ToString() == currentUserId;
+                var isActive = u.Status == "Active";
+                var rowVersion = Convert.ToBase64String(u.RowVersion);
+                <article class="myassets-panel" data-panel="u-@u.UserID" data-user="@u.UserID" hidden>
+                    <button type="button" class="myassets-back" data-back>&larr; All users</button>
+
+                    <div class="myassets-panel-head">
+                        <div class="min-w-0">
+                            <div class="myassets-panel-meta">
+                                <span>@u.RoleName</span>
+                                <span class="status-pill status-@u.Status.ToLowerInvariant()">@u.Status</span>
                                 @if (isSelf)
                                 {
-                                    <div class="text-muted small">you</div>
+                                    <span>· this is you</span>
+                                }
+                            </div>
+                            <h3 class="myassets-panel-title mt-1">@u.FirstName @u.LastName</h3>
+                            <div class="lk-sub mb-0">@u.Username</div>
+                        </div>
+                        <div class="myassets-panel-actions">
+                            <a asp-action="Edit" asp-route-id="@u.UserID" class="btn btn-outline-secondary">Edit</a>
+                        </div>
+                    </div>
+
+                    <div class="myassets-stats">
+                        <div><span>Role</span><strong>@u.RoleName</strong></div>
+                        <div><span>Department</span><strong>@u.DepartmentName</strong></div>
+                        <div><span>Branch</span><strong>@u.BranchName</strong></div>
+                        <div><span>Holding now</span><strong data-ua-holding>&hellip;</strong></div>
+                    </div>
+
+                    @* Holding now / Requests / Past items: loaded when the person is picked. *@
+                    <div class="mt-3" data-ua-box data-url="@Url.Action("Activity", new { id = u.UserID })">
+                        <div class="asset-card"><div class="sab-empty"><p class="mb-0 is-empty">Loading&hellip;</p></div></div>
+                    </div>
+
+                    @if (!isSelf)
+                    {
+                        <div class="user-danger">
+                            <span class="lk-why">@(isActive ? "Deactivated users can't sign in. Their history stays." : "Reactivated, they sign in again with their current password.")</span>
+                            <div class="d-flex flex-wrap" style="gap:8px;">
+                                <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#resetPasswordModal"
+                                        data-reset-url="@Url.Action("ResetPassword", new { id = u.UserID })"
+                                        data-reset-name="@u.FirstName @u.LastName" data-reset-username="@u.Username"
+                                        data-reset-role="@u.RoleName" data-reset-version="@rowVersion">
+                                    Reset password
+                                </button>
+                                @if (isActive)
+                                {
+                                    <form asp-action="Deactivate" asp-route-id="@u.UserID" method="post"
+                                          onsubmit="return confirm('Deactivate @u.Username? They are signed out at once.');">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="rowVersionBase64" value="@rowVersion" />
+                                        <button type="submit" class="btn btn-outline-danger">Deactivate</button>
+                                    </form>
+                                }
+                                else
+                                {
+                                    <form asp-action="Reactivate" asp-route-id="@u.UserID" method="post">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="rowVersionBase64" value="@rowVersion" />
+                                        <button type="submit" class="btn btn-outline-secondary">Reactivate</button>
+                                    </form>
                                 }
                             </div>
                         </div>
-                    </td>
-                    <td>@user.Email</td>
-                    <td>@user.RoleName</td>
-                    <td>@user.DepartmentName</td>
-                    <td>@user.BranchName</td>
-                    <td>
-                        <span class="status-pill status-@user.Status.ToLowerInvariant()">@user.Status</span>
-                    </td>
-                    <td>
-                        <a asp-action="Edit" asp-route-id="@user.UserID">Edit</a>
-
-                        @if (!isSelf)
-                        {
-                            <a asp-action="ResetPassword" asp-route-id="@user.UserID" class="ms-2">Reset Password</a>
-                        }
-
-                        @if (user.Status == "Active")
-                        {
-                            <form asp-action="Deactivate" asp-route-id="@user.UserID" method="post" class="d-inline"
-                                  onsubmit="return confirm('Deactivate @user.Email?');">
-                                @Html.AntiForgeryToken()
-                                <input type="hidden" name="rowVersionBase64" value="@Convert.ToBase64String(user.RowVersion)" />
-                                <button type="submit" class="btn btn-link text-danger p-0 ms-2">Deactivate</button>
-                            </form>
-                        }
-                        else
-                        {
-                            <form asp-action="Reactivate" asp-route-id="@user.UserID" method="post" class="d-inline">
-                                @Html.AntiForgeryToken()
-                                <input type="hidden" name="rowVersionBase64" value="@Convert.ToBase64String(user.RowVersion)" />
-                                <button type="submit" class="btn btn-link text-success p-0 ms-2">Reactivate</button>
-                            </form>
-                        }
-
-                    </td>
-                </tr>
+                    }
+                </article>
             }
-
-            @if (!Model.Any())
-            {
-                <tr>
-                    <td colspan="7" class="text-muted text-center py-3">
-                        No @(statusFilter == UsersController.StatusFilterAll ? "" : statusFilter.ToLower()) users to show.
-                    </td>
-                </tr>
-            }
-        </tbody>
-    </table>
-</div>
-
-<div class="row g-3 mt-1">
-    <div class="col-md-12">
-        <div class="sab-callout">
-            <span class="sab-callout-label">Deactivate</span>
-            Reversible. Blocks sign-in and takes effect on any open session at
-            once — it does not wait for their cookie to expire.
-        </div>
+        </section>
     </div>
-</div>
+}
+
+<partial name="_ResetPasswordModal" />
+
+@section Scripts {
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            // The branch narrows the department list (site.js).
+            var branch = document.getElementById('userBranch');
+            var dept = document.getElementById('userDept');
+            if (branch && dept) sabFilterByBranch(dept, branch, { showAllWhenEmpty: true, strip: true, notify: true });
+
+            // A person's Holding now / Requests / Past items, fetched the
+            // first time their panel shows (Users/Activity).
+            function loadActivity(panel) {
+                var box = panel && panel.querySelector('[data-ua-box]');
+                if (!box || box.dataset.loaded) return;
+                box.dataset.loaded = '1';
+                fetch(box.dataset.url, { credentials: 'same-origin' })
+                    .then(function (r) { if (!r.ok) throw new Error(); return r.text(); })
+                    .then(function (html) {
+                        box.innerHTML = html;
+                        var card = box.querySelector('.ua');
+                        var holding = parseInt(card.dataset.holding, 10) || 0;
+                        var late = parseInt(card.dataset.late, 10) || 0;
+                        panel.querySelector('[data-ua-holding]').innerHTML = holding + ' item' + (holding === 1 ? '' : 's') +
+                            (late ? ' <span class="rp-late d-inline">· ' + late + ' late</span>' : '');
+                        box.querySelectorAll('[data-pager]').forEach(function (p) { sabPager(p); });
+                    })
+                    .catch(function () {
+                        box.dataset.loaded = '';
+                        box.innerHTML = '<div class="asset-card"><div class="sab-empty"><p class="mb-0">Couldn\u2019t load their items. Pick them again to retry.</p></div></div>';
+                    });
+            }
+            function visiblePanel() { return document.querySelector('.myassets-panel[data-user]:not([hidden])'); }
+            loadActivity(visiblePanel());
+            document.querySelectorAll('.myassets-item[data-entry]').forEach(function (b) {
+                b.addEventListener('click', function () { setTimeout(function () { loadActivity(visiblePanel()); }, 0); });
+            });
+
+            // Tabs and search inside the loaded card.
+            document.addEventListener('click', function (e) {
+                var tab = e.target.closest('[data-ua-tab]');
+                if (!tab) return;
+                var card = tab.closest('.ua');
+                card.querySelectorAll('[data-ua-tab]').forEach(function (t) { t.classList.toggle('active', t === tab); });
+                card.querySelectorAll('[data-ua-pane]').forEach(function (p) { p.hidden = p.dataset.uaPane !== tab.dataset.uaTab; });
+            });
+            document.addEventListener('input', function (e) {
+                if (!e.target.matches('[data-ua-search]')) return;
+                var q = e.target.value.trim().toLowerCase();
+                e.target.closest('.ua').querySelectorAll('[data-ua-pane]').forEach(function (pane) {
+                    pane.querySelectorAll('[data-pager-item]').forEach(function (r) {
+                        r.toggleAttribute('data-pager-out', !!q && r.dataset.search.indexOf(q) === -1);
+                    });
+                    pane.dispatchEvent(new Event('pager-refresh'));
+                });
+            });
+        });
+    </script>
+}

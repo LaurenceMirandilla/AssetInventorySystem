@@ -2,13 +2,17 @@
 using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using SchoolInventoryManagement.BLL.DTOs;
 using SchoolInventoryManagement.BLL.Interfaces;
+using SchoolInventoryManagement.BLL.Services;
 using SchoolInventoryManagement.DAL.Constants;
 using SchoolInventoryManagement.Web.Helpers;
+using SchoolInventoryManagement.Web.Middleware;
 using SchoolInventoryManagement.Web.ViewModels;
 
 namespace SchoolInventoryManagement.Web.Controllers
@@ -32,15 +36,46 @@ namespace SchoolInventoryManagement.Web.Controllers
         private readonly IUserService _userService;
         private readonly IBranchService _branchService;
         private readonly IDepartmentService _departmentService;
+        private readonly AccountDefaults _accountDefaults;
+        private readonly IAssetAssignmentService _assignmentService;
+        private readonly IAssetRequestService _requestService;
+        private readonly UserFacts _userFacts;
 
         public UsersController(
             IUserService userService,
             IBranchService branchService,
-            IDepartmentService departmentService)
+            IDepartmentService departmentService,
+            AccountDefaults accountDefaults,
+            IAssetAssignmentService assignmentService,
+            IAssetRequestService requestService,
+            UserFacts userFacts)
         {
             _userService = userService;
             _branchService = branchService;
             _departmentService = departmentService;
+            _accountDefaults = accountDefaults;
+            _assignmentService = assignmentService;
+            _requestService = requestService;
+            _userFacts = userFacts;
+        }
+
+        // GET /Users/Activity/5 -- the Holding now / Requests / Past items
+        // tabs for one person, loaded into the Users page when they are
+        // picked, so the list itself stays quick.
+        [Authorize(Roles = UserManagerRoles)]
+        public async Task<IActionResult> Activity(int id)
+        {
+            var user = await _userService.GetUserByIdAsync(id);
+            if (user is null)
+                return NotFound();
+
+            return PartialView("_UserActivity", new UserActivityViewModel
+            {
+                UserID = id,
+                Holding = await _assignmentService.GetActiveAssignmentsForUserAsync(id),
+                Requests = await _requestService.GetMyRequestsAsync(id),
+                Past = await _assignmentService.GetPastAssignmentsForUserAsync(id)
+            });
         }
 
         private int CurrentUserId =>
@@ -53,10 +88,10 @@ namespace SchoolInventoryManagement.Web.Controllers
         [Authorize(Roles = UserManagerRoles)]
         public async Task<IActionResult> Index(string status = StatusFilterActive)
         {
-            // "All" is the one value that means "do not filter at all".
-            var serviceFilter = status == StatusFilterAll ? null : status;
-
-            var users = await _userService.GetAllUsersAsync(serviceFilter);
+            // Every account comes to the page; its Status filter starts on
+            // the one asked for (Active by default), and the others are a
+            // click away without reloading.
+            var users = await _userService.GetAllUsersAsync(null);
 
             ViewData["StatusFilter"] = status;
             return View(users);
@@ -76,6 +111,27 @@ namespace SchoolInventoryManagement.Web.Controllers
         [Authorize(Roles = UserManagerRoles)]
         public async Task<IActionResult> Create(UserCreateViewModel model)
         {
+            // The first password: the shared default, unless the
+            // administrator typed another. Either way they choose their
+            // own at first sign-in.
+            var typed = string.IsNullOrEmpty(model.Password) || model.Password == _accountDefaults.DefaultPassword
+                ? null : model.Password;
+            if (model.RoleID <= 0)
+                ModelState.AddModelError(nameof(model.RoleID), "Pick a role.");
+            if (typed is null && !_accountDefaults.IsUsable)
+                ModelState.AddModelError(string.Empty,
+                    "No usable starting password is set. Type one, or add \"Accounts\": { \"DefaultPassword\": \"...\" } to appsettings.json " +
+                    "(at least 8 characters, with a number).");
+            if (typed is not null)
+            {
+                if (typed.Length < PasswordPolicy.MinLength)
+                    ModelState.AddModelError(nameof(model.Password), PasswordPolicy.TooShortMessage);
+                else if (!PasswordPolicy.HasNumber(typed))
+                    ModelState.AddModelError(nameof(model.Password), PasswordPolicy.NoNumberMessage);
+                if (typed != model.ConfirmPassword)
+                    ModelState.AddModelError(nameof(model.ConfirmPassword), "The two passwords don't match.");
+            }
+
             if (!ModelState.IsValid)
             {
                 await PopulateDropdownsAsync();
@@ -91,16 +147,21 @@ namespace SchoolInventoryManagement.Web.Controllers
                     BranchID = model.BranchID,
                     FirstName = model.FirstName,
                     LastName = model.LastName,
-                    Email = model.Email,
-                    Password = model.Password
+                    Username = model.Username,
+                    Password = typed ?? _accountDefaults.DefaultPassword!
                 };
 
-                await _userService.CreateUserAsync(dto, CurrentUserId);
+                var created = await _userService.CreateUserAsync(dto, CurrentUserId);
+                TempData["StatusMessage"] = typed is null
+                    ? $"{created.FirstName} {created.LastName} was added. They sign in as {created.Username} with the starting " +
+                      $"password {_accountDefaults.DefaultPassword} and must choose their own the first time."
+                    : $"{created.FirstName} {created.LastName} was added. They sign in as {created.Username} with the password " +
+                      "you set, and must choose their own the first time.";
                 return RedirectToAction(nameof(Index));
             }
             catch (Exception ex)
             {
-                HandleServiceException(ex);
+                UsernameError(ex);
                 await PopulateDropdownsAsync();
                 return View(model);
             }
@@ -115,11 +176,12 @@ namespace SchoolInventoryManagement.Web.Controllers
                 return NotFound();
 
             await PopulateDropdownsAsync();
+            await LoadAuditHistoryAsync("User", id);
 
             return View(new UserEditViewModel
             {
                 UserID = user.UserID,
-                Email = user.Email,
+                Username = user.Username,
                 RoleID = user.RoleID,
                 DepartmentID = user.DepartmentID,
                 BranchID = user.BranchID,
@@ -138,6 +200,7 @@ namespace SchoolInventoryManagement.Web.Controllers
             if (!ModelState.IsValid)
             {
                 await PopulateDropdownsAsync();
+                await LoadAuditHistoryAsync("User", id);
                 return View(model);
             }
 
@@ -150,6 +213,7 @@ namespace SchoolInventoryManagement.Web.Controllers
                     BranchID = model.BranchID,
                     FirstName = model.FirstName,
                     LastName = model.LastName,
+                    Username = model.Username,
                     RowVersion = RowVersionHelper.FromBase64(model.RowVersionBase64)
                 };
 
@@ -158,8 +222,9 @@ namespace SchoolInventoryManagement.Web.Controllers
             }
             catch (Exception ex)
             {
-                HandleServiceException(ex);
+                UsernameError(ex);
                 await PopulateDropdownsAsync();
+                await LoadAuditHistoryAsync("User", id);
                 return View(model);
             }
         }
@@ -217,7 +282,7 @@ namespace SchoolInventoryManagement.Web.Controllers
             {
                 UserID = user.UserID,
                 UserFullName = $"{user.FirstName} {user.LastName}",
-                Email = user.Email,
+                Username = user.Username,
                 RowVersionBase64 = RowVersionHelper.ToBase64(user.RowVersion)
             });
         }
@@ -242,8 +307,8 @@ namespace SchoolInventoryManagement.Web.Controllers
                     CurrentUserId);
 
                 TempData["StatusMessage"] =
-                    $"Password reset for {model.Email}. Give them the new password directly " +
-                    "and have them change it themselves.";
+                    $"Password reset for {model.Username}. Give them the new password directly " +
+                    "They'll be asked to choose their own the next time they sign in.";
                 return RedirectToAction(nameof(Index));
             }
             catch (Exception ex)
@@ -253,7 +318,7 @@ namespace SchoolInventoryManagement.Web.Controllers
             }
         }
 
-        // Re-reads the user so the name, email and RowVersion shown on a
+        // Re-reads the user so the name, username and RowVersion shown on a
         // failed post are current rather than whatever was posted back.
         private async Task<IActionResult> RedisplayResetAsync(int id, ResetPasswordViewModel model)
         {
@@ -263,7 +328,7 @@ namespace SchoolInventoryManagement.Web.Controllers
 
             model.UserID = user.UserID;
             model.UserFullName = $"{user.FirstName} {user.LastName}";
-            model.Email = user.Email;
+            model.Username = user.Username;
             model.RowVersionBase64 = RowVersionHelper.ToBase64(user.RowVersion);
 
             return View("ResetPassword", model);
@@ -272,8 +337,12 @@ namespace SchoolInventoryManagement.Web.Controllers
         // GET /Users/ChangePassword — self-service, any signed-in user.
         public IActionResult ChangePassword()
         {
+            ViewBag.MustChange = MustChange;
             return View(new ChangePasswordViewModel());
         }
+
+        // Signed in on a starting password (MustChangePasswordFilter).
+        private bool MustChange => User.HasClaim(AccountDefaults.ClaimType, "true");
 
         // POST /Users/ChangePassword
         // Always acts on CurrentUserId. ChangePasswordAsync takes a userId
@@ -283,6 +352,13 @@ namespace SchoolInventoryManagement.Web.Controllers
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> ChangePassword(ChangePasswordViewModel model)
         {
+            // Same password again: refused here so it shows under the field
+            // (the service refuses it too).
+            if (!string.IsNullOrEmpty(model.NewPassword) && model.NewPassword == model.CurrentPassword)
+                ModelState.AddModelError(nameof(model.NewPassword), PasswordPolicy.SameAsCurrentMessage);
+
+            ViewBag.MustChange = MustChange;
+
             if (!ModelState.IsValid)
                 return View(model);
 
@@ -291,8 +367,29 @@ namespace SchoolInventoryManagement.Web.Controllers
                 await _userService.ChangePasswordAsync(
                     CurrentUserId, model.CurrentPassword, model.NewPassword);
 
-                TempData["StatusMessage"] = "Your password has been changed.";
+                // They stay signed in. If they were on a starting password,
+                // the cookie is re-issued without that flag, which opens
+                // the rest of the app again.
+                if (MustChange)
+                {
+                    var auth = await HttpContext.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+                    var identity = new ClaimsIdentity(
+                        User.Claims.Where(c => c.Type != AccountDefaults.ClaimType),
+                        CookieAuthenticationDefaults.AuthenticationScheme);
+                    await HttpContext.SignInAsync(
+                        CookieAuthenticationDefaults.AuthenticationScheme,
+                        new ClaimsPrincipal(identity),
+                        auth.Properties ?? new AuthenticationProperties());
+                }
+
+                TempData["StatusMessage"] = "Your password has been changed. You're still signed in.";
                 return RedirectToAction("Index", "Home");
+            }
+            catch (UnauthorizedAccessException ex) when (ExceptionHandlingMiddleware.IsExpected(ex))
+            {
+                // Wrong current password: shown under that box, not at the top.
+                ModelState.AddModelError(nameof(model.CurrentPassword), "That isn't your current password.");
+                return View(model);
             }
             catch (Exception ex)
             {
@@ -301,8 +398,22 @@ namespace SchoolInventoryManagement.Web.Controllers
             }
         }
 
+        // A taken or malformed username is shown under the Username box;
+        // anything else at the top of the form as usual.
+        private void UsernameError(Exception ex)
+        {
+            if (ExceptionHandlingMiddleware.IsExpected(ex) &&
+                (ex.Message == UsernamePolicy.TakenMessage || ex.Message == UsernamePolicy.Message))
+                ModelState.AddModelError("Username", ex.Message);
+            else
+                HandleServiceException(ex);
+        }
+
         private async Task PopulateDropdownsAsync()
         {
+            // Shown on Add user, so the administrator can tell the new person.
+            ViewBag.DefaultPassword = _accountDefaults.IsUsable ? _accountDefaults.DefaultPassword : null;
+
             var roles = await _userService.GetAllRolesAsync();
             ViewBag.Roles = new SelectList(roles, "RoleID", "RoleName");
 

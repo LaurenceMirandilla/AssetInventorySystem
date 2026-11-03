@@ -22,12 +22,13 @@ namespace SchoolInventoryManagement.BLL.DTOs
         public string LastName { get; set; } = null!;
 
         [Required]
-        [EmailAddress]
-        [MaxLength(100)]
-        public string Email { get; set; } = null!;
+        [MaxLength(50)]
+        public string Username { get; set; } = null!;
 
         [Required]
         [DataType(DataType.Password)]
+        // The shared default password (Accounts:DefaultPassword); the
+        // account is flagged to change it on first sign-in.
         public string Password { get; set; } = null!;
     }
 }

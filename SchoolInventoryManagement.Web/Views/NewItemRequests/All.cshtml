@@ -155,7 +155,7 @@ else
                         <div class="myassets-stats">
                             <div><span>Items</span><strong>@r.Items.Count · @r.Quantity unit@(r.Quantity == 1 ? "" : "s")</strong></div>
                             <div><span>Est. total</span><strong>@DisplayText.Peso(r.EstimatedTotal)</strong></div>
-                            <div><span>Needed by</span><strong>@(r.NeededBy?.ToString("MMM d, yyyy") ?? "—")</strong></div>
+                            <div><span>Needed by</span><strong>@DisplayText.Or(r.NeededBy?.ToString("MMM d, yyyy"), "No date given")</strong></div>
                             <div><span>Last action</span><strong>@lastText</strong></div>
                         </div>
 

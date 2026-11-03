@@ -138,7 +138,7 @@
                 <div class="asset-fields">
                     <div>
                         <div class="asset-field-label">Acquired</div>
-                        <div class="asset-field-value">@(Model.AcquisitionDate?.ToString("MMM d, yyyy") ?? "—")</div>
+                        <div class="asset-field-value">@DisplayText.Or(Model.AcquisitionDate?.ToString("MMM d, yyyy"), "Not recorded")</div>
                     </div>
                     <div>
                         <div class="asset-field-label">Cost</div>
@@ -146,7 +146,14 @@
                     </div>
                     <div>
                         <div class="asset-field-label">Warranty</div>
-                        <div class="asset-field-value">@(Model.WarrantyInformation ?? (Model.WarrantyFileURL is null ? "—" : ""))</div>
+                        <div class="asset-field-value">@if (Model.WarrantyInformation is null && Model.WarrantyFileURL is null)
+                        {
+                            @DisplayText.Or(null, "None recorded")
+                        }
+                        else
+                        {
+                            @Model.WarrantyInformation
+                        }</div>
                         @if (!string.IsNullOrWhiteSpace(Model.WarrantyFileURL))
                         {
                             <a href="@Model.WarrantyFileURL" target="_blank" rel="noopener" class="small">View warranty file</a>
@@ -169,11 +176,11 @@
                     </div>
                     <div>
                         <div class="asset-field-label">Department</div>
-                        <div class="asset-field-value">@(Model.DepartmentName ?? "—")</div>
+                        <div class="asset-field-value">@DisplayText.Or(Model.DepartmentName, "None")</div>
                     </div>
                     <div>
                         <div class="asset-field-label">Location</div>
-                        <div class="asset-field-value">@(Model.CurrentLocationName ?? (Model.AssignedUserName != null ? "— with holder" : "—"))</div>
+                        <div class="asset-field-value">@DisplayText.Or(Model.CurrentLocationName, Model.AssignedUserName != null ? "With the holder" : "Not recorded")</div>
                     </div>
                 </div>
             </section>
@@ -207,7 +214,7 @@
                     </span>
                     <div>
                         <div class="fw-semibold">@Model.AssignedUserName</div>
-                        <div class="text-muted small">@(Model.DepartmentName ?? "—")</div>
+                        <div class="text-muted small">@DisplayText.Or(Model.DepartmentName, "No department")</div>
                     </div>
                 </div>
             </div>

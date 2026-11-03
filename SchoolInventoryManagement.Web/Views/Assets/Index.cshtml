@@ -25,6 +25,7 @@
     AddRoute("branchId", Model.BranchId);
     AddRoute("locationId", Model.LocationId);
     AddRoute("departmentId", Model.DepartmentId);
+    AddRoute("userId", Model.UserId);
     AddRoute("status", Model.Status);
     AddRoute("condition", Model.Condition);
     AddRoute("includeDisposed", Model.IncludeDisposed ? "true" : null);
@@ -126,8 +127,11 @@
                 </div>
             </div>
 
-            <button type="button" class="asset-tool-btn @(filtersOpen ? "active" : "")" data-bs-toggle="collapse"
-                    data-bs-target="#assetFilterPanel" aria-expanded="@(filtersOpen ? "true" : "false")" aria-controls="assetFilterPanel">
+            @* All the filters in one dropdown under the Filters button; Apply
+               submits the form, Reset clears everything. *@
+            <div class="dropdown">
+                <button type="button" class="asset-tool-btn @(filtersOpen ? "active" : "")" data-bs-toggle="dropdown"
+                    data-bs-auto-close="outside" aria-expanded="false" id="assetFilterToggle">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18l-7 8.5V19l-4 2v-7.5z" /></svg>
                 Filters
                 @if (Model.ActiveFilterCount > 0)
@@ -136,6 +140,131 @@
                 }
                 <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 9l6 6 6-6z" /></svg>
             </button>
+                <div class="dropdown-menu dropdown-menu-end asset-filter-menu" aria-labelledby="assetFilterToggle">
+                <div class="asset-filter-panel">
+                    @* Order follows the hierarchy: Category > Model, then
+                       Branch > Location / Department. Every list is usable on its
+                       own; picking a parent narrows its children, and picking a
+                       child selects its parent. The script at the bottom does it. *@
+                    <div>
+                        <label for="fCategory" class="form-label">Category</label>
+                        <select name="categoryId" id="fCategory" class="form-select form-select-sm">
+                            <option value="">All categories</option>
+                            @foreach (var c in Model.CategoryOptions)
+                            {
+                                <option value="@c.CategoryID" selected="@(Model.CategoryId == c.CategoryID)">@c.CategoryName</option>
+                            }
+                        </select>
+                    </div>
+
+                    <div>
+                        <label for="fModel" class="form-label">Model</label>
+                        <select name="modelId" id="fModel" class="form-select form-select-sm">
+                            <option value="">All models</option>
+                            @foreach (var g in Model.ModelOptions.GroupBy(m => m.CategoryName))
+                            {
+                                <optgroup label="@g.Key">
+                                    @foreach (var m in g)
+                                    {
+                                        <option value="@m.ModelID" data-parent="@m.CategoryID" selected="@(Model.ModelId == m.ModelID)">@m.ModelName</option>
+                                    }
+                                </optgroup>
+                            }
+                        </select>
+                    </div>
+
+                    <div>
+                        <label for="fBranch" class="form-label">Branch</label>
+                        <select name="branchId" id="fBranch" class="form-select form-select-sm">
+                            <option value="">All branches</option>
+                            @foreach (var b in Model.BranchOptions)
+                            {
+                                <option value="@b.BranchID" selected="@(Model.BranchId == b.BranchID)">@b.BranchName</option>
+                            }
+                        </select>
+                    </div>
+
+                    <div>
+                        <label for="fLocation" class="form-label">Location</label>
+                        <select name="locationId" id="fLocation" class="form-select form-select-sm">
+                            <option value="">All locations</option>
+                            @foreach (var g in Model.LocationOptions.GroupBy(l => l.BranchName))
+                            {
+                                <optgroup label="@g.Key">
+                                    @foreach (var l in g)
+                                    {
+                                        <option value="@l.LocationID" data-parent="@l.BranchID" selected="@(Model.LocationId == l.LocationID)">@l.LocationName</option>
+                                    }
+                                </optgroup>
+                            }
+                        </select>
+                    </div>
+
+                    <div>
+                        <label for="fDepartment" class="form-label">Department</label>
+                        <select name="departmentId" id="fDepartment" class="form-select form-select-sm">
+                            <option value="">All departments</option>
+                            @foreach (var g in Model.DepartmentOptions.GroupBy(d => d.BranchName))
+                            {
+                                <optgroup label="@g.Key">
+                                    @foreach (var d in g)
+                                    {
+                                        <option value="@d.DepartmentID" data-parent="@d.BranchID" selected="@(Model.DepartmentId == d.DepartmentID)">@d.DepartmentName</option>
+                                    }
+                                </optgroup>
+                            }
+                        </select>
+                    </div>
+
+                    @* Who holds the unit now. Typeable. Narrowed by Department
+                       (only that department's people) or, with no department,
+                       by Branch. Picking someone doesn't change Department:
+                       that filters the unit's own department, which can differ
+                       from the holder's. *@
+                    <div>
+                        <label for="fUser" class="form-label">User</label>
+                        <select name="userId" id="fUser" class="form-select form-select-sm" data-combobox>
+                            <option value="">All users</option>
+                            @foreach (var g in Model.UserOptions.GroupBy(u => u.DepartmentID))
+                            {
+                                var first = g.First();
+                                <optgroup label="@first.DepartmentName · @first.BranchName">
+                                    @foreach (var u in g)
+                                    {
+                                        <option value="@u.UserID" data-parent="@u.DepartmentID" data-branch="@u.BranchID"
+                                                selected="@(Model.UserId == u.UserID)">@u.FullName@(u.IsActive ? "" : " (inactive)")</option>
+                                    }
+                                </optgroup>
+                            }
+                        </select>
+                    </div>
+
+                    <div>
+                        <label for="fStatus" class="form-label">Status</label>
+                        @Html.DropDownList("status", (IEnumerable<SelectListItem>)ViewBag.StatusFilter,
+                             "All statuses", new { @class = "form-select form-select-sm", id = "fStatus" })
+                    </div>
+
+                    <div>
+                        <label for="fCondition" class="form-label">Condition</label>
+                        @Html.DropDownList("condition", (IEnumerable<SelectListItem>)ViewBag.ConditionFilter,
+                             "All conditions", new { @class = "form-select form-select-sm", id = "fCondition" })
+                    </div>
+
+                    <div class="asset-filter-actions">
+                        @* Off by default: the list is what the school still has.
+                           Choosing Disposed under status shows them either way. *@
+                        <div class="form-check mb-0">
+                            <input class="form-check-input" type="checkbox" name="includeDisposed" value="true" id="fIncludeDisposed"
+                                   checked="@Model.IncludeDisposed" />
+                            <label class="form-check-label small text-nowrap" for="fIncludeDisposed">Include disposed</label>
+                        </div>
+                        <a asp-action="Index" class="btn btn-outline-secondary btn-sm">Reset</a>
+                        <button type="submit" class="btn btn-primary btn-sm">Apply</button>
+                    </div>
+                </div>
+                </div>
+            </div>
 
             <span class="asset-count">
                 @if (Model.TotalFilteredCount == 0)
@@ -149,107 +278,6 @@
             </span>
         </div>
 
-        <div class="collapse @(filtersOpen ? "show" : "")" id="assetFilterPanel">
-            <div class="asset-filter-panel">
-                @* Order follows the hierarchy: Category > Model, then
-                   Branch > Location / Department. Every list is usable on its
-                   own; picking a parent narrows its children, and picking a
-                   child selects its parent. The script at the bottom does it. *@
-                <div>
-                    <label for="fCategory" class="form-label">Category</label>
-                    <select name="categoryId" id="fCategory" class="form-select form-select-sm">
-                        <option value="">All categories</option>
-                        @foreach (var c in Model.CategoryOptions)
-                        {
-                            <option value="@c.CategoryID" selected="@(Model.CategoryId == c.CategoryID)">@c.CategoryName</option>
-                        }
-                    </select>
-                </div>
-
-                <div>
-                    <label for="fModel" class="form-label">Model</label>
-                    <select name="modelId" id="fModel" class="form-select form-select-sm">
-                        <option value="">All models</option>
-                        @foreach (var g in Model.ModelOptions.GroupBy(m => m.CategoryName))
-                        {
-                            <optgroup label="@g.Key">
-                                @foreach (var m in g)
-                                {
-                                    <option value="@m.ModelID" data-parent="@m.CategoryID" selected="@(Model.ModelId == m.ModelID)">@m.ModelName</option>
-                                }
-                            </optgroup>
-                        }
-                    </select>
-                </div>
-
-                <div>
-                    <label for="fBranch" class="form-label">Branch</label>
-                    <select name="branchId" id="fBranch" class="form-select form-select-sm">
-                        <option value="">All branches</option>
-                        @foreach (var b in Model.BranchOptions)
-                        {
-                            <option value="@b.BranchID" selected="@(Model.BranchId == b.BranchID)">@b.BranchName</option>
-                        }
-                    </select>
-                </div>
-
-                <div>
-                    <label for="fLocation" class="form-label">Location</label>
-                    <select name="locationId" id="fLocation" class="form-select form-select-sm">
-                        <option value="">All locations</option>
-                        @foreach (var g in Model.LocationOptions.GroupBy(l => l.BranchName))
-                        {
-                            <optgroup label="@g.Key">
-                                @foreach (var l in g)
-                                {
-                                    <option value="@l.LocationID" data-parent="@l.BranchID" selected="@(Model.LocationId == l.LocationID)">@l.LocationName</option>
-                                }
-                            </optgroup>
-                        }
-                    </select>
-                </div>
-
-                <div>
-                    <label for="fDepartment" class="form-label">Department</label>
-                    <select name="departmentId" id="fDepartment" class="form-select form-select-sm">
-                        <option value="">All departments</option>
-                        @foreach (var g in Model.DepartmentOptions.GroupBy(d => d.BranchName))
-                        {
-                            <optgroup label="@g.Key">
-                                @foreach (var d in g)
-                                {
-                                    <option value="@d.DepartmentID" data-parent="@d.BranchID" selected="@(Model.DepartmentId == d.DepartmentID)">@d.DepartmentName</option>
-                                }
-                            </optgroup>
-                        }
-                    </select>
-                </div>
-
-                <div>
-                    <label for="fStatus" class="form-label">Status</label>
-                    @Html.DropDownList("status", (IEnumerable<SelectListItem>)ViewBag.StatusFilter,
-                         "All statuses", new { @class = "form-select form-select-sm", id = "fStatus" })
-                </div>
-
-                <div>
-                    <label for="fCondition" class="form-label">Condition</label>
-                    @Html.DropDownList("condition", (IEnumerable<SelectListItem>)ViewBag.ConditionFilter,
-                         "All conditions", new { @class = "form-select form-select-sm", id = "fCondition" })
-                </div>
-
-                <div class="asset-filter-actions">
-                    @* Off by default: the list is what the school still has.
-                       Choosing Disposed under status shows them either way. *@
-                    <div class="form-check mb-0">
-                        <input class="form-check-input" type="checkbox" name="includeDisposed" value="true" id="fIncludeDisposed"
-                               checked="@Model.IncludeDisposed" />
-                        <label class="form-check-label small text-nowrap" for="fIncludeDisposed">Include disposed</label>
-                    </div>
-                    <a asp-action="Index" class="btn btn-outline-secondary btn-sm">Reset</a>
-                    <button type="submit" class="btn btn-primary btn-sm">Apply</button>
-                </div>
-            </div>
-        </div>
     </form>
 
     @if (Model.TotalFilteredCount > 0)
@@ -298,7 +326,7 @@
                                 }
                                 else
                                 {
-                                    <span class="asset-none">—</span>
+                                    <span class="asset-none">On the shelf</span>
                                 }
                             </td>
                             <td class="text-end">
@@ -411,6 +439,7 @@
         //   Branch -> narrows Location and Department.
         //   Location or Department -> selects its Branch, which then
         //   narrows the other one.
+        //   Department (or, with none, Branch) -> narrows User.
         // With no parent chosen, a child list shows everything grouped
         // under its parent's name. This only shapes the lists -- the server
         // applies whatever is submitted.
@@ -420,7 +449,8 @@
             var branchSel = document.getElementById('fBranch');
             var locationSel = document.getElementById('fLocation');
             var departmentSel = document.getElementById('fDepartment');
-            if (!categorySel || !modelSel || !branchSel || !locationSel || !departmentSel) return;
+            var userSel = document.getElementById('fUser');
+            if (!categorySel || !modelSel || !branchSel || !locationSel || !departmentSel || !userSel) return;
 
             // Snapshot every child option once, with its parent id and group,
             // so a list can be rebuilt from scratch whenever its parent changes.
@@ -430,6 +460,7 @@
                         value: o.value,
                         text: o.textContent,
                         parent: o.getAttribute('data-parent'),
+                        branch: o.getAttribute('data-branch'),
                         group: o.parentElement.tagName === 'OPTGROUP' ? o.parentElement.label : null
                     };
                 });
@@ -438,13 +469,17 @@
             var allModels = snapshot(modelSel);
             var allLocations = snapshot(locationSel);
             var allDepartments = snapshot(departmentSel);
+            var allUsers = snapshot(userSel);
 
             // Rebuild a child list with only the options under parentValue.
             // With no parent chosen, everything is listed under group headers;
             // with one chosen, the headers would all say the same thing, so
             // the list goes flat. Keeps the current choice if it survives,
             // otherwise falls back to the first ("All ...") entry.
-            function rebuild(select, options, parentValue) {
+            //
+            // keep, when given, decides instead of parentValue which options
+            // stay (Users narrowed by branch), and the headers are kept.
+            function rebuild(select, options, parentValue, keep) {
                 var current = select.value;
                 var placeholder = select.options[0];
                 select.innerHTML = '';
@@ -452,7 +487,7 @@
 
                 var groups = {};
                 options.forEach(function (o) {
-                    if (parentValue && o.parent !== parentValue) return;
+                    if (keep ? !keep(o) : (parentValue && o.parent !== parentValue)) return;
 
                     var container = select;
                     if (!parentValue && o.group) {
@@ -468,6 +503,7 @@
                     opt.value = o.value;
                     opt.textContent = o.text;
                     opt.setAttribute('data-parent', o.parent);
+                    if (o.branch) opt.setAttribute('data-branch', o.branch);
                     container.appendChild(opt);
                 });
 
@@ -486,9 +522,23 @@
                 rebuild(modelSel, allModels, categorySel.value);
             }
 
+            // Users: the chosen department's people; with no department,
+            // the chosen branch's; with neither, everyone.
+            function syncUsers() {
+                if (departmentSel.value) {
+                    rebuild(userSel, allUsers, departmentSel.value);
+                } else if (branchSel.value) {
+                    var branch = branchSel.value;
+                    rebuild(userSel, allUsers, '', function (o) { return o.branch === branch; });
+                } else {
+                    rebuild(userSel, allUsers, '');
+                }
+            }
+
             function syncBranchChildren() {
                 rebuild(locationSel, allLocations, branchSel.value);
                 rebuild(departmentSel, allDepartments, branchSel.value);
+                syncUsers();
             }
 
             // Picking a child selects its parent, then re-narrows the
@@ -513,6 +563,7 @@
             });
             departmentSel.addEventListener('change', function () {
                 adoptParent(departmentSel, allDepartments, branchSel, syncBranchChildren);
+                syncUsers();
             });
 
             // On load: let any chosen child settle its parent first (a
