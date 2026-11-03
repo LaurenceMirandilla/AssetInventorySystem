@@ -20,6 +20,7 @@ namespace SchoolInventoryManagement.BLL.Interfaces
         Task<Dictionary<string, int>> GetNextCodeNumbersAsync();
 
         Task<AssetResponseDTO?> GetAssetByIdAsync(int assetId);
+        Task<List<AssetResponseDTO>> GetAllAssetsAsync();
 
         // locationId is last and optional so the existing callers (request
         // approval screens, barcode scan) compile unchanged.
@@ -29,6 +30,7 @@ namespace SchoolInventoryManagement.BLL.Interfaces
             int? locationId = null, int? assignedUserId = null);
 
         Task UpdateAssetAsync(int assetId, UpdateAssetDTO dto, int actingUserId);
+        Task ChangeConditionAsync(int assetId, ConditionStatus newCondition, byte[] rowVersion, int actingUserId);
         Task ChangeStatusAsync(int assetId, AssetStatus newStatus, byte[] rowVersion, int actingUserId);
 
         // Under Maintenance -> Available, with the condition set to Repaired.

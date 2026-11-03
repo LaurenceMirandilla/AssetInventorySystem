@@ -1,0 +1,251 @@
+﻿@model List<SchoolInventoryManagement.BLL.DTOs.NewItemRequestResponseDTO>
+@using SchoolInventoryManagement.BLL.DTOs
+@using SchoolInventoryManagement.DAL.Entities.Enums
+@using SchoolInventoryManagement.Web.ViewModels
+@{
+    // The signed-in user's own new-item requests, with each one's stages
+    // and steps beside the list. (Everyone's requests: All.cshtml.)
+    ViewData["Title"] = "My New-Item Requests";
+
+    var open = new[] { NewItemStatus.AwaitingDeptHead, NewItemStatus.AwaitingBudget, NewItemStatus.Procuring, NewItemStatus.AwaitingArrival };
+    var groups = new[]
+    {
+        (Key: "transit", Label: "In progress", Items: Model.Where(r => open.Contains(r.RequestStatus)).ToList()),
+        (Key: "use", Label: "Done", Items: Model.Where(r => !open.Contains(r.RequestStatus)).ToList())
+    };
+    var ordered = groups.SelectMany(g => g.Items).ToList();
+
+    // The five stages, and the step status that completes each one.
+    var stages = new[]
+    {
+        (Label: "Department head", DoneBy: NewItemStatus.AwaitingBudget),
+        (Label: "Principal", DoneBy: NewItemStatus.Procuring),
+        (Label: "Procurement", DoneBy: NewItemStatus.AwaitingArrival),
+        (Label: "Waiting for arrival", DoneBy: NewItemStatus.Arrived),
+        (Label: "Arrived", DoneBy: NewItemStatus.Arrived)
+    };
+}
+
+@functions {
+    static string Initials(string name)
+    {
+        var initials = string.Concat(name.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(p => p[0])).ToUpperInvariant();
+        return initials.Length > 2 ? initials[..2] : initials;
+    }
+
+    // How many of the five stages are behind it.
+    static int StagesDone(NewItemRequestResponseDTO r) => r.RequestStatus switch
+    {
+        NewItemStatus.AwaitingDeptHead => 0,
+        NewItemStatus.AwaitingBudget => 1,
+        NewItemStatus.Procuring => 2,
+        NewItemStatus.AwaitingArrival => 3,
+        NewItemStatus.Arrived => 5,
+        // Rejected or cancelled: as far as its steps got before that.
+        _ => r.Steps.Count(s => s.Status is NewItemStatus.AwaitingBudget or NewItemStatus.Procuring
+                                 or NewItemStatus.AwaitingArrival or NewItemStatus.Arrived)
+    };
+
+    static bool IsStopped(NewItemRequestResponseDTO r) =>
+        r.RequestStatus is NewItemStatus.Rejected or NewItemStatus.Cancelled;
+
+    // What a step did, said after the person's name.
+    static string StepText(NewItemStatus s) => s switch
+    {
+        NewItemStatus.AwaitingDeptHead => "submitted the request",
+        NewItemStatus.AwaitingBudget => "approved for the department",
+        NewItemStatus.Procuring => "approved the budget",
+        NewItemStatus.AwaitingArrival => "marked it procured",
+        NewItemStatus.Arrived => "confirmed it arrived",
+        NewItemStatus.Rejected => "rejected the request",
+        NewItemStatus.Cancelled => "cancelled the request",
+        _ => s.ToString()
+    };
+}
+
+@if (TempData["ErrorMessage"] != null)
+{
+    <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
+}
+
+<div class="asset-detail-head">
+    <div>
+        <h2 class="asset-detail-title">My New-Item Requests</h2>
+        <div class="asset-detail-sub">Things you have asked the school to acquire, and where each one has got to.</div>
+    </div>
+    <div class="asset-detail-actions">
+        <a asp-action="Create" class="btn btn-primary">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+            Request an item
+        </a>
+    </div>
+</div>
+
+@if (!Model.Any())
+{
+    <div class="sab-table-card">
+        <div class="sab-empty">
+            <div class="sab-empty-title">No requests yet</div>
+            <p>Need something the school does not have? Ask for it here.</p>
+            <a asp-action="Create" class="btn btn-primary">+ Request an item</a>
+        </div>
+    </div>
+}
+else
+{
+    <div class="sab-table-card myassets" data-md data-page-size="8">
+        <aside class="myassets-list" aria-label="Your new-item requests">
+            <div class="md-toolbar">
+                <label class="asset-search">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+                    <input type="text" data-md-search autocomplete="off" placeholder="Search my requests..." aria-label="Search my new-item requests" />
+                </label>
+                <div class="dropdown">
+                    <button type="button" class="asset-tool-btn" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18l-7 8.5V19l-4 2v-7.5z" /></svg>
+                        Filters
+                    </button>
+                    <div class="dropdown-menu dropdown-menu-end md-filter-menu">
+                        <label class="form-label">Stage</label>
+                        <select class="form-select form-select-sm" data-md-filter="stage">
+                            <option value="">Any</option>
+                            @foreach (var s in Enum.GetValues<NewItemStatus>())
+                            {
+                                <option value="@s.ToString().ToLowerInvariant()">@DisplayText.Stage(s)</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            @foreach (var g in groups.Where(g => g.Items.Any()))
+            {
+                <div class="myassets-group" data-md-group>
+                    <div class="myassets-group-label group-@g.Key">@g.Label · <span data-md-count>@g.Items.Count</span></div>
+                    @foreach (var r in g.Items)
+                    {
+                        var done = StagesDone(r);
+                        var stopped = IsStopped(r);
+                        <button type="button" class="myassets-item @(stopped ? "item-late" : g.Key == "transit" ? "item-transit" : "")"
+                                data-entry="n-@r.NewItemRequestID" data-stage="@r.RequestStatus.ToString().ToLowerInvariant()"
+                                data-search="@($"#{r.NewItemRequestID} {r.NewItemRequestID} {string.Join(' ', r.Items.Select(i => i.ItemName))} {r.Reason} {DisplayText.Stage(r.RequestStatus)}".ToLowerInvariant())">
+                            <span class="myassets-badge">
+                                <strong>#@r.NewItemRequestID</strong>
+                                <small>New</small>
+                            </span>
+                            <span class="myassets-item-main">
+                                <span class="myassets-item-title">@r.ItemName</span>
+                                <span class="myassets-item-sub">
+                                    @(r.Items.Count > 1 ? $"{r.Items.Count} items · " : "")@r.Quantity unit@(r.Quantity == 1 ? "" : "s")@(r.EstimatedTotal is not null ? " · " + DisplayText.Peso(r.EstimatedTotal) : "")@(r.NeededBy is not null && !stopped && done < 5 ? " · needed " + r.NeededBy.Value.ToString("MMM d") : "")
+                                </span>
+                                <span class="nir-progress @(stopped ? "is-stopped" : "")" aria-hidden="true">
+                                    @for (var i = 0; i < 5; i++)
+                                    {
+                                        <span class="@(i < done ? "on" : i == done && (open.Contains(r.RequestStatus) || stopped) ? "now" : "")"></span>
+                                    }
+                                </span>
+                            </span>
+                            <span class="myassets-item-due">@DisplayText.Stage(r.RequestStatus)</span>
+                        </button>
+                    }
+                </div>
+            }
+            <div class="myassets-nomatch" data-md-empty hidden>Nothing matches your search.</div>
+
+            <div class="md-foot">
+                <span data-md-range></span>
+                <div data-md-pager></div>
+            </div>
+        </aside>
+
+        <section class="myassets-detail">
+            @foreach (var r in ordered)
+            {
+                var done = StagesDone(r);
+                var stopped = IsStopped(r);
+                var lastStep = r.Steps.LastOrDefault();
+                var steps = new List<RequestStep>();
+                for (var i = 0; i < stages.Length; i++)
+                {
+                    var doneStep = r.Steps.LastOrDefault(s => s.Status == stages[i].DoneBy);
+                    if (i < done)
+                    {
+                        steps.Add(new RequestStep(stages[i].Label, doneStep?.ActedAt.ToString("MMM d"), RequestStepState.Done));
+                    }
+                    else if (i == done && stopped)
+                    {
+                        steps.Add(new RequestStep(r.RequestStatus == NewItemStatus.Rejected ? "Rejected" : "Cancelled",
+                            lastStep?.ActedAt.ToString("MMM d"), RequestStepState.Stopped));
+                    }
+                    else if (i == done)
+                    {
+                        steps.Add(new RequestStep(stages[i].Label, "now", RequestStepState.Current));
+                    }
+                    else
+                    {
+                        steps.Add(new RequestStep(stages[i].Label, null, RequestStepState.Todo));
+                    }
+                }
+                var pillCss = stopped ? "st-overdue" : r.RequestStatus == NewItemStatus.Arrived ? "st-available" : "st-intransit";
+
+                <article class="myassets-panel" data-panel="n-@r.NewItemRequestID" hidden>
+                    <button type="button" class="myassets-back" data-back>&larr; All my requests</button>
+
+                    <div class="myassets-panel-head">
+                        <div class="min-w-0">
+                            <div class="myassets-panel-meta">
+                                <span>New-item request #@r.NewItemRequestID · submitted @r.RequestDate.ToString("MMM d, yyyy")</span>
+                            </div>
+                            <h3 class="myassets-panel-title">@r.ItemName</h3>
+                        </div>
+                        <div class="myassets-panel-actions">
+                            <span class="asset-pill asset-status @pillCss">@DisplayText.Stage(r.RequestStatus)</span>
+                            <a asp-action="Details" asp-route-id="@r.NewItemRequestID" class="btn btn-outline-secondary">Open request &rarr;</a>
+                        </div>
+                    </div>
+
+                    <partial name="_RequestSteps" model="steps" />
+
+                    <div class="myassets-stats">
+                        <div><span>Items</span><strong>@r.Items.Count · @r.Quantity unit@(r.Quantity == 1 ? "" : "s")</strong></div>
+                        <div><span>Estimated total</span><strong>@DisplayText.Peso(r.EstimatedTotal)</strong></div>
+                        <div><span>Needed by</span><strong>@DisplayText.Or(r.NeededBy?.ToString("MMM d, yyyy"), "No date given")</strong></div>
+                        <div><span>Last action</span><strong>@((lastStep?.ActedAt ?? r.RequestDate).ToString("MMM d"))</strong></div>
+                    </div>
+
+                    <h4 class="md-section-title">What you asked for</h4>
+                    <partial name="_NewItemTicketItems" model="r" />
+
+                    <div class="nir-cols">
+                        <div>
+                            <h4 class="md-section-title">Reason</h4>
+                            <div class="req-note mt-0">@DisplayText.Or(r.Reason, "None given")</div>
+                        </div>
+                        <div>
+                            <h4 class="md-section-title">Steps so far</h4>
+                            <ul class="steps-feed">
+                                @foreach (var s in r.Steps.AsEnumerable().Reverse())
+                                {
+                                    var isMe = s.ActedByName == r.RequestedByUserName;
+                                    <li>
+                                        <span class="history-avatar">@Initials(s.ActedByName)</span>
+                                        <div>
+                                            <div class="steps-feed-text">
+                                                <strong>@(isMe ? "You" : s.ActedByName)</strong> @StepText(s.Status)@(string.IsNullOrWhiteSpace(s.Remarks) ? "" : $" — “{s.Remarks}”")
+                                            </div>
+                                            <div class="steps-feed-meta">@s.ActedAt.ToString("MMM d, h:mm tt")@(isMe ? "" : " · " + s.ActedByRole)</div>
+                                        </div>
+                                    </li>
+                                }
+                                @if (!r.Steps.Any())
+                                {
+                                    <li><div class="steps-feed-meta">Submitted @r.RequestDate.ToString("MMM d, h:mm tt").</div></li>
+                                }
+                            </ul>
+                        </div>
+                    </div>
+                </article>
+            }
+        </section>
+    </div>
+}

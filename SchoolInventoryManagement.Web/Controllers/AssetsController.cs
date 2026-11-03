@@ -269,7 +269,7 @@ namespace SchoolInventoryManagement.Web.Controllers
                 .ToList();
 
             // Unfiltered headcount, for the "N of M" caption above the tiles.
-            // A COUNT(*) rather than loading every asset -- the page
+            // A COUNT(*) rather than another GetAllAssetsAsync -- the page
             // needs the number, not the rows. Leaves out disposed units when
             // the list does, so the two numbers describe the same set.
             var grandTotal = showDisposed

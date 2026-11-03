@@ -43,12 +43,9 @@ html, body {
 *, *::before, *::after { border-radius: 0 !important; }
 /* The few round things that stay round: step-tracker circles, radio
    buttons, the signed-in user's initials at the foot of the sidebar. */
-.req-step-dot,
-.ni-step-num,
-.form-check-input[type="radio"],
-.sab-sidebar-user .sab-avatar,
-.spinner-border,
-.sab-bell-dot { border-radius: 50% !important; }
+.req-step-dot, .ni-step-num, .form-check-input[type="radio"],
+.sab-sidebar-user .sab-avatar, .spinner-border, .sab-nav-dot,
+.sab-bell-dot, .notification-dot { border-radius: 50% !important; }
 
 /* ---- Shell --------------------------------------------------------------- */
 .sab-sidebar { width: 232px; background: var(--sab-sidebar-bg); border-right: 1px solid var(--sab-border); }

@@ -49,6 +49,7 @@ namespace SchoolInventoryManagement.Web.Helpers
             ["Departments/*"] = "Managing departments",
             ["Locations/*"] = "Managing locations",
             ["Models/*"] = "Managing models",
+            ["Home/Privacy"] = "The Privacy page",
             ["NewItemRequests/All"] = "The list of all new-item requests",
             ["NewItemRequests/Pending"] = "New-item approvals",
             ["Reports/*"] = "Reports",

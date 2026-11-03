@@ -318,13 +318,68 @@ a:hover { color: var(--sab-green-dark); text-decoration: underline; }
    Cards / panels
    ========================================================================== */
 
-.card {
+.card, .sab-card {
   background: var(--sab-surface);
   border: 1px solid var(--sab-border);
   border-radius: var(--sab-radius);
   box-shadow: var(--sab-shadow);
 }
 .card-body { padding: 20px; }
+
+/* ==========================================================================
+   Report tiles / KPI cards (Reports/Index.cshtml)
+   ========================================================================== */
+
+.report-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+  margin-bottom: 28px;
+}
+.report-tile {
+  background: var(--sab-surface);
+  border: 1px solid var(--sab-border);
+  border-radius: var(--sab-radius);
+  box-shadow: var(--sab-shadow);
+  padding: 15px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.report-tile-label {
+  font-size: 0.8rem;
+  color: var(--sab-text-muted);
+  order: 2;
+}
+.report-tile-value {
+  font-size: 1.75rem;
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--sab-text);
+  order: 1;
+}
+.report-tile-note {
+  font-size: 0.76rem;
+  color: var(--sab-text-faint);
+  order: 3;
+  padding-top: 8px;
+  border-top: 1px solid var(--sab-border);
+  margin-top: 9px;
+}
+
+/* A tile that filters the list below it. The selected one is tinted rather
+   than outlined, so it reads as "this is the current view", not "this one is
+   in an error state". */
+a.report-tile:hover {
+  border-color: var(--sab-green-border);
+  text-decoration: none;
+}
+.report-tile.active {
+  background: var(--sab-green-light);
+  border-color: var(--sab-green-border);
+}
+.report-tile.active .report-tile-value,
+.report-tile.active .report-tile-label { color: var(--sab-green-dark); }
 
 /* ==========================================================================
    Status pills — one class per enum value used across the app.
@@ -534,6 +589,7 @@ a:hover { color: var(--sab-green-dark); text-decoration: underline; }
 h2 { font-weight: 700; font-size: 1.35rem; color: var(--sab-text); }
 .text-muted { color: var(--sab-text-muted) !important; }
 
+
 /* ==========================================================================
    Components from the Ste. Anne UI mockups
    ========================================================================== */
@@ -556,6 +612,30 @@ h2 { font-weight: 700; font-size: 1.35rem; color: var(--sab-text); }
   margin: 0;
 }
 .sab-page-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* Card header: title left, "View all" style link right, hairline under. */
+.sab-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.sab-card-head h5 { margin: 0; font-size: 1rem; font-weight: 600; }
+
+/* A bordered list row inside a card -- the repeating unit in "Needs your
+   attention", "Recent activity", the request queue and the history list. */
+.sab-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--sab-border);
+}
+.sab-row:last-child { border-bottom: 0; }
+.sab-row-title { font-weight: 600; }
+.sab-row-meta { color: var(--sab-text-muted); font-size: 0.82rem; }
 
 /* Right-rail explainer boxes. The mockups lean on these to say why a screen
    behaves the way it does, rather than leaving the rule to be discovered. */
@@ -581,6 +661,11 @@ h2 { font-weight: 700; font-size: 1.35rem; color: var(--sab-text); }
   border-color: #f3e3c2;
   color: var(--sab-amber-text);
 }
+.sab-callout-danger {
+  background: var(--sab-red-bg);
+  border-color: #f6cfcd;
+  color: var(--sab-red-text);
+}
 
 /* Asset codes read as identifiers, not prose -- the mockups set every one of
    them in mono so SAB-IT-0231 scans as a label you could type back in. */
@@ -591,6 +676,15 @@ h2 { font-weight: 700; font-size: 1.35rem; color: var(--sab-text); }
   letter-spacing: -0.01em;
   white-space: nowrap;
 }
+
+/* Inline avatars inside table rows and lists are the soft variant; the solid
+   green .sab-avatar stays for the signed-in user in the top bar. */
+.sab-avatar-soft {
+  background: var(--sab-green-light);
+  color: var(--sab-green-dark);
+  border: 1px solid var(--sab-green-border);
+}
+.sab-avatar-sm { width: 26px; height: 26px; font-size: 0.66rem; }
 
 /* Segmented filter ("Active / Inactive / All", "Outstanding only"). */
 .sab-seg { display: inline-flex; gap: 6px; flex-wrap: wrap; }
@@ -614,6 +708,24 @@ h2 { font-weight: 700; font-size: 1.35rem; color: var(--sab-text); }
   color: var(--sab-green-dark);
 }
 
+/* Reports sub-navigation, the left-hand list in the reports mockup. */
+.sab-subnav { list-style: none; margin: 0; padding: 0; }
+.sab-subnav a {
+  display: block;
+  padding: 9px 12px;
+  border-radius: var(--sab-radius-sm);
+  color: var(--sab-text-muted);
+  font-size: 0.9rem;
+  font-weight: 500;
+  text-decoration: none;
+}
+.sab-subnav a:hover { background: var(--sab-bg); color: var(--sab-text); text-decoration: none; }
+.sab-subnav a.active {
+  background: var(--sab-green-light);
+  color: var(--sab-green-dark);
+  font-weight: 600;
+}
+
 /* Empty states -- the app had no shared treatment, so each page invented one. */
 .sab-empty {
   text-align: center;
@@ -627,6 +739,7 @@ h2 { font-weight: 700; font-size: 1.35rem; color: var(--sab-text); }
    that happen to post, so they match their neighbours. */
 .table .btn-link { text-decoration: none; }
 .table .btn-link:hover { text-decoration: underline; }
+
 
 /* ==========================================================================
    Table card -- the mockups never put a bare table on the page background.
@@ -642,7 +755,39 @@ h2 { font-weight: 700; font-size: 1.35rem; color: var(--sab-text); }
 }
 .sab-table-card > .table { margin-bottom: 0; }
 
+/* Filters and the result count, in a strip above the rows. */
+.sab-table-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--sab-border);
+}
+.sab-table-toolbar .form-control,
+.sab-table-toolbar .form-select {
+  height: 36px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  font-size: 0.86rem;
+  border-radius: 999px;
+}
+.sab-table-toolbar .form-select { padding-right: 30px; }
+.sab-table-toolbar .btn { height: 36px; padding-top: 5px; padding-bottom: 5px; }
+.sab-table-filters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .sab-table-count { color: var(--sab-text-muted); font-size: 0.84rem; margin-left: auto; }
+
+/* Pager, on the same surface as the rows it pages through. */
+.sab-table-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--sab-border);
+}
 
 /* Inside a card the rows carry the surface, so the zebra striping and the
    table's own edge-to-edge borders work against it rather than with it. */
@@ -672,6 +817,7 @@ h2 { font-weight: 700; font-size: 1.35rem; color: var(--sab-text); }
 .sab-table-card .table > tbody > tr:last-child > td { border-bottom: 0; }
 .sab-table-card .table > :not(:first-child) { border-top: 0; }
 
+
 /* Title strip on a table card -- the mockup labels each breakdown on the card
    itself rather than with a bare heading floating above a bare table. */
 .sab-table-head {
@@ -691,8 +837,26 @@ h2 { font-weight: 700; font-size: 1.35rem; color: var(--sab-text); }
   color: var(--sab-text);
 }
 
+/* Filters that need their labels kept (date ranges, mostly) sit on their own
+   card rather than loose on the page background. */
+.sab-filter-card {
+  background: var(--sab-surface);
+  border: 1px solid var(--sab-border);
+  border-radius: var(--sab-radius);
+  box-shadow: var(--sab-shadow);
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+.sab-filter-card .form-label { margin-bottom: 4px; }
+
 /* Eight tiles wrapping to seven-and-one looks like a mistake. Fixed tracks
    keep the inventory summary to even rows at every breakpoint. */
+@media (min-width: 768px) {
+  .report-tiles.is-quad { grid-template-columns: repeat(2, 1fr); }
+}
+@media (min-width: 1200px) {
+  .report-tiles.is-quad { grid-template-columns: repeat(4, 1fr); }
+}
 
 /* Model picker (Views/Assets/_ModelPicker): a typeable dropdown. The list
    scrolls instead of running off the page when there are many models. */
@@ -711,6 +875,35 @@ h2 { font-weight: 700; font-size: 1.35rem; color: var(--sab-text); }
 .status-procuring        { background: var(--sab-purple-bg);   color: var(--sab-purple-text); }
 .status-awaitingarrival  { background: var(--sab-blue-bg);     color: var(--sab-blue-text); }
 .status-arrived          { background: var(--sab-green-light); color: var(--sab-green-dark); }
+
+/* The four-stage progress bar on a new-item request's page. */
+.nir-stages { display: flex; gap: 6px; margin: 0; padding: 0; list-style: none; flex-wrap: wrap; }
+.nir-stages li {
+  flex: 1 1 140px; padding: 8px 10px; border-radius: 8px; font-size: .85rem;
+  background: var(--sab-gray-bg); color: var(--sab-gray-text);
+}
+.nir-stages li.done    { background: var(--sab-green-light); color: var(--sab-green-dark); }
+.nir-stages li.current { background: var(--sab-blue-bg); color: var(--sab-blue-text); font-weight: 600; }
+.nir-stages li.stopped { background: var(--sab-red-bg); color: var(--sab-red-text); font-weight: 600; }
+
+/* My Assets: a request row opens to show its units. */
+.my-assets .is-expandable { cursor: pointer; }
+.my-assets .is-expandable:hover > td { background: var(--sab-blue-bg); }
+.my-assets .my-assets-caret { display: inline-block; transition: transform .15s; }
+.my-assets .is-open .my-assets-caret { transform: rotate(90deg); }
+.my-assets .my-assets-units > td { background: var(--sab-gray-bg); }
+
+/* Filter chips: a row of small toggle links (Audit shortcuts, new-item
+   stages). Our own style because this project's Bootstrap (5.1) has no
+   text-bg-* helpers, and a plain .badge is white text. */
+.sab-chip {
+  display: inline-block; margin: 0 4px 4px 0; padding: 3px 10px;
+  border: 1px solid var(--sab-border); border-radius: 999px;
+  background: var(--sab-surface); color: var(--sab-text);
+  font-size: .78rem; font-weight: 500; text-decoration: none; line-height: 1.5;
+}
+.sab-chip:hover { background: var(--sab-green-light); border-color: var(--sab-green-border); color: var(--sab-green-dark); }
+.sab-chip.active { background: var(--sab-green); border-color: var(--sab-green); color: #fff; }
 
 /* ==========================================================================
    Dashboard (Views/Home/Index.cshtml)
@@ -1035,6 +1228,7 @@ a.dash-kpi:hover { background: rgba(255, 255, 255, 0.14); color: #fff; text-deco
   .dash-bars li { grid-template-columns: minmax(0, 1fr) 70px 34px 36px; gap: 8px; font-size: 0.86rem; }
   .dash-list li { flex-wrap: wrap; }
 }
+
 
 /* ==========================================================================
    Assets list (Views/Assets/Index) -- the "Assets" mockup: a search pill,
@@ -1905,7 +2099,7 @@ a.dash-kpi:hover { background: rgba(255, 255, 255, 0.14); color: #fff; text-deco
   border-right: 1px solid var(--sab-border);
   background: var(--sab-sidebar-bg);
 }
-
+.myassets-search { width: 100%; margin-bottom: 14px; }
 .myassets-group { margin-bottom: 14px; }
 .myassets-group-label {
   display: flex;
@@ -2424,6 +2618,7 @@ a.dash-kpi:hover { background: rgba(255, 255, 255, 0.14); color: #fff; text-deco
 }
 .btn-check:focus-visible + .cond-tile { box-shadow: 0 0 0 3px rgba(46, 125, 50, 0.25); }
 
+
 @media (max-width: 991.98px) {
   .cond-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
@@ -2639,7 +2834,9 @@ a.dash-kpi:hover { background: rgba(255, 255, 255, 0.14); color: #fff; text-deco
 .nir-progress span.on { background: var(--sab-green-dark); }
 .nir-progress span.now { background: #7cc48a; }
 .nir-progress.is-stopped span.now { background: #e57373; }
-
+.nir-table td.num, .nir-table th.num { text-align: right; white-space: nowrap; }
+.nir-table tfoot td { background: var(--sab-sidebar-bg); font-weight: 700; border-bottom: 0; }
+.nir-table tfoot .nir-total { color: var(--sab-green-dark); }
 .nir-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; margin-top: 4px; }
 .steps-feed { margin: 0; padding: 0; list-style: none; }
 .steps-feed li { position: relative; display: flex; gap: 10px; padding-bottom: 14px; }
@@ -2691,11 +2888,31 @@ a.dash-kpi:hover { background: rgba(255, 255, 255, 0.14); color: #fff; text-deco
 @media (max-width: 991.98px) {
   [data-md].show-detail .myassets-list { display: none; }
   [data-md].show-detail .myassets-detail { display: block; }
-  
+  [data-md].show-detail .stage-chips { display: none; }
 }
 
 .md-pill { flex: none; font-size: 0.7rem; padding: 2px 8px; }
 .md-pill::before { display: none; }
+
+/* All New-Item Requests: stage chips. */
+.stage-chips { display: flex; gap: 6px; margin-bottom: 14px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+.stage-chips::-webkit-scrollbar { display: none; }
+.stage-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--sab-border);
+  border-radius: 999px;
+  background: var(--sab-surface);
+  color: var(--sab-text);
+  font-size: 0.84rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.stage-chip span { color: var(--sab-text-muted); font-size: 0.74rem; }
+.stage-chip.active { border-color: var(--sab-green-dark); background: var(--sab-green-dark); color: #fff; }
+.stage-chip.active span { color: rgba(255, 255, 255, 0.8); }
 
 .req-waiting {
   display: flex;
@@ -2709,6 +2926,16 @@ a.dash-kpi:hover { background: rgba(255, 255, 255, 0.14); color: #fff; text-deco
 }
 .req-waiting > span:first-child { flex: none; font-weight: 700; color: var(--sab-text); }
 
+/* New-Item Approvals: the decision form. */
+.req-decision {
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid #dfe9e0;
+  border-radius: var(--sab-radius);
+  background: linear-gradient(135deg, #f6faf6, #ffffff);
+}
+.req-decision-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+
 /* Request History: the decision card. */
 .decision-card {
   display: flex;
@@ -2720,7 +2947,19 @@ a.dash-kpi:hover { background: rgba(255, 255, 255, 0.14); color: #fff; text-deco
   background: var(--sab-green-light);
 }
 .decision-card.is-rejected { border-color: #f6cfcd; background: var(--sab-red-bg); }
-
+.decision-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--sab-radius-sm);
+  background: var(--sab-green-dark);
+  color: #fff;
+  font-weight: 800;
+}
+.decision-card.is-rejected .decision-icon { background: #c62828; }
 .decision-title { font-weight: 700; }
 .decision-meta { color: var(--sab-text-muted); font-size: 0.82rem; }
 .decision-remarks { margin-top: 6px; font-size: 0.9rem; }
@@ -2761,6 +3000,8 @@ a.dash-kpi:hover { background: rgba(255, 255, 255, 0.14); color: #fff; text-deco
 
 /* Reports: tabs on top; the other report pages' side column stacks. */
 .report-tabs { margin-bottom: 18px; }
+.sab-reports-grid > [class*="col-lg-"] { flex: 0 0 100%; max-width: 100%; }
+.sab-reports-grid > .col-lg-3 { margin-bottom: -8px; }
 
 .kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
 .kpi { padding: 16px; border: 1px solid var(--sab-border); border-radius: var(--sab-radius); background: var(--sab-surface); box-shadow: var(--sab-shadow); }

@@ -89,6 +89,9 @@ namespace SchoolInventoryManagement.Web.Controllers
             return View(model);
         }
 
+        [Authorize(Roles = RoleNames.Administrator)]
+        public IActionResult Privacy() { return View(); }
+
         // Target of UseStatusCodePagesWithReExecute in Program.cs, so a
         // NotFound() from any controller renders a real page in the app's
         // shell instead of the browser's blank default. AllowAnonymous

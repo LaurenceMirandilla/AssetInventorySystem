@@ -69,6 +69,15 @@ namespace SchoolInventoryManagement.BLL.Services
             return departments.Select(d => d.ToDTO()).ToList();
         }
 
+        public async Task<List<DepartmentDTO>> GetDepartmentsByBranchAsync(int branchId)
+        {
+            var departments = await DepartmentQueryWithIncludes()
+                .Where(d => d.BranchID == branchId)
+                .OrderBy(d => d.DepartmentName)
+                .ToListAsync();
+            return departments.Select(d => d.ToDTO()).ToList();
+        }
+
         public async Task UpdateDepartmentAsync(int departmentId, UpdateDepartmentDTO dto, int actingUserId)
         {
             await PermissionHelper.EnsureIsUserManagerAsync(_context, actingUserId, "departments");

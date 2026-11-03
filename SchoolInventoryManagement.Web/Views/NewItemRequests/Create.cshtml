@@ -1,0 +1,283 @@
+﻿@model SchoolInventoryManagement.Web.ViewModels.CreateNewItemRequestViewModel
+@{
+    ViewData["Title"] = "Request a New Item";
+
+    // Always at least one row, even after a post that removed them all.
+    // Each row is a name, a quantity and an estimated price; a missing
+    // quantity shows as 1, a missing price as blank.
+    var names = Model.ItemNames.Count > 0 ? Model.ItemNames : new List<string?> { "" };
+    var rows = names.Select((name, i) => (Name: name,
+        Quantity: i < Model.Quantities.Count && Model.Quantities[i] is int q ? q : 1,
+        Price: i < Model.EstimatedPrices.Count ? Model.EstimatedPrices[i] : null)).ToList();
+
+    var myDepartment = ViewBag.MyDepartment as string;
+    var skipsDeptHead = ViewBag.SkipsDeptHead is bool skip && skip;
+
+    // What happens after submitting, in order. A department head's or an
+    // Administrator's own request starts at the Principal
+    // (NewItemRequestService).
+    var steps = new List<(string Title, string Sub)>();
+    if (!skipsDeptHead) steps.Add(("Department head", "approves the need"));
+    steps.Add(("Principal", "checks budget and reason"));
+    steps.Add(("Procurement", "an Asset Officer buys it"));
+    steps.Add(("Arrival", "you're told when it's in"));
+}
+
+@functions {
+    static string Price(decimal? p) => p?.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) ?? "";
+}
+
+<div class="asset-detail-head">
+    <div>
+        <nav class="asset-crumbs" aria-label="Breadcrumb">
+            <a asp-action="MyRequests">New-Item Requests</a>
+            <span aria-hidden="true">&rsaquo;</span>
+            <span>Request a new item</span>
+        </nav>
+        <h2 class="asset-detail-title">Request a new item</h2>
+        <div class="asset-detail-sub">For something the school doesn't have yet.</div>
+    </div>
+</div>
+
+<form asp-action="Create" method="post" class="register-form" id="newItemForm">
+    @Html.AntiForgeryToken()
+    <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+
+    <div class="row g-3">
+        <div class="col-lg-8">
+
+            @* ---- Items ---- *@
+            <div class="asset-card register-step mb-3">
+                <div class="register-step-head">
+                    <div class="register-step-title flex-grow-1">Items to be added</div>
+                    <span class="nr-head-note" id="itemsNote"></span>
+                </div>
+                <div class="register-step-body">
+                    <div class="ni-grid ni-grid-head" aria-hidden="true">
+                        <span></span>
+                        <span>Item</span>
+                        <span>Quantity</span>
+                        <span>Est. price (each)</span>
+                        <span class="text-end">Line total</span>
+                        <span></span>
+                    </div>
+
+                    <div id="itemRows">
+                        @foreach (var row in rows)
+                        {
+                            <div class="ni-grid ni-row item-row">
+                                <span class="nr-row-num"></span>
+                                <input type="text" name="ItemNames" value="@row.Name" maxlength="150"
+                                       class="form-control ni-name" placeholder="e.g. Document camera" aria-label="Item" />
+                                <div class="qty-stepper ni-qty">
+                                    <button type="button" class="qty-btn" data-step="-1" aria-label="Fewer">&minus;</button>
+                                    <input type="number" name="Quantities" value="@row.Quantity" min="1" max="1000" step="1"
+                                           class="form-control qty-input" aria-label="Quantity" required />
+                                    <button type="button" class="qty-btn" data-step="1" aria-label="More">+</button>
+                                </div>
+                                <div class="input-group ni-price">
+                                    <span class="input-group-text">₱</span>
+                                    <input type="number" name="EstimatedPrices" value="@Price(row.Price)"
+                                           min="0.01" max="9999999999.99" step="0.01" placeholder="0.00"
+                                           class="form-control price-input" aria-label="Estimated price for one" required />
+                                </div>
+                                <span class="ni-line" aria-live="polite"></span>
+                                <button type="button" class="nr-remove remove-row" title="Remove this item" aria-label="Remove this item">&times;</button>
+                            </div>
+                        }
+                    </div>
+
+                    <div class="ni-add-row">
+                        <button type="button" id="addItemRow" class="nr-add my-0">+ Add another item</button>
+                        <span class="nr-hint">
+                            Already in the catalogue? <a asp-controller="AssetRequests" asp-action="Create" class="nr-link">Borrow it instead &rarr;</a>
+                        </span>
+                    </div>
+                    <span asp-validation-for="ItemNames" class="text-danger d-block"></span>
+
+                    @* Quantity x estimated price, added up over every row.
+                       Display only: each request stores its own price. *@
+                    <div class="ni-total">
+                        <span>Estimated total <small id="pricedNote"></small></span>
+                        <strong id="estimatedTotal">₱0.00</strong>
+                    </div>
+                </div>
+            </div>
+
+            @* ---- Reason ---- *@
+            <div class="asset-card register-step mb-3">
+                <div class="register-step-head">
+                    <div class="register-step-title flex-grow-1">Reason</div>
+                    <span class="nr-head-note is-required">required</span>
+                </div>
+                <div class="register-step-body">
+                    <textarea asp-for="Reason" class="form-control" rows="3" maxlength="500" aria-label="Reason"
+                              placeholder="What it is for and who will use it."></textarea>
+                    <span asp-validation-for="Reason" class="text-danger d-block"></span>
+                    <div class="nr-hint mt-1">The department head and the principal read this when they decide.</div>
+                </div>
+            </div>
+
+            @* ---- Needed by ---- *@
+            <div class="asset-card register-step mb-3">
+                <div class="register-step-head">
+                    <div class="register-step-title flex-grow-1">When do you need it?</div>
+                    <span class="nr-badge" id="neededBadge" hidden></span>
+                </div>
+                <div class="register-step-body">
+                    <div class="input-icon ni-date">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></svg>
+                        <input asp-for="NeededBy" type="date" class="form-control" id="neededBy" min="@DateTime.Today.ToString("yyyy-MM-dd")" />
+                    </div>
+                    <span asp-validation-for="NeededBy" class="text-danger d-block"></span>
+                    <div class="nr-hint mt-1">Buying takes time. Give procurement as much notice as you can.</div>
+                </div>
+            </div>
+        </div>
+
+        @* ---- Summary ---- *@
+        <div class="col-lg-4">
+            <div class="asset-card nr-summary">
+                <div class="asset-card-title">Your request</div>
+                <dl class="approve-facts nr-summary-body">
+                    <div><dt>Items</dt><dd id="sumItems" class="is-empty">None yet</dd></div>
+                    <div><dt>Estimated</dt><dd id="sumTotal" class="is-empty">Not priced</dd></div>
+                    <div><dt>Needed by</dt><dd id="sumNeeded" class="is-empty">Not chosen yet</dd></div>
+                    <div><dt>Department</dt><dd>@DisplayText.Or(myDepartment, "None")</dd></div>
+                </dl>
+                <div class="ni-next">
+                    <div class="register-side-label mb-2">What happens next</div>
+                    <ol class="ni-steps">
+                        @for (var i = 0; i < steps.Count; i++)
+                        {
+                            <li class="@(i == 0 ? "is-first" : "")">
+                                <span class="ni-step-num">@(i + 1)</span>
+                                <span><strong>@steps[i].Title</strong><small>@steps[i].Sub</small></span>
+                            </li>
+                        }
+                    </ol>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="register-footer">
+        <span class="d-none d-md-inline">All the items go in one request, approved or rejected together.</span>
+        <div class="d-flex ms-auto" style="gap:8px;">
+            <a asp-action="MyRequests" class="btn btn-outline-secondary">Cancel</a>
+            <button type="submit" class="btn btn-primary" id="submitBtn">Submit request</button>
+        </div>
+    </div>
+</form>
+
+@section Scripts {
+    @{
+        await Html.RenderPartialAsync("_ValidationScriptsPartial");
+    }
+    <script>
+        (function () {
+            // "+ Add another item": copy the first row, emptied, quantity 1.
+            // Every row posts as ItemNames + Quantities + EstimatedPrices,
+            // which bind to the three lists in order. The x removes a row;
+            // the last one is only cleared.
+            var rowsBox = document.getElementById('itemRows');
+            var addButton = document.getElementById('addItemRow');
+            var neededBy = document.getElementById('neededBy');
+            var maxRows = 20; // the service refuses more than this anyway
+
+            function allRows() { return Array.from(rowsBox.querySelectorAll('.item-row')); }
+
+            function peso(n, cents) {
+                return '₱' + n.toLocaleString('en-US', { minimumFractionDigits: cents ? 2 : 0, maximumFractionDigits: cents ? 2 : 0 });
+            }
+
+            function update() {
+                var rows = allRows();
+                var named = 0, units = 0, priced = 0, total = 0;
+                rows.forEach(function (row, i) {
+                    row.querySelector('.nr-row-num').textContent = i + 1;
+                    row.querySelector('.remove-row').style.visibility = rows.length === 1 ? 'hidden' : 'visible';
+                    var name = row.querySelector('.ni-name').value.trim();
+                    var qty = parseInt(row.querySelector('.qty-input').value, 10) || 0;
+                    var price = parseFloat(row.querySelector('.price-input').value) || 0;
+                    var line = row.querySelector('.ni-line');
+                    if (qty > 0 && price > 0) {
+                        line.textContent = peso(qty * price, (qty * price) % 1 !== 0);
+                        line.classList.remove('is-empty');
+                    } else {
+                        line.textContent = 'Not priced';
+                        line.classList.add('is-empty');
+                    }
+                    if (name) {
+                        named++;
+                        units += qty;
+                        if (price > 0) { priced++; total += qty * price; }
+                    }
+                });
+                addButton.disabled = rows.length >= maxRows;
+
+                document.getElementById('itemsNote').textContent = named
+                    ? named + ' item' + (named === 1 ? '' : 's') + (named > 1 ? ' · one request, decided together' : '')
+                    : '';
+                document.getElementById('estimatedTotal').textContent = peso(total, true);
+                document.getElementById('pricedNote').textContent = named && priced < named ? '· ' + priced + ' of ' + named + ' items priced' : '';
+                sabShow(document.getElementById('sumItems'), named ? named + ' · ' + units + ' unit' + (units === 1 ? '' : 's') : '', 'None yet');
+                sabShow(document.getElementById('sumTotal'), total > 0 ? peso(total, false) : '', 'Not priced');
+
+                // Needed by: the date, and "in 4 weeks" beside the heading.
+                var badge = document.getElementById('neededBadge');
+                var sum = document.getElementById('sumNeeded');
+                if (neededBy.value) {
+                    var d = new Date(neededBy.value + 'T00:00');
+                    var today = new Date(); today.setHours(0, 0, 0, 0);
+                    var days = Math.round((d - today) / 86400000);
+                    sum.textContent = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                    badge.textContent = days <= 0 ? 'today' : days === 1 ? 'tomorrow' : days < 14 ? 'in ' + days + ' days'
+                        : days < 60 ? 'in ' + Math.round(days / 7) + ' weeks' : 'in ' + Math.round(days / 30) + ' months';
+                    badge.hidden = days < 0;
+                } else {
+                    sabShow(sum, '', 'Not chosen yet');
+                    badge.hidden = true;
+                }
+            }
+
+            rowsBox.addEventListener('input', update);
+            neededBy.addEventListener('change', update);
+            neededBy.addEventListener('input', update);
+
+            addButton.addEventListener('click', function () {
+                var copy = rowsBox.querySelector('.item-row').cloneNode(true);
+                copy.querySelector('.ni-name').value = '';
+                copy.querySelector('.qty-input').value = 1;
+                copy.querySelector('.price-input').value = '';
+                rowsBox.appendChild(copy);
+                update();
+                copy.querySelector('.ni-name').focus();
+            });
+
+            rowsBox.addEventListener('click', function (e) {
+                var step = e.target.closest('[data-step]');
+                if (step) {
+                    var qty = step.parentNode.querySelector('.qty-input');
+                    var n = (parseInt(qty.value, 10) || 1) + parseInt(step.dataset.step, 10);
+                    qty.value = Math.min(1000, Math.max(1, n));
+                    update();
+                    return;
+                }
+                var button = e.target.closest('.remove-row');
+                if (!button) return;
+                var row = button.closest('.item-row');
+                if (allRows().length > 1) {
+                    row.remove();
+                } else {
+                    row.querySelector('.ni-name').value = '';
+                    row.querySelector('.qty-input').value = 1;
+                    row.querySelector('.price-input').value = '';
+                }
+                update();
+            });
+
+            update();
+        })();
+    </script>
+}

@@ -519,5 +519,38 @@ namespace SchoolInventoryManagement.BLL.Services
             }
         }
 
+        public async Task FulfillRequestAsync(
+            int requestId, byte[] rowVersion, int actingUserId, bool notifyRequester = true)
+        {
+            var request = await _context.AssetRequests.FindAsync(requestId);
+            if (request is null)
+                throw new KeyNotFoundException("Request not found.");
+
+            if (request.RequestStatus != RequestStatus.Approved)
+                throw new InvalidOperationException("Only approved requests can be fulfilled.");
+
+            _context.Entry(request).Property(r => r.RowVersion).OriginalValue = rowVersion;
+
+            request.RequestStatus = RequestStatus.Fulfilled;
+
+            if (notifyRequester)
+            {
+                NotificationHelper.Queue(
+                    _context,
+                    request.RequestedByUserID,
+                    $"Your {request.RequestType} request has been fulfilled.",
+                    $"/AssetRequests/Details/{request.RequestID}");
+            }
+
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                throw new ConcurrencyConflictException(
+                    "This request was modified by someone else. Please reload and try again.");
+            }
+        }
     }
 }

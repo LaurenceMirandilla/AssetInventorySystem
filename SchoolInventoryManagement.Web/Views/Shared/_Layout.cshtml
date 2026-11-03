@@ -291,6 +291,10 @@
         </main>
 
         <footer class="sab-footer">
+            @* No Privacy link here or in the sidebar: HomeController.Privacy is
+               [Authorize(Roles = Administrator)], so for every other role the
+               link only ever landed on Access Denied. The page itself is
+               unchanged and still reachable at /Home/Privacy. *@
             &copy; 2026 &middot; Ste. Anne De Beaupre School
         </footer>
     </div>
