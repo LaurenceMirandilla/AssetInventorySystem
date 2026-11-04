@@ -86,7 +86,21 @@ app.UseMiddleware<SchoolInventoryManagement.Web.Middleware.ExceptionHandlingMidd
 // address bar keeps the URL the user actually asked for.
 app.UseStatusCodePagesWithReExecute("/Home/Error/{0}");
 
-app.UseHttpsRedirection();
+// HTTPS switch (appsettings "Https:Enforce", or the environment variable
+// Https__Enforce). Off for now, so the site also answers on plain http
+// while the server has no certificate. Set it to true once https works:
+// then http:// is redirected to https:// and, outside Development, HSTS
+// tells browsers to use https for this site from then on.
+var enforceHttps = builder.Configuration.GetValue("Https:Enforce", false);
+if (enforceHttps)
+{
+    if (!app.Environment.IsDevelopment())
+    {
+        app.UseHsts();
+    }
+
+    app.UseHttpsRedirection();
+}
 app.UseStaticFiles();
 
 app.UseRouting();
