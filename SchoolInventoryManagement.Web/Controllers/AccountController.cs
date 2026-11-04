@@ -1,4 +1,5 @@
 ﻿using System.Security.Claims;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Mvc;
@@ -13,24 +14,51 @@ namespace SchoolInventoryManagement.Web.Controllers
         private readonly IAuthService _authService;
         private readonly LoginThrottle _loginThrottle;
         private readonly AccessDeniedText _accessDeniedText;
+        private readonly IAntiforgery _antiforgery;
 
-        public AccountController(IAuthService authService, LoginThrottle loginThrottle, AccessDeniedText accessDeniedText)
+        public AccountController(IAuthService authService, LoginThrottle loginThrottle, AccessDeniedText accessDeniedText, IAntiforgery antiforgery)
         {
             _authService = authService;
             _loginThrottle = loginThrottle;
             _accessDeniedText = accessDeniedText;
+            _antiforgery = antiforgery;
         }
 
         [HttpGet]
         public IActionResult Login()
         {
+            // Already signed in (Back button, an old tab): nothing to do here.
+            if (User.Identity?.IsAuthenticated == true)
+                return RedirectToAction("Index", "Home");
+
             return View();
         }
 
+        // The anti-forgery check is done by hand here instead of with
+        // [ValidateAntiForgeryToken]. Clicking Sign in twice sends two posts
+        // with the same token; the first one signs the person in, so the
+        // second arrives with the new sign-in cookie and a token made for
+        // "nobody signed in" -- the attribute rejected it with 400 Bad
+        // Request and the error page showed. Now a post from someone who is
+        // already signed in just goes on to Home (it changes nothing), and
+        // an out-of-date token reloads the sign-in page instead of erroring.
         [HttpPost]
-        [ValidateAntiForgeryToken]
         public async Task<IActionResult> Login(LoginDTO model)
         {
+            if (User.Identity?.IsAuthenticated == true)
+                return RedirectToAction("Index", "Home");
+
+            try
+            {
+                await _antiforgery.ValidateRequestAsync(HttpContext);
+            }
+            catch (AntiforgeryValidationException)
+            {
+                ModelState.Clear();
+                ModelState.AddModelError(string.Empty, "The sign-in page had expired. Please sign in again.");
+                return View(new LoginDTO { Username = model.Username, RememberMe = model.RememberMe });
+            }
+
             if (!ModelState.IsValid)
                 return View(model);
 

@@ -285,6 +285,29 @@
             // Locked out after too many wrong passwords: hold the button
             // and count down. The server refuses early tries anyway.
             var signIn = document.getElementById('signInButton');
+
+            // One sign-in per click: a second click while the first is on
+            // its way is ignored, and the button says it is working.
+            var form = signIn.form;
+            form.addEventListener('submit', function (e) {
+                if (form.dataset.sending) {
+                    e.preventDefault();
+                    return;
+                }
+                form.dataset.sending = '1';
+                signIn.disabled = true;
+                signIn.textContent = 'Signing in...';
+            });
+            // Coming back with the browser's Back button can restore the
+            // page as it was left (button held): make it usable again.
+            window.addEventListener('pageshow', function (e) {
+                if (e.persisted) {
+                    delete form.dataset.sending;
+                    signIn.disabled = false;
+                    signIn.textContent = 'Sign in';
+                }
+            });
+
             var left = parseInt(signIn.getAttribute('data-lockout'), 10) || 0;
             if (left > 0) {
                 signIn.disabled = true;
