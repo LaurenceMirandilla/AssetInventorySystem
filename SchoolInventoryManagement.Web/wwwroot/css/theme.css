@@ -108,11 +108,11 @@ html, body {
 .page-tabs, .history-tabs {
   background: var(--sab-green); border-bottom: 0; margin: 0 0 16px; padding: 0 8px; gap: 2px;
 }
-.page-tabs button, .history-tabs .nav-link {
+.page-tabs button, .page-tabs .page-tab, .history-tabs .nav-link {
   color: rgba(255,255,255,.72) !important; border-bottom: 3px solid transparent !important;
   padding: 10px 14px; font-size: 13px;
 }
-.page-tabs button.active, .history-tabs .nav-link.active {
+.page-tabs button.active, .page-tabs .page-tab.active, .history-tabs .nav-link.active {
   color: #fff !important; border-bottom-color: #fff !important; background: transparent !important;
 }
 .history-tab-count, .page-tabs .history-tab-count {

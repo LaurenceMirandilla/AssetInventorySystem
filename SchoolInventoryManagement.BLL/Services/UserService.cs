@@ -65,6 +65,38 @@ namespace SchoolInventoryManagement.BLL.Services
                 "A department can have only one. Change their role or deactivate them first.");
         }
 
+        // One active Principal per branch, the same rule as the department
+        // head above: deactivated principals do not count, so a branch can
+        // get a new one once the old one is deactivated -- and reactivating
+        // the old one then needs the new one moved or deactivated first.
+        private async Task EnsurePrincipalFreeAsync(int roleId, int branchId, int exceptUserId)
+        {
+            var isPrincipalRole = await _context.Roles
+                .AnyAsync(r => r.RoleID == roleId && r.RoleName == RoleNames.Principal);
+            if (!isPrincipalRole)
+                return;
+
+            var currentPrincipal = await _context.Users
+                .Where(u => u.BranchID == branchId
+                            && u.UserID != exceptUserId
+                            && u.Status == "Active"
+                            && u.Role.RoleName == RoleNames.Principal)
+                .Select(u => u.FirstName + " " + u.LastName)
+                .FirstOrDefaultAsync();
+
+            if (currentPrincipal is null)
+                return;
+
+            var branch = await _context.Branches
+                .Where(b => b.BranchID == branchId)
+                .Select(b => b.BranchName)
+                .FirstOrDefaultAsync();
+
+            throw new InvalidOperationException(
+                $"{branch ?? "This branch"} already has a principal ({currentPrincipal}). " +
+                "A branch can have only one. Change their role or deactivate them first.");
+        }
+
         // Usernames are unique whatever the case: "Admin" blocks "admin".
         // Deactivated accounts keep theirs, so it stays free of mix-ups in
         // the history. Returns the trimmed username to save.
@@ -98,6 +130,7 @@ namespace SchoolInventoryManagement.BLL.Services
                 throw new ArgumentException("That department does not belong to the selected branch.");
 
             await EnsureDepartmentHeadFreeAsync(dto.RoleID, dto.DepartmentID, exceptUserId: 0);
+            await EnsurePrincipalFreeAsync(dto.RoleID, dto.BranchID, exceptUserId: 0);
 
             var user = new User
             {
@@ -156,7 +189,10 @@ namespace SchoolInventoryManagement.BLL.Services
             // Only an active user holds the post; an inactive one being
             // edited is checked again if they are reactivated.
             if (user.Status == "Active")
+            {
                 await EnsureDepartmentHeadFreeAsync(dto.RoleID, dto.DepartmentID, exceptUserId: userId);
+                await EnsurePrincipalFreeAsync(dto.RoleID, dto.BranchID, exceptUserId: userId);
+            }
 
             _context.Entry(user).Property(u => u.RowVersion).OriginalValue = dto.RowVersion;
 
@@ -218,6 +254,7 @@ namespace SchoolInventoryManagement.BLL.Services
                 throw new KeyNotFoundException("User not found.");
 
             await EnsureDepartmentHeadFreeAsync(user.RoleID, user.DepartmentID, exceptUserId: userId);
+            await EnsurePrincipalFreeAsync(user.RoleID, user.BranchID, exceptUserId: userId);
 
             _context.Entry(user).Property(u => u.RowVersion).OriginalValue = rowVersion;
 

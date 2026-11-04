@@ -39,6 +39,22 @@ else
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
                     <input type="text" data-md-search autocomplete="off" placeholder="Search departments..." aria-label="Search departments" />
                 </label>
+                <div class="dropdown">
+                    <button type="button" class="asset-tool-btn" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18l-7 8.5V19l-4 2v-7.5z" /></svg>
+                        Filters
+                    </button>
+                    <div class="dropdown-menu dropdown-menu-end md-filter-menu">
+                        <label class="form-label">Branch</label>
+                        <select class="form-select form-select-sm" data-md-filter="branch" data-combobox>
+                            <option value="">All branches</option>
+                            @foreach (var b in Model.GroupBy(d => d.BranchID).Select(g => (Id: g.Key, Name: g.First().BranchName, Count: g.Count())).OrderBy(b => b.Name))
+                            {
+                                <option value="@b.Id">@b.Name (@b.Count)</option>
+                            }
+                        </select>
+                    </div>
+                </div>
             </div>
             @foreach (var g in Model.GroupBy(y => y.BranchName).OrderBy(k => k.Key))
             {
@@ -47,7 +63,7 @@ else
                     @foreach (var x in g.OrderBy(y => y.DepartmentName))
                     {
                         var u = usage.GetValueOrDefault(x.DepartmentID);
-                    <button type="button" class="myassets-item" data-entry="d-@x.DepartmentID"
+                    <button type="button" class="myassets-item" data-entry="d-@x.DepartmentID" data-branch="@x.BranchID"
                             data-search="@($"{x.DepartmentName} {x.BranchName} {x.Description}".ToLowerInvariant())">
                         <span class="myassets-item-main">
                             <span class="myassets-item-title">@x.DepartmentName</span>
