@@ -191,7 +191,7 @@
                             <div><span>Estimated total</span><strong class="text-success">@DisplayText.Or(r.EstimatedTotal is null ? null : DisplayText.Peso(r.EstimatedTotal), "Not priced")</strong></div>
                         </div>
 
-                        <h4 class="md-section-title">What they're asking for <small>· one request, decided together</small></h4>
+                        <h4 class="md-section-title">What they're asking for</h4>
                         <partial name="_NewItemTicketItems" model="r" />
 
                         @if (!string.IsNullOrWhiteSpace(r.Reason))

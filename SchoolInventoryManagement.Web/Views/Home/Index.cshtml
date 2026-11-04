@@ -233,6 +233,16 @@ else
                     var palette = new[] { "#1f5f2a", "#2e8b45", "#6cc183", "#b9e2c4", "#8aa597", "#cfd8d2" };
                     var offset = 0.0;
 
+                    // Whole percents that add up to exactly 100: each row is
+                    // rounded down, then the points left over go to the rows
+                    // that lost most in the rounding. Plain rounding can give
+                    // 101 (84.6 + 10.7 + 3.7 + 1.1 -> 85 + 11 + 4 + 1).
+                    var exact = Model.ByCategory.Select(c => total == 0 ? 0.0 : 100.0 * c.Count / total).ToList();
+                    var pcts = exact.Select(e => (int)Math.Floor(e)).ToArray();
+                    var left = total == 0 ? 0 : 100 - pcts.Sum();
+                    foreach (var k in Enumerable.Range(0, exact.Count).OrderByDescending(k => exact[k] - pcts[k]).Take(left))
+                        pcts[k]++;
+
                     <div class="dash-category">
                         @* A ring of stroked arcs on a circle whose circumference
                            is 100, so each arc's length is simply its percent. *@
@@ -260,7 +270,7 @@ else
                             {
                                 var row = Model.ByCategory[i];
                                 var width = (int)Math.Round(100.0 * row.Count / max);
-                                var pct = total == 0 ? 0 : (int)Math.Round(100.0 * row.Count / total);
+                                var pct = pcts[i];
                                 var color = palette[i % palette.Length];
                                 <li>
                                     <span class="dash-bar-label"><span class="dash-swatch" style="background:@color"></span><span>@row.Label</span></span>
