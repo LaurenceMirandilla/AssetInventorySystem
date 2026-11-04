@@ -1,4 +1,6 @@
 ﻿using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Microsoft.EntityFrameworkCore;
 using SchoolInventoryManagement.BLL.Interfaces;
 using SchoolInventoryManagement.BLL.Services;
@@ -21,7 +23,45 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         options.AccessDeniedPath = "/Account/AccessDenied";
         options.ExpireTimeSpan = TimeSpan.FromHours(8);
         options.SlidingExpiration = true;
+
+        // HTTPS only: the browser never sends the sign-in cookie over plain
+        // HTTP, and page scripts can't read it.
+        options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+        options.Cookie.HttpOnly = true;
+        options.Cookie.SameSite = SameSiteMode.Lax;
     });
+
+// ---- HTTPS only ----------------------------------------------------------
+// The form-protection and TempData cookies are HTTPS-only too.
+builder.Services.AddAntiforgery(options => options.Cookie.SecurePolicy = CookieSecurePolicy.Always);
+builder.Services.Configure<CookieTempDataProviderOptions>(options => options.Cookie.SecurePolicy = CookieSecurePolicy.Always);
+
+// HTTP is answered with a redirect to HTTPS: permanent (308) on the live
+// site, temporary while developing so the browser doesn't remember it.
+builder.Services.AddHttpsRedirection(options =>
+{
+    options.RedirectStatusCode = builder.Environment.IsDevelopment()
+        ? StatusCodes.Status307TemporaryRedirect
+        : StatusCodes.Status308PermanentRedirect;
+    // Set "HttpsPort" in appsettings (or ASPNETCORE_HTTPS_PORT) if the
+    // site's HTTPS port isn't 443 and can't be detected.
+});
+
+// HSTS: once a browser has seen the site over HTTPS, it refuses plain
+// HTTP for it for a year, even if someone types http:// or follows an old
+// link. Live site only (see UseHsts below); never on localhost.
+builder.Services.AddHsts(options =>
+{
+    options.MaxAge = TimeSpan.FromDays(365);
+    options.IncludeSubDomains = false;
+    options.Preload = false;
+});
+
+// Behind a reverse proxy (nginx, a load balancer) the app itself may be
+// reached over HTTP while the visitor used HTTPS; the proxy says so in
+// X-Forwarded-Proto. Only proxies on this machine are trusted by default.
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto);
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<SchoolInventoryManagement.Web.Helpers.AuditText>();
 // Counts and delete blockers on the catalog / organisation pages.
@@ -76,6 +116,8 @@ using (var scope = app.Services.CreateScope())
         builder.Configuration["Seed:AdminPassword"],
         seedLogger);
 }
+app.UseForwardedHeaders();
+
 app.UseMiddleware<SchoolInventoryManagement.Web.Middleware.ExceptionHandlingMiddleware>();
 
 // Turns a bare status code -- most often the NotFound() an MVC action
@@ -86,6 +128,8 @@ app.UseMiddleware<SchoolInventoryManagement.Web.Middleware.ExceptionHandlingMidd
 // address bar keeps the URL the user actually asked for.
 app.UseStatusCodePagesWithReExecute("/Home/Error/{0}");
 
+if (!app.Environment.IsDevelopment())
+    app.UseHsts();
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 
