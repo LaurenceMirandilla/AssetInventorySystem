@@ -1,6 +1,5 @@
 ﻿using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.HttpOverrides;
-using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Microsoft.EntityFrameworkCore;
 using SchoolInventoryManagement.BLL.Interfaces;
 using SchoolInventoryManagement.BLL.Services;
@@ -34,7 +33,7 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
 // ---- HTTPS only ----------------------------------------------------------
 // The form-protection and TempData cookies are HTTPS-only too.
 builder.Services.AddAntiforgery(options => options.Cookie.SecurePolicy = CookieSecurePolicy.Always);
-builder.Services.Configure<CookieTempDataProviderOptions>(options => options.Cookie.SecurePolicy = CookieSecurePolicy.Always);
+builder.Services.Configure<Microsoft.AspNetCore.Mvc.CookieTempDataProviderOptions>(options => options.Cookie.SecurePolicy = CookieSecurePolicy.Always);
 
 // HTTP is answered with a redirect to HTTPS: permanent (308) on the live
 // site, temporary while developing so the browser doesn't remember it.

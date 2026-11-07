@@ -651,3 +651,84 @@ window.sabShow = function (el, text, whenEmpty) {
     el.textContent = text || whenEmpty;
     el.classList.toggle('is-empty', !text);
 };
+
+// One submit per click. On a slow connection a second click on Submit
+// (or Enter pressed twice) would post the form again and create the same
+// request twice. Once a form is on its way, any further submit of it is
+// ignored, and its buttons are greyed out with "Please wait…" on the one
+// that was pressed.
+//
+// - Runs in the bubbling phase, so client-side validation (jQuery
+//   Validate) has already had its say: a form it stopped is left alone.
+// - Buttons are disabled a moment later (setTimeout), after the browser
+//   has collected the form's values -- a disabled button would otherwise
+//   drop its own name/value (e.g. Approve vs Reject) from the post.
+// - GET forms (search and filters) and forms that open in a new tab are
+//   skipped, and so is any form marked data-allow-resubmit.
+// - If the page is shown again from the browser's Back button, or nothing
+//   happened after 15 seconds (e.g. a file download), the form unlocks.
+(function () {
+    function buttonsOf(form) {
+        var inside = Array.from(form.querySelectorAll('button[type="submit"], button:not([type]), input[type="submit"]'));
+        var outside = form.id ? Array.from(document.querySelectorAll('[form="' + form.id + '"][type="submit"]')) : [];
+        return inside.concat(outside);
+    }
+
+    function unlock(form) {
+        if (!form.hasAttribute('data-submitting')) return;
+        form.removeAttribute('data-submitting');
+        form.removeAttribute('aria-busy');
+        buttonsOf(form).forEach(function (b) {
+            b.disabled = false;
+            if (b.hasAttribute('data-label')) {
+                if (b.tagName === 'INPUT') b.value = b.getAttribute('data-label');
+                else b.innerHTML = b.getAttribute('data-label');
+                b.removeAttribute('data-label');
+            }
+        });
+    }
+
+    document.addEventListener('submit', function (e) {
+        var form = e.target;
+        if (!(form instanceof HTMLFormElement)) return;
+
+        var method = (form.getAttribute('method') || 'get').toLowerCase();
+        if (method !== 'post' || form.target === '_blank' || form.hasAttribute('data-allow-resubmit')) return;
+
+        // Already sent: swallow the extra click.
+        if (form.hasAttribute('data-submitting')) {
+            e.preventDefault();
+            return;
+        }
+
+        // Validation (or another script) stopped it: nothing was sent.
+        if (e.defaultPrevented) return;
+
+        form.setAttribute('data-submitting', '1');
+        form.setAttribute('aria-busy', 'true');
+        var pressed = e.submitter;
+
+        setTimeout(function () {
+            buttonsOf(form).forEach(function (b) {
+                b.disabled = true;
+                if (b === pressed) {
+                    if (b.tagName === 'INPUT') {
+                        b.setAttribute('data-label', b.value);
+                        b.value = 'Please wait…';
+                    } else {
+                        b.setAttribute('data-label', b.innerHTML);
+                        b.textContent = 'Please wait…';
+                    }
+                }
+            });
+        }, 0);
+
+        // Safety net for posts that don't leave the page (downloads).
+        setTimeout(function () { unlock(form); }, 15000);
+    });
+
+    // Back button from the next page: show the form usable again.
+    window.addEventListener('pageshow', function (e) {
+        if (e.persisted) document.querySelectorAll('form[data-submitting]').forEach(unlock);
+    });
+})();
