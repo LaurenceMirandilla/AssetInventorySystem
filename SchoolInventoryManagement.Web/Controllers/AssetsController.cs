@@ -448,6 +448,7 @@ namespace SchoolInventoryManagement.Web.Controllers
         [Authorize(Roles = RoleNames.AssetOfficer + "," + RoleNames.Administrator)]
         [RequestSizeLimit(FileUploads.MaxRequestBytes)]
         [RequestFormLimits(MultipartBodyLengthLimit = FileUploads.MaxRequestBytes)]
+        [OneTimeSubmit]
         public async Task<IActionResult> Create(AssetCreateViewModel model)
         {
             if (!ModelState.IsValid)
@@ -509,6 +510,7 @@ namespace SchoolInventoryManagement.Web.Controllers
         [Authorize(Roles = RoleNames.AssetOfficer + "," + RoleNames.Administrator)]
         [RequestSizeLimit(FileUploads.MaxRequestBytes)]
         [RequestFormLimits(MultipartBodyLengthLimit = FileUploads.MaxRequestBytes)]
+        [OneTimeSubmit]
         public async Task<IActionResult> BulkCreate(AssetBulkCreateViewModel model)
         {
             if (!ModelState.IsValid)

@@ -26,6 +26,7 @@
 
 <form asp-action="BulkCreate" method="post" enctype="multipart/form-data" class="register-form">
     @Html.AntiForgeryToken()
+    @Html.FormTicket()
     <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
 
     <div class="row g-3">

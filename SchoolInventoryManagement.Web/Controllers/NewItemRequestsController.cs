@@ -145,6 +145,7 @@ namespace SchoolInventoryManagement.Web.Controllers
         // POST /NewItemRequests/Create
         [HttpPost]
         [ValidateAntiForgeryToken]
+        [OneTimeSubmit]
         public async Task<IActionResult> Create(CreateNewItemRequestViewModel model)
         {
             // Each row is a name, a quantity and an estimated price, posted

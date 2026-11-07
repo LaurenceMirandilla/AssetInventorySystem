@@ -205,6 +205,7 @@ namespace SchoolInventoryManagement.Web.Controllers
         // One ticket, however many rows the form had.
         [HttpPost]
         [ValidateAntiForgeryToken]
+        [OneTimeSubmit]
         public async Task<IActionResult> Create(CreateAssetRequestViewModel model)
         {
             // Rows left without a model (an added row nobody filled in) are
