@@ -7,8 +7,8 @@
     var rows = Model.OrderByDescending(m => m.DateMoved).ToList();
     bool IsIn(SchoolInventoryManagement.BLL.DTOs.AssetMovementResponseDTO m) => m.DestinationLocationID == location.LocationID;
     var comingIn = rows.Count(IsIn);
-    var thisYear = rows.Count(m => m.DateMoved.Year == DateTime.Today.Year);
-    var earliest = rows.Any() ? rows.Min(m => m.DateMoved).ToString("yyyy-MM-dd") : DateTime.Today.ToString("yyyy-MM-dd");
+    var thisYear = rows.Count(m => m.DateMoved.Year == PhilippineTime.Today.Year);
+    var earliest = rows.Any() ? rows.Min(m => m.DateMoved).ToString("yyyy-MM-dd") : PhilippineTime.Today.ToString("yyyy-MM-dd");
 }
 
 <div class="asset-detail-head mb-3">
@@ -43,7 +43,7 @@
     </div>
     <div class="mv-dates">
         <label class="mv-date"><span>From</span><input type="date" id="mvFrom" value="@earliest" /></label>
-        <label class="mv-date"><span>To</span><input type="date" id="mvTo" value="@DateTime.Today.ToString("yyyy-MM-dd")" /></label>
+        <label class="mv-date"><span>To</span><input type="date" id="mvTo" value="@PhilippineTime.Today.ToString("yyyy-MM-dd")" /></label>
     </div>
     <label class="asset-search mv-search">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>

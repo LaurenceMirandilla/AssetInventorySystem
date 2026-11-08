@@ -8,7 +8,7 @@
         (Label: "Assets in service", Value: Model.InServiceAssets.ToString(), Note: $"{Model.TotalAssets} on record", Icon: "<path d=\"M12 2 3 7v10l9 5 9-5V7z\"/>", Css: "is-solid"),
         (Label: "Total value", Value: DisplayText.Peso(Model.TotalValue), Note: "in service only", Icon: "<path d=\"M8 4v16M8 4h5a4 4 0 0 1 0 8H8M5 8h11M5 11h11\"/>", Css: "is-solid"),
         (Label: "Available", Value: Model.AvailableCount.ToString(), Note: "ready to issue", Icon: "<path d=\"m5 12 5 5 9-10\"/>", Css: ""),
-        (Label: "Assigned out", Value: Model.AssignedCount.ToString(), Note: $"{Model.OutstandingAssignmentCount} open assignment{(Model.OutstandingAssignmentCount == 1 ? "" : "s")}", Icon: "<path d=\"M5 12h14M13 6l6 6-6 6\"/>", Css: "is-teal"),
+        (Label: "Assigned out", Value: Model.AssignedCount.ToString(), Note: $"with people · {Model.AwaitingHandoverCount} more ready for pickup / on its way", Icon: "<path d=\"M5 12h14M13 6l6 6-6 6\"/>", Css: "is-teal"),
         (Label: "Pending requests", Value: Model.PendingRequestCount.ToString(), Note: "awaiting a decision", Icon: "<circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M12 7v5l3 2\"/>", Css: "is-gray"),
         (Label: "Under maintenance", Value: Model.UnderMaintenanceCount.ToString(), Note: $"{Model.DamagedCount} in damaged condition", Icon: "<path d=\"M14 6a4 4 0 0 0-5 5l-5 5 3 3 5-5a4 4 0 0 0 5-5l-2 2-3-3z\"/>", Css: "is-gray"),
         (Label: "Disposed", Value: Model.DisposedCount.ToString(), Note: "excluded from value", Icon: "<path d=\"M4 7h16M6 7l1 13h10l1-13M9 7V4h6v3\"/>", Css: "is-gray is-muted"),
@@ -25,7 +25,8 @@
         return pct.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + "%";
     }
 
-    static string Label(string raw) => raw == "UnderMaintenance" ? "Maintenance" : DisplayText.Humanize(raw);
+    static string Label(string raw) => raw == "UnderMaintenance" ? "Maintenance"
+        : raw == "InTransit" ? DisplayText.InTransitLabel(null) : DisplayText.Humanize(raw);
 
     // A shade per row for the plain breakdowns, darkest first.
     static string Shade(int i) => i switch { 0 => "bar-1", 1 => "bar-2", 2 => "bar-3", _ => "bar-4" };
@@ -34,7 +35,7 @@
 <div class="asset-detail-head mb-3 pb-0 border-0">
     <div>
         <h2 class="asset-detail-title">Reports</h2>
-        <div class="asset-detail-sub">Inventory summary as of @DateTime.Today.ToString("MMM d, yyyy") · disposed units are left out of totals.</div>
+        <div class="asset-detail-sub">Inventory summary as of @PhilippineTime.Today.ToString("MMM d, yyyy") · disposed units are left out of totals.</div>
     </div>
     <div class="asset-detail-actions">
         <a asp-action="ExportSummary" class="btn btn-primary">&darr; Export CSV</a>

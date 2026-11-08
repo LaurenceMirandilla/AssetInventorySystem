@@ -33,7 +33,17 @@ namespace SchoolInventoryManagement.Web.ViewModels
         public List<AssetRequestResponseDTO> MyRecentRequests { get; set; } = new();
 
         // Capped, most-recent-first. Reuses IReportService.GetAuditTrailAsync
-        // rather than a new query.
-        public List<AuditReportRowDTO> RecentActivity { get; set; } = new();
+        // rather than a new query. Repeats in a row are one line with a count.
+        public List<ActivityItem> RecentActivity { get; set; } = new();
+
+        // One line of the activity feed: an entry, and how many times in a row
+        // the same person did the same thing (67 users added at once = 67).
+        public class ActivityItem
+        {
+            public ActivityItem(AuditReportRowDTO entry) { Entry = entry; Oldest = entry.LogDateTime; }
+            public AuditReportRowDTO Entry { get; }
+            public int Count { get; set; } = 1;
+            public DateTime Oldest { get; set; }
+        }
     }
 }

@@ -21,7 +21,7 @@
     var canManage = User.IsInRole(RoleNames.AssetOfficer) || User.IsInRole(RoleNames.Administrator);
     var statusLabel = Model.Status == AssetStatus.UnderMaintenance
         ? "Maintenance"
-        : DisplayText.Humanize(Model.Status.ToString());
+        : DisplayText.AssetStatusLabel(Model.Status);
 }
 
 @if (TempData["ErrorMessage"] != null)

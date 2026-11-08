@@ -732,3 +732,55 @@ window.sabShow = function (el, text, whenEmpty) {
         if (e.persisted) document.querySelectorAll('form[data-submitting]').forEach(unlock);
     });
 })();
+
+// ---- Dropdowns inside cards ------------------------------------------------
+// List cards hide whatever sticks out of them (overflow: hidden keeps the
+// rounded corners clean), which cut tall menus such as Filters off at the
+// card's bottom edge. Positioning menus "fixed" lifts them above any card,
+// so the whole menu shows; they still open next to their button.
+(function () {
+    if (!window.bootstrap || !bootstrap.Dropdown) return;
+    function lift(config) { return Object.assign({}, config, { strategy: 'fixed' }); }
+    document.querySelectorAll('[data-bs-toggle="dropdown"]')
+        .forEach(function (toggle) {
+            bootstrap.Dropdown.getOrCreateInstance(toggle, { popperConfig: lift });
+        });
+})();
+
+// ---- Show password -----------------------------------------------------------
+// Every password box gets an eye button that shows what was typed and hides it
+// again. (The sign-in page has its own, inside .password-wrap.) The box goes
+// back to hidden when the form is sent, so the browser never keeps it as text.
+(function () {
+    var eye = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+    var eyeOff = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 5.1A10.8 10.8 0 0 1 12 5c6.5 0 10 7 10 7a17.6 17.6 0 0 1-3.2 4.2M6.6 6.6C3.9 8.4 2 12 2 12s3.5 7 10 7a9.7 9.7 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>';
+
+    function setShown(input, button, shown) {
+        input.type = shown ? 'text' : 'password';
+        button.innerHTML = shown ? eyeOff : eye;
+        button.setAttribute('aria-pressed', shown ? 'true' : 'false');
+        button.setAttribute('aria-label', shown ? 'Hide password' : 'Show password');
+    }
+
+    document.querySelectorAll('input[type="password"]').forEach(function (input) {
+        if (input.closest('.password-wrap, .pw-reveal')) return;
+
+        var wrap = document.createElement('span');
+        wrap.className = 'pw-reveal';
+        input.parentNode.insertBefore(wrap, input);
+        wrap.appendChild(input);
+
+        var button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'pw-reveal-btn';
+        wrap.appendChild(button);
+        setShown(input, button, false);
+
+        button.addEventListener('click', function () {
+            setShown(input, button, input.type === 'password');
+            input.focus();
+        });
+        if (input.form)
+            input.form.addEventListener('submit', function () { setShown(input, button, false); });
+    });
+})();

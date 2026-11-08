@@ -269,7 +269,7 @@ namespace SchoolInventoryManagement.BLL.Services
                 throw new KeyNotFoundException("Request not found.");
 
             if (request.RequestStatus != RequestStatus.InTransit)
-                throw new InvalidOperationException("Only a request that is In Transit can be marked Assigned.");
+                throw new InvalidOperationException("Only a request that is ready for pickup or on its way can be marked picked up or delivered.");
 
             // A permanent delivery moves the unit into this room's branch.
             var destinationBranchId = request.RequestedLocation?.BranchID;
@@ -285,7 +285,7 @@ namespace SchoolInventoryManagement.BLL.Services
             // A Transfer with no ReturnBy is permanent: the units now belong
             // to the destination, not to the person who asked for them.
             var permanent = request.RequestType == RequestType.Transfer && request.ReturnBy is null;
-            var now = DateTime.Now;
+            var now = PhilippineTime.Now;
 
             _context.Entry(request).Property(r => r.RowVersion).OriginalValue = requestRowVersion;
 
@@ -387,7 +387,7 @@ namespace SchoolInventoryManagement.BLL.Services
 
             _context.Entry(request).Property(r => r.RowVersion).OriginalValue = requestRowVersion;
 
-            var now = DateTime.Now;
+            var now = PhilippineTime.Now;
             foreach (var assignment in returning)
             {
                 assignment.ReturnDate = now;
@@ -491,7 +491,7 @@ namespace SchoolInventoryManagement.BLL.Services
 
             if (request.RequestStatus != RequestStatus.InTransit)
                 throw new InvalidOperationException(
-                    "Only a request that is In Transit can be cancelled this way. Once picked up or delivered, record a return instead.");
+                    "Only a request that is ready for pickup or on its way can be cancelled this way. Once picked up or delivered, record a return instead.");
 
             var open = request.Assignments.Where(a => a.ReturnDate == null).ToList();
             var isBorrow = request.RequestType == RequestType.Borrow;
@@ -514,7 +514,7 @@ namespace SchoolInventoryManagement.BLL.Services
 
             _context.Entry(request).Property(r => r.RowVersion).OriginalValue = requestRowVersion;
 
-            var now = DateTime.Now;
+            var now = PhilippineTime.Now;
             foreach (var assignment in open)
             {
                 // Closed without ever being handed over, so the unit's
@@ -553,7 +553,7 @@ namespace SchoolInventoryManagement.BLL.Services
         // told twice.
         public async Task<int> MarkOverdueAsync()
         {
-            var now = DateTime.Now;
+            var now = PhilippineTime.Now;
 
             var late = await _context.AssetAssignments
                 .Include(a => a.Asset)

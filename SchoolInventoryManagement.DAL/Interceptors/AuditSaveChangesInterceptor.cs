@@ -148,7 +148,8 @@ namespace SchoolInventoryManagement.DAL.Interceptors
                     Description = description,
                     IPAddress = GetClientIp(),
                     EntityType = entityType,
-                    EntityID = entityId
+                    EntityID = entityId,
+                    LogDateTime = PhilippineTime.Now
                 };
 
                 // A new row has no real key until the INSERT runs; the ID
@@ -193,7 +194,7 @@ namespace SchoolInventoryManagement.DAL.Interceptors
                 .Where(p => p.IsModified && p.Metadata.Name != "RowVersion")
                 .Select(p => RedactedProperties.Contains(p.Metadata.Name)
                     ? $"{p.Metadata.Name}: (changed)"
-                    : $"{p.Metadata.Name}: '{p.OriginalValue}' -> '{p.CurrentValue}'")
+                    : $"{p.Metadata.Name}: '{Show(p.OriginalValue)}' -> '{Show(p.CurrentValue)}'")
                 .ToList();
 
             if (changes.Count == 0)
@@ -223,8 +224,8 @@ namespace SchoolInventoryManagement.DAL.Interceptors
                     .Where(p => !p.Metadata.IsPrimaryKey()
                                 && p.Metadata.Name != "RowVersion"
                                 && !RedactedProperties.Contains(p.Metadata.Name)
-                                && p.CurrentValue is not null)
-                    .Select(p => $"{p.Metadata.Name}: '{p.CurrentValue}'")
+                                && Show(p.CurrentValue).Length > 0)
+                    .Select(p => $"{p.Metadata.Name}: '{Show(p.CurrentValue)}'")
                     .ToList();
 
                 if (values.Count == 0)
@@ -235,6 +236,18 @@ namespace SchoolInventoryManagement.DAL.Interceptors
 
             return summary.Length > 500 ? summary[..497] + "..." : summary;
         }
+
+        // How a value is written into the history. Dates use one fixed,
+        // culture-free format (Philippine time, as the app uses them) that
+        // the history page turns into "Nov 5, 2026 4:40 AM"; an unset date
+        // (year 1) is left out rather than shown as "1/1/0001".
+        private static string Show(object? value) => value switch
+        {
+            null => "",
+            DateTime d when d.Year == 1 => "",
+            DateTime d => d.ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture),
+            _ => value.ToString() ?? ""
+        };
 
         // Which record's history an entry belongs in. Request lines and
         // units handed out on a request go under the request, so the

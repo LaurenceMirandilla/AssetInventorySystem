@@ -2,7 +2,7 @@
 @{
     ViewData["Title"] = Model.IsReportsViewer ? "Dashboard" : "Home";
 
-    var now = DateTime.Now;
+    var now = PhilippineTime.Now;
     var greeting = now.Hour < 12 ? "Good morning" : now.Hour < 18 ? "Good afternoon" : "Good evening";
     var today = now.ToString("dddd, d MMMM yyyy");
 
@@ -49,9 +49,10 @@
             : "dot";
     };
 
-    // "Report Viewed" -> "Report viewed", to read like a sentence.
+    // "Report Viewed" -> "Report viewed", "NewItemRequest Updated" ->
+    // "New item request updated", to read like a sentence.
     Func<string, string> sentence = text =>
-        string.IsNullOrEmpty(text) ? text : char.ToUpper(text[0]) + text[1..].ToLowerInvariant();
+        System.Text.RegularExpressions.Regex.Replace(DisplayText.Humanize(text), @"\s+", " ");
 
     Func<string, string> initialsOf = name =>
     {
@@ -121,7 +122,7 @@
                                     </div>
                                 </div>
                                 <div class="dash-list-end">
-                                    <span class="status-pill status-@request.RequestStatus.ToString().ToLowerInvariant()">@DisplayText.Humanize(request.RequestStatus.ToString())</span>
+                                    <span class="status-pill status-@request.RequestStatus.ToString().ToLowerInvariant()">@DisplayText.RequestStatusLabel(request.RequestStatus, request.RequestType)</span>
                                     <a asp-controller="AssetRequests" asp-action="Details" asp-route-id="@request.RequestID" class="small">View</a>
                                 </div>
                             </li>
@@ -295,21 +296,22 @@ else
                     <h2 class="dash-card-title"><span class="dash-card-icon">@Html.Raw(icon("clock"))</span>Recent activity</h2>
                     @if (Model.RecentActivity.Any())
                     {
-                        <span class="dash-card-meta is-caps">@(Model.RecentActivity[0].LogDateTime.Date == now.Date ? "Today" : "Latest")</span>
+                        <span class="dash-card-meta is-caps">@(Model.RecentActivity[0].Entry.LogDateTime.Date == now.Date ? "Today" : "Latest")</span>
                     }
                 </div>
 
                 @if (Model.RecentActivity.Any())
                 {
                     <ul class="dash-activity">
-                        @foreach (var entry in Model.RecentActivity)
+                        @foreach (var item in Model.RecentActivity)
                         {
+                            var entry = item.Entry;
                             <li>
                                 <span class="sab-avatar">@initialsOf(entry.UserName)</span>
                                 <div class="dash-activity-main">
                                     <div class="dash-activity-line">
                                         <span class="dash-activity-name">@entry.UserName</span>
-                                        <span class="dash-activity-pill">@Html.Raw(icon(actionIcon(entry.ActionPerformed)))@sentence(entry.ActionPerformed)</span>
+                                        <span class="dash-activity-pill">@Html.Raw(icon(actionIcon(entry.ActionPerformed)))@sentence(entry.ActionPerformed)@(item.Count > 1 ? $" ×{item.Count}" : "")</span>
                                         @if (!string.IsNullOrWhiteSpace(entry.TargetAssetCode))
                                         {
                                             <span class="dash-activity-code">@entry.TargetAssetCode</span>

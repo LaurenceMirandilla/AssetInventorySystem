@@ -170,7 +170,7 @@ namespace SchoolInventoryManagement.Web.Controllers
 
             // Caught here so the message sits under the field; the service
             // checks the same rule for anything that bypasses this form.
-            if (model.NeededBy is not null && model.NeededBy.Value.Date < DateTime.Today)
+            if (model.NeededBy is not null && model.NeededBy.Value.Date < PhilippineTime.Today)
                 ModelState.AddModelError(nameof(model.NeededBy), "The date cannot be in the past.");
 
             if (!ModelState.IsValid)

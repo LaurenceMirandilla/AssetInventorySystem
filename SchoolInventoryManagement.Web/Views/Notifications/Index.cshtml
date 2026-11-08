@@ -5,7 +5,7 @@
     var unreadOnly = ViewData["UnreadOnly"] as bool? ?? false;
     var unreadCount = Model.Count(n => !n.IsRead);
 
-    var today = DateTime.Today;
+    var today = PhilippineTime.Today;
     string Day(DateTime d) =>
         d.Date == today ? "Today" : d.Date == today.AddDays(-1) ? "Yesterday" : "Earlier";
     var groups = Model.GroupBy(n => Day(n.CreatedAt)).ToList();

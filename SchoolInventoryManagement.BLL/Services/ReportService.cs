@@ -56,8 +56,7 @@ namespace SchoolInventoryManagement.BLL.Services
                 PendingRequestCount = await _context.AssetRequests
                     .CountAsync(r => r.RequestStatus == RequestStatus.Pending),
 
-                OutstandingAssignmentCount = await _context.AssetAssignments
-                    .CountAsync(a => a.ReturnDate == null),
+                AwaitingHandoverCount = await assets.CountAsync(a => a.Status == AssetStatus.InTransit),
 
                 ActiveUserCount = await _context.Users.CountAsync(u => u.Status == "Active")
             };
@@ -161,7 +160,7 @@ namespace SchoolInventoryManagement.BLL.Services
                 .OrderBy(a => a.AssignmentDate)
                 .ToListAsync();
 
-            var now = DateTime.Now;
+            var now = PhilippineTime.Now;
 
             return assignments.Select(a => new AssignmentReportRowDTO
             {
@@ -433,7 +432,7 @@ namespace SchoolInventoryManagement.BLL.Services
                 Description = description.Length > 500 ? description[..497] + "..." : description,
                 IPAddress = ipAddress,
                 EntityType = entityType,
-                LogDateTime = DateTime.Now
+                LogDateTime = PhilippineTime.Now
             });
 
             await _context.SaveChangesAsync();

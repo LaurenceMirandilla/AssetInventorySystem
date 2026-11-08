@@ -85,7 +85,7 @@
                 @foreach (var s in Model.ByStatus)
                 {
                     <div class="rp-bar">
-                        <span>@DisplayText.Humanize(s.Label)</span>
+                        <span>@(s.Label == "InTransit" ? DisplayText.InTransitLabel(null) : DisplayText.Humanize(s.Label))</span>
                         <div class="rp-bar-track"><div class="rp-bar-fill" style="width:@(s.Count * 100 / maxStatus)%;background:@BarColour(s.Label);"></div></div>
                         <strong>@s.Count</strong>
                     </div>
@@ -154,7 +154,7 @@
                             <td>@row.RequestDate.ToString("MMM d")</td>
                             <td>@DisplayText.Or(row.DecidedByName, "Not yet")</td>
                             <td class="text-end">@DisplayText.Or(Span(row.TurnaroundDays), "Not yet")</td>
-                            <td><span class="status-pill status-@row.RequestStatus.ToString().ToLowerInvariant()">@DisplayText.Humanize(row.RequestStatus.ToString())</span></td>
+                            <td><span class="status-pill status-@row.RequestStatus.ToString().ToLowerInvariant()">@DisplayText.RequestStatusLabel(row.RequestStatus, row.RequestType)</span></td>
                         </tr>
                     }
                 </tbody>

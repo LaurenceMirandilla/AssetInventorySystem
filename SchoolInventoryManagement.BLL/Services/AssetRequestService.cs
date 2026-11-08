@@ -86,7 +86,7 @@ namespace SchoolInventoryManagement.BLL.Services
                 throw new ArgumentException("Say when you need the item.");
             if (!permanent && returnBy is null)
                 throw new ArgumentException("Say when the item will be returned.");
-            if (dto.NeededFrom.Value < DateTime.Today)
+            if (dto.NeededFrom.Value < PhilippineTime.Today)
                 throw new ArgumentException("The date you need the item cannot be in the past.");
             if (returnBy is not null && returnBy.Value <= dto.NeededFrom.Value)
                 throw new ArgumentException("The return date must be after the date you need the item.");
@@ -235,11 +235,16 @@ namespace SchoolInventoryManagement.BLL.Services
 
         public async Task<List<AssetRequestResponseDTO>> GetPendingRequestsAsync(int actingUserId)
         {
-            await PermissionHelper.EnsureIsApproverAsync(_context, actingUserId);
+            var approver = await PermissionHelper.EnsureIsApproverAsync(_context, actingUserId);
 
+            // Only what this person may decide: nobody decides a request from
+            // someone with their own role, themselves included (the same rule
+            // ValidateApproverActionAsync enforces), so those are left out of
+            // the list and its count rather than shown with buttons that fail.
             // Oldest first: the first request made is the first one decided.
             var requests = await RequestQueryWithIncludes()
-                .Where(r => r.RequestStatus == RequestStatus.Pending)
+                .Where(r => r.RequestStatus == RequestStatus.Pending
+                            && r.RequestedByUser.RoleID != approver.RoleID)
                 .OrderBy(r => r.RequestDate)
                 .ThenBy(r => r.RequestID)
                 .ToListAsync();
@@ -431,7 +436,7 @@ namespace SchoolInventoryManagement.BLL.Services
 
             request.RequestStatus = RequestStatus.Approved;
             request.ApprovedByUserID = approver.UserID;
-            request.ApprovalDate = DateTime.Now;
+            request.ApprovalDate = PhilippineTime.Now;
 
             if (notifyRequester)
             {
@@ -459,7 +464,7 @@ namespace SchoolInventoryManagement.BLL.Services
 
             request.RequestStatus = RequestStatus.Rejected;
             request.ApprovedByUserID = approver.UserID;
-            request.ApprovalDate = DateTime.Now;
+            request.ApprovalDate = PhilippineTime.Now;
             request.Remarks = remarks;
 
             // The reason travels with the rejection, so the requester does

@@ -7,8 +7,8 @@
     // Explicit type: a var from ViewBag would stay dynamic and break the
     // "out var" lookups below.
     Dictionary<int, string> categories = (ViewBag.ModelCategories as Dictionary<int, string>) ?? new Dictionary<int, string>();
-    var now = DateTime.Now;
-    var today = DateTime.Today;
+    var now = PhilippineTime.Now;
+    var today = PhilippineTime.Today;
 
     bool IsLate(AssetRequestResponseDTO r) =>
         r.RequestStatus == RequestStatus.Assigned && r.ReturnBy is not null && r.ReturnBy.Value < now;
@@ -32,9 +32,9 @@
     static string When(AssetRequestResponseDTO r) =>
         r.NeededFrom is null ? "No dates given" : r.NeededFrom.Value.ToString("MMM d") + (r.ReturnBy is not null ? " – " + r.ReturnBy.Value.ToString("MMM d") : "");
 
-    static string Status(RequestStatus s) => s switch
+    static string Status(RequestStatus s, RequestType type) => s switch
     {
-        RequestStatus.InTransit => "In transit",
+        RequestStatus.InTransit => DisplayText.InTransitLabel(type),
         RequestStatus.Assigned => "With you",
         _ => DisplayText.Humanize(s.ToString())
     };
@@ -121,13 +121,13 @@ else
                         if (late) { right = dueIn >= 0 ? "late today" : Days(-dueIn) + " late"; }
                         else if (r.RequestStatus == RequestStatus.Assigned && r.ReturnBy is not null)
                         { right = dueIn == 0 ? "due today" : dueIn == 1 ? "tomorrow" : $"in {dueIn} days"; }
-                        else { right = Status(r.RequestStatus); }
+                        else { right = Status(r.RequestStatus, r.RequestType); }
                         var tone = late || r.RequestStatus is RequestStatus.Rejected ? "item-late"
                             : r.RequestStatus == RequestStatus.InTransit ? "item-transit" : "";
                         <button type="button" class="myassets-item @tone" data-entry="r-@r.RequestID"
                                 data-type="@r.RequestType.ToString().ToLowerInvariant()"
                                 data-stage="@g.Key"
-                                data-search="@($"#{r.RequestID} {r.RequestID} {Title(r)} {r.RequestType} {Status(r.RequestStatus)}".ToLowerInvariant())">
+                                data-search="@($"#{r.RequestID} {r.RequestID} {Title(r)} {r.RequestType} {Status(r.RequestStatus, r.RequestType)}".ToLowerInvariant())">
                             <span class="myassets-badge">
                                 <strong>#@r.RequestID</strong>
                                 <small>@r.RequestType</small>
@@ -196,7 +196,7 @@ else
                             <h3 class="myassets-panel-title">@Title(r)</h3>
                         </div>
                         <div class="myassets-panel-actions">
-                            <span class="asset-pill asset-status @pillCss">@(late ? "Overdue" : Status(st))</span>
+                            <span class="asset-pill asset-status @pillCss">@(late ? "Overdue" : Status(st, r.RequestType))</span>
                             <a asp-action="Details" asp-route-id="@r.RequestID" asp-route-from="mine" class="btn btn-outline-secondary">View &rarr;</a>
                         </div>
                     </div>

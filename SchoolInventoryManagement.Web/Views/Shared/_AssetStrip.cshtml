@@ -4,7 +4,7 @@
    Dispose and Edit: photo (or an icon), code, status, name, and where it
    is now. *@
 @{
-    var statusLabel = Model.Status == AssetStatus.UnderMaintenance ? "Maintenance" : DisplayText.Humanize(Model.Status.ToString());
+    var statusLabel = Model.Status == AssetStatus.UnderMaintenance ? "Maintenance" : DisplayText.AssetStatusLabel(Model.Status);
 }
 
 <div class="asset-card asset-strip">

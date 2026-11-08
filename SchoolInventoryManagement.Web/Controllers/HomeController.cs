@@ -4,6 +4,7 @@ using System.Security.Claims;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using SchoolInventoryManagement.BLL.DTOs;
 using SchoolInventoryManagement.BLL.Interfaces;
 using SchoolInventoryManagement.DAL.Constants;
 using SchoolInventoryManagement.DAL.Entities.Enums;
@@ -60,9 +61,10 @@ namespace SchoolInventoryManagement.Web.Controllers
                 var pending = await _requestService.GetPendingRequestsAsync(CurrentUserId);
                 model.PendingRequestCount = pending.Count;
 
-                model.RecentActivity = await _reportService.GetAuditTrailAsync(
+                var recent = await _reportService.GetAuditTrailAsync(
                     fromDate: null, toDate: null, userId: null, actionContains: null,
-                    maxRows: 6, actingUserId: CurrentUserId);
+                    maxRows: 500, actingUserId: CurrentUserId);
+                model.RecentActivity = CollapseRepeats(recent, take: 6);
             }
             else
             {
@@ -108,6 +110,33 @@ namespace SchoolInventoryManagement.Web.Controllers
                 // error's audit entry, so the two can be matched up.
                 RequestId = HttpContext.TraceIdentifier
             });
+        }
+
+        // The same person doing the same thing again and again (a batch of 67
+        // new users, a report opened five times) shows as one line with a
+        // count, so one bulk action can't fill the whole feed. Repeats count
+        // as a run while each is within two minutes of the one before.
+        private static List<HomeDashboardViewModel.ActivityItem> CollapseRepeats(
+            List<AuditReportRowDTO> rows, int take)
+        {
+            var items = new List<HomeDashboardViewModel.ActivityItem>();
+            foreach (var row in rows)
+            {
+                var last = items.Count > 0 ? items[^1] : null;
+                if (last is not null
+                    && last.Entry.UserName == row.UserName
+                    && last.Entry.ActionPerformed == row.ActionPerformed
+                    && (last.Oldest - row.LogDateTime).TotalMinutes <= 2)
+                {
+                    last.Count++;
+                    last.Oldest = row.LogDateTime;
+                    continue;
+                }
+                if (items.Count == take)
+                    break;
+                items.Add(new HomeDashboardViewModel.ActivityItem(row));
+            }
+            return items;
         }
     }
 }

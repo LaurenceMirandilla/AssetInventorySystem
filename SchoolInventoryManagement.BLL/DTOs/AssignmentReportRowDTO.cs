@@ -4,8 +4,7 @@ using SchoolInventoryManagement.DAL.Entities.Enums;
 namespace SchoolInventoryManagement.BLL.DTOs
 {
     // One asset currently out with someone. DaysOut is computed against
-    // DateTime.Now at query time, matching the local-time convention the
-    // rest of the project uses (GETDATE(), DateTime.Now).
+    // PhilippineTime.Now at query time, the clock the rest of the project uses.
     public class AssignmentReportRowDTO
     {
         public int AssignmentID { get; set; }

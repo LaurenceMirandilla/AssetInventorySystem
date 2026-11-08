@@ -19,7 +19,10 @@ namespace SchoolInventoryManagement.BLL.DTOs
         public int DamagedCount { get; set; }
 
         public int PendingRequestCount { get; set; }
-        public int OutstandingAssignmentCount { get; set; }
+        // Units set aside for a request but not yet with the person: ready
+        // for pickup (borrow) or on its way (transfer). Not counted in
+        // AssignedCount, which is units actually with someone.
+        public int AwaitingHandoverCount { get; set; }
         public int ActiveUserCount { get; set; }
 
         public List<CountByLabelDTO> ByStatus { get; set; } = new();

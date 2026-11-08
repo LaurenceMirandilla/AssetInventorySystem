@@ -19,8 +19,8 @@
     // over and recording returns is Officers' and Administrators' work.
     var canManageAssets = User.IsInRole(RoleNames.AssetOfficer) || User.IsInRole(RoleNames.Administrator);
 
-    var now = DateTime.Now;
-    var today = DateTime.Today;
+    var now = PhilippineTime.Now;
+    var today = PhilippineTime.Today;
     bool IsOverdue(AssetRequestResponseDTO r) =>
         r.RequestStatus == RequestStatus.Assigned && r.ReturnBy is not null && r.ReturnBy.Value < now;
 
@@ -396,7 +396,7 @@
                                     </span>
                                 </span>
                                 <span class="md-age @(late ? "is-late" : g.Key == "transit" ? "is-transit" : "is-soon")">
-                                    @(g.Key == "transit" ? "In transit" : DueNote(r.ReturnBy, today))
+                                    @(g.Key == "transit" ? DisplayText.InTransitLabel(r.RequestType) : DueNote(r.ReturnBy, today))
                                 </span>
                             </button>
                         }
@@ -450,7 +450,7 @@
                                 }
                                 else if (inTransit)
                                 {
-                                    <span class="asset-pill asset-status st-intransit">In transit</span>
+                                    <span class="asset-pill asset-status st-intransit">@DisplayText.InTransitLabel(r.RequestType)</span>
                                 }
                                 else
                                 {
@@ -514,7 +514,7 @@
                                                     }
                                                     else
                                                     {
-                                                        <span class="asset-pill asset-status st-@u.AssetStatus.ToString().ToLowerInvariant()">@DisplayText.Humanize(u.AssetStatus.ToString())</span>
+                                                        <span class="asset-pill asset-status st-@u.AssetStatus.ToString().ToLowerInvariant()">@DisplayText.AssetStatusLabel(u.AssetStatus, r.RequestType)</span>
                                                     }
                                                 </td>
                                             </tr>

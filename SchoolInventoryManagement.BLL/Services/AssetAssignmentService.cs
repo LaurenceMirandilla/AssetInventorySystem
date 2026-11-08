@@ -9,6 +9,7 @@ using SchoolInventoryManagement.BLL.Mappings;
 using SchoolInventoryManagement.DAL.Context;
 using SchoolInventoryManagement.DAL.Entities;
 using SchoolInventoryManagement.DAL.Entities.Enums;
+using SchoolInventoryManagement.DAL.Constants;
 
 namespace SchoolInventoryManagement.BLL.Services
 {
@@ -158,7 +159,7 @@ namespace SchoolInventoryManagement.BLL.Services
 
             _context.Entry(assignment).Property(a => a.RowVersion).OriginalValue = rowVersion;
 
-            assignment.ReturnDate = DateTime.Now;
+            assignment.ReturnDate = PhilippineTime.Now;
             assignment.ConditionOnReturn = conditionOnReturn;
 
             assignment.Asset.Condition = conditionOnReturn;
@@ -187,7 +188,7 @@ namespace SchoolInventoryManagement.BLL.Services
                     if (request is not null)
                     {
                         request.RequestStatus = RequestStatus.Returned;
-                        request.ReturnedDate = DateTime.Now;
+                        request.ReturnedDate = PhilippineTime.Now;
                     }
                 }
             }

@@ -7,7 +7,7 @@
     // One entry per request; a unit assigned directly from an asset page has
     // no request, so it is an entry of its own. The list on the left groups
     // them by what needs doing, the panel on the right shows the one picked.
-    var today = DateTime.Today;
+    var today = PhilippineTime.Today;
     var entries = Model
         .GroupBy(a => a.RequestID is int id ? $"req-{id}" : $"asg-{a.AssignmentID}")
         .Select(g => new Entry(g.Key, g.OrderBy(a => a.AssetCode).ToList(), today))
@@ -86,7 +86,7 @@
         // The short note on the right of a list item.
         public string DueNote =>
             Group == "late" ? $"{DaysLate} day{(DaysLate == 1 ? "" : "s")} late"
-            : Group == "transit" ? "In transit"
+            : Group == "transit" ? DisplayText.InTransitLabel(First.RequestType)
             : !ReturnBy.HasValue ? "No due date"
             : ReturnBy.Value == Today ? "Due today"
             : $"in {(ReturnBy.Value - Today).Days} day{((ReturnBy.Value - Today).Days == 1 ? "" : "s")}";
@@ -241,7 +241,7 @@ else
                 var unitCount = e.Units.Count;
                 var late = e.Group == "late";
                 var statusClass = late ? "overdue" : e.Group == "transit" ? "intransit" : "assigned";
-                var statusLabel = late ? "Overdue" : e.Group == "transit" ? "In transit" : "In use";
+                var statusLabel = late ? "Overdue" : e.Group == "transit" ? DisplayText.InTransitLabel(e.First.RequestType) : "In use";
 
                 <article class="myassets-panel" id="panel-@e.Id" data-panel="@e.Id" hidden>
                     <button type="button" class="myassets-back" data-back>&larr; All my assets</button>
@@ -360,7 +360,7 @@ else
                                         <td data-label="Code"><a asp-action="Details" asp-route-id="@u.AssetID" class="asset-code-chip">@u.AssetCode</a></td>
                                         <td data-label="Asset">@u.AssetName</td>
                                         <td data-label="Status">
-                                            <span class="asset-pill asset-status st-@u.AssetStatus.ToString().ToLowerInvariant()">@DisplayText.Humanize(u.AssetStatus.ToString())</span>
+                                            <span class="asset-pill asset-status st-@u.AssetStatus.ToString().ToLowerInvariant()">@DisplayText.AssetStatusLabel(u.AssetStatus, u.RequestType)</span>
                                         </td>
                                         <td data-label="Condition">@DisplayText.Humanize(u.ConditionOnAssignment.ToString())</td>
                                         <td data-label="Issued by">

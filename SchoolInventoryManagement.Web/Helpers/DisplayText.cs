@@ -66,6 +66,23 @@ namespace SchoolInventoryManagement.Web.Helpers
             _ => ""
         };
 
+        // "In transit" used to cover two different things: units set aside at
+        // the pickup point for a borrow, and units being delivered for a
+        // transfer. Each now says which. Without the request type (a unit on
+        // its own), both are named.
+        public static string RequestStatusLabel(RequestStatus status, RequestType? type) =>
+            status == RequestStatus.InTransit ? InTransitLabel(type) : Humanize(status.ToString());
+
+        public static string AssetStatusLabel(AssetStatus status, RequestType? type = null) =>
+            status == AssetStatus.InTransit ? InTransitLabel(type) : Humanize(status.ToString());
+
+        public static string InTransitLabel(RequestType? type) => type switch
+        {
+            RequestType.Borrow => "Ready for pickup",
+            RequestType.Transfer => "On its way",
+            _ => "Ready for pickup / on its way"
+        };
+
         public static string Humanize(string? value)
         {
             if (string.IsNullOrWhiteSpace(value))

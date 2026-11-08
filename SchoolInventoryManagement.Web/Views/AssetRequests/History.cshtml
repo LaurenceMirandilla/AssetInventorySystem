@@ -24,7 +24,7 @@
         return r;
     }
 
-    var today = DateTime.Today;
+    var today = PhilippineTime.Today;
     string DayLabel(DateTime? d) =>
         d is null ? "Undated"
         : d.Value.Date == today ? "Today"
@@ -288,7 +288,7 @@
                 <div class="myassets-stats">
                     <div>
                         <span>Now</span>
-                        <strong class="@(rejected ? "" : "text-success")">@DisplayText.Or(rejected ? null : DisplayText.Humanize(r.RequestStatus.ToString()), "Never went out")</strong>
+                        <strong class="@(rejected ? "" : "text-success")">@DisplayText.Or(rejected ? null : DisplayText.RequestStatusLabel(r.RequestStatus, r.RequestType), "Never went out")</strong>
                     </div>
                     <div><span>@(isBorrow ? "Pickup at" : "Move to")</span><strong>@DisplayText.Or(isBorrow ? r.PickupLocationName ?? r.RequestedLocationName : r.RequestedLocationName, "Not chosen")</strong></div>
                     <div><span>Needed</span><strong>@DisplayText.Or(r.NeededFrom?.ToString("MMM d"), "Not given")@(r.ReturnBy is not null ? " → " + r.ReturnBy.Value.ToString("MMM d") : "")</strong></div>
@@ -315,7 +315,7 @@
                                             }
                                             else
                                             {
-                                                <span class="asset-pill asset-status st-@u.AssetStatus.ToString().ToLowerInvariant()">@DisplayText.Humanize(u.AssetStatus.ToString())</span>
+                                                <span class="asset-pill asset-status st-@u.AssetStatus.ToString().ToLowerInvariant()">@DisplayText.AssetStatusLabel(u.AssetStatus, r.RequestType)</span>
                                             }
                                         </td>
                                     </tr>

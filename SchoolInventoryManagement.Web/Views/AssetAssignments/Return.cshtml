@@ -7,7 +7,7 @@
     var assignment = (AssetAssignmentResponseDTO)ViewBag.Assignment;
     var locations = (List<LocationDTO>)ViewBag.ReturnLocations;
     var holder = assignment.AssignedToUser.FullName;
-    var daysOut = (DateTime.Today - assignment.AssignmentDate.Date).Days;
+    var daysOut = (PhilippineTime.Today - assignment.AssignmentDate.Date).Days;
     var picked = locations.FirstOrDefault(l => l.LocationID == Model.ReturnLocationID);
     // The branch list starts on the picked room's branch, else the asset's.
     var startBranch = picked?.BranchID ?? asset?.BranchID;

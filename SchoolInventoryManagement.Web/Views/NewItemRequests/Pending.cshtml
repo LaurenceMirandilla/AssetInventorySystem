@@ -15,7 +15,7 @@
     string BranchOf(NewItemRequestResponseDTO r) => deptBranches.TryGetValue(r.DepartmentID, out var b) ? b : "";
     var seesAll = User.IsInRole(RoleNames.AssetOfficer) || User.IsInRole(RoleNames.Administrator) || User.IsInRole(RoleNames.Principal);
 
-    var today = DateTime.Today;
+    var today = PhilippineTime.Today;
     var stages = new[]
     {
         (Status: NewItemStatus.AwaitingDeptHead, Label: "Department head"),

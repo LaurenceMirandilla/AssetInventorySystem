@@ -25,7 +25,7 @@
     var isCancelled = Model.RequestStatus == RequestStatus.Cancelled;
     var isRejected = Model.RequestStatus == RequestStatus.Rejected;
     var isBorrow = Model.RequestType == RequestType.Borrow;
-    var overdue = isAssigned && Model.ReturnBy < DateTime.Now;
+    var overdue = isAssigned && Model.ReturnBy < PhilippineTime.Now;
 
     // A Transfer with no return date moves the units for good.
     var isPermanent = !isBorrow && Model.ReturnBy is null;
@@ -99,7 +99,7 @@
                 return s.Groups[1].Value switch
                 {
                     "Approved" => "Approved",
-                    "InTransit" => isBorrow ? "Sent for pickup — now In transit" : "Sent — now In transit",
+                    "InTransit" => isBorrow ? "Set aside — ready for pickup" : "Sent — on its way",
                     "Assigned" => isBorrow ? "Picked up" : "Delivered",
                     "Returned" => "Everything returned",
                     "Fulfilled" => "Delivered for good",
@@ -261,7 +261,7 @@
                     }
                     else
                     {
-                        <span class="asset-pill asset-status md-pill st-@unit.AssetStatus.ToString().ToLowerInvariant()">@DisplayText.Humanize(unit.AssetStatus.ToString())</span>
+                        <span class="asset-pill asset-status md-pill st-@unit.AssetStatus.ToString().ToLowerInvariant()">@DisplayText.AssetStatusLabel(unit.AssetStatus, Model.RequestType)</span>
                     }
                 </div>
             }

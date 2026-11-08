@@ -92,7 +92,7 @@ namespace SchoolInventoryManagement.Web.Helpers
 
         public async Task<Dictionary<int, LocationUsage>> LocationsAsync()
         {
-            var yearStart = new DateTime(DateTime.Today.Year, 1, 1);
+            var yearStart = new DateTime(PhilippineTime.Today.Year, 1, 1);
             var here = await _context.Assets
                 .Where(a => a.CurrentLocationID != null)
                 .GroupBy(a => a.CurrentLocationID!.Value)

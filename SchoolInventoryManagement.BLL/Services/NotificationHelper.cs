@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using SchoolInventoryManagement.DAL.Context;
 using SchoolInventoryManagement.DAL.Entities;
+using SchoolInventoryManagement.DAL.Constants;
 
 namespace SchoolInventoryManagement.BLL.Services
 {
@@ -33,7 +34,7 @@ namespace SchoolInventoryManagement.BLL.Services
                 Message = Truncate(message, MaxMessageLength),
                 ActionURL = actionUrl is null ? null : Truncate(actionUrl, MaxActionUrlLength),
                 IsRead = false,
-                CreatedAt = DateTime.Now
+                CreatedAt = PhilippineTime.Now
             });
         }
 

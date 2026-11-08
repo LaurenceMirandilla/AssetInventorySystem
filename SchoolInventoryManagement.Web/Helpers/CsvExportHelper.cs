@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using SchoolInventoryManagement.DAL.Constants;
 
 namespace SchoolInventoryManagement.Web.Helpers
 {
@@ -47,7 +48,7 @@ namespace SchoolInventoryManagement.Web.Helpers
         // Reports are filed by date, so the filename carries one.
         public static string TimestampedFileName(string reportName)
         {
-            return $"{reportName}-{DateTime.Now:yyyy-MM-dd}.csv";
+            return $"{reportName}-{PhilippineTime.Now:yyyy-MM-dd}.csv";
         }
     }
 }

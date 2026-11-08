@@ -1,5 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using SchoolInventoryManagement.DAL.Constants;
 using SchoolInventoryManagement.DAL.Entities;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 namespace SchoolInventoryManagement.DAL.Context
 {
@@ -355,7 +357,7 @@ namespace SchoolInventoryManagement.DAL.Context
 
             modelBuilder.Entity<NewItemRequestStep>()
                 .Property(s => s.ActedAt)
-                .HasDefaultValueSql("GETDATE()");
+                .HasDefaultValueSql("SYSUTCDATETIME()");
 
             // A ticket's lines go with it.
             modelBuilder.Entity<NewItemRequestItem>()
@@ -439,35 +441,66 @@ namespace SchoolInventoryManagement.DAL.Context
                         "[NeededFrom] IS NULL OR [ReturnBy] IS NULL OR [ReturnBy] > [NeededFrom]");
                 });
             // =====================================================
-            // DEFAULT VALUES: GETDATE() — server local time
+            // DEFAULT VALUES: the current time, in UTC (see TIMES below)
             // =====================================================
             modelBuilder.Entity<AssetAssignment>()
                 .Property(aa => aa.AssignmentDate)
-                .HasDefaultValueSql("GETDATE()");
+                .HasDefaultValueSql("SYSUTCDATETIME()");
 
             modelBuilder.Entity<AssetMovement>()
                 .Property(am => am.DateMoved)
-                .HasDefaultValueSql("GETDATE()");
+                .HasDefaultValueSql("SYSUTCDATETIME()");
 
             modelBuilder.Entity<DisposalRecord>()
                 .Property(dr => dr.DisposalDate)
-                .HasDefaultValueSql("GETDATE()");
+                .HasDefaultValueSql("SYSUTCDATETIME()");
 
             modelBuilder.Entity<AuditLog>()
                 .Property(al => al.LogDateTime)
-                .HasDefaultValueSql("GETDATE()");
+                .HasDefaultValueSql("SYSUTCDATETIME()");
 
             modelBuilder.Entity<NewItemRequest>()
                 .Property(n => n.RequestDate)
-                .HasDefaultValueSql("GETDATE()");
+                .HasDefaultValueSql("SYSUTCDATETIME()");
 
             modelBuilder.Entity<Notification>()
                 .Property(n => n.CreatedAt)
-                .HasDefaultValueSql("GETDATE()");
+                .HasDefaultValueSql("SYSUTCDATETIME()");
 
             modelBuilder.Entity<AssetRequest>()
                 .Property(ar => ar.RequestDate)
-                .HasDefaultValueSql("GETDATE()");
+                .HasDefaultValueSql("SYSUTCDATETIME()");
+
+            // =====================================================
+            // TIMES: stored in UTC, used as Philippine time
+            // The database keeps every timestamp in UTC (the industry
+            // standard). The app reads and writes them as Philippine time
+            // (UTC+8): this converter adds 8 hours on the way out and takes
+            // them off on the way in, so the rest of the code, the pages and
+            // the reports all work in Philippine time without converting.
+            // Calendar dates with no time of day are left as they are.
+            // =====================================================
+            var utcToPhilippineTime = new ValueConverter<DateTime, DateTime>(
+                philippineTime => PhilippineTime.ToUtc(philippineTime),
+                utc => PhilippineTime.FromUtc(utc));
+
+            var calendarDates = new HashSet<(Type, string)>
+            {
+                (typeof(Asset), nameof(Asset.AcquisitionDate)),
+                (typeof(NewItemRequest), nameof(NewItemRequest.NeededBy)),
+            };
+
+            foreach (var entityType in modelBuilder.Model.GetEntityTypes())
+            {
+                foreach (var property in entityType.GetProperties())
+                {
+                    if (property.ClrType != typeof(DateTime) && property.ClrType != typeof(DateTime?))
+                        continue;
+                    if (calendarDates.Contains((entityType.ClrType, property.Name)))
+                        continue;
+                    property.SetValueConverter(utcToPhilippineTime);
+                }
+            }
         }
     }
 }

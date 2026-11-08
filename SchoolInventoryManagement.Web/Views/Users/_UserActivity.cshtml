@@ -4,7 +4,7 @@
    page (Users/Activity). The page's script switches the tabs and searches;
    the pagers are site.js's. *@
 @{
-    var today = DateTime.Today;
+    var today = PhilippineTime.Today;
     var late = Model.Holding.Count(h => h.AssetStatus == AssetStatus.Overdue);
 }
 @functions {
@@ -36,7 +36,7 @@
                         {
                             var overdue = h.AssetStatus == AssetStatus.Overdue;
                             var (tag, css) = overdue ? ("Late", "st-overdue")
-                                : h.AssetStatus == AssetStatus.InTransit ? ("In transit", "st-intransit")
+                                : h.AssetStatus == AssetStatus.InTransit ? (DisplayText.InTransitLabel(h.RequestType), "st-intransit")
                                 : h.RequestID is null ? ("Assigned", "st-available")
                                 : ("Out", "st-disposed");
                             <tr data-pager-item data-search="@($"{h.AssetCode} {h.AssetName} {h.ModelName}".ToLowerInvariant())">
@@ -85,7 +85,7 @@
                                 <td><span class="md-tag @(r.RequestType == RequestType.Transfer ? "is-transfer" : "")">@r.RequestType</span></td>
                                 <td>@r.ItemsSummary</td>
                                 <td>@r.RequestDate.ToString("MMM d")</td>
-                                <td><span class="status-pill status-@r.RequestStatus.ToString().ToLowerInvariant()">@DisplayText.Humanize(r.RequestStatus.ToString())</span></td>
+                                <td><span class="status-pill status-@r.RequestStatus.ToString().ToLowerInvariant()">@DisplayText.RequestStatusLabel(r.RequestStatus, r.RequestType)</span></td>
                             </tr>
                         }
                     </tbody>

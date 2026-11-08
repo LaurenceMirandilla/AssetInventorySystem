@@ -13,7 +13,10 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<ApplicationDbContext>((serviceProvider, options) =>
 {
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"));
-    options.AddInterceptors(serviceProvider.GetRequiredService<AuditSaveChangesInterceptor>());
+    // Dates first, then the audit trail, so the history records real dates.
+    options.AddInterceptors(
+        new PhilippineTimeInterceptor(),
+        serviceProvider.GetRequiredService<AuditSaveChangesInterceptor>());
 });
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>

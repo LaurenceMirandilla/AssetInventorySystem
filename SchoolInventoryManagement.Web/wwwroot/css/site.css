@@ -3819,3 +3819,28 @@ a.dash-kpi:hover { background: rgba(255, 255, 255, 0.14); color: #fff; text-deco
 
 /* Asset history: how an assignment ended when it wasn't a return. */
 .history-note { color: var(--sab-text-muted); font-size: 0.78rem; }
+
+/* Show-password eye button on password boxes (wired up in site.js). */
+.pw-reveal { position: relative; display: block; }
+.pw-reveal > .form-control { padding-right: 44px; }
+.pw-reveal > .form-control.is-invalid,
+.pw-reveal > .form-control.is-valid { background-image: none; }
+.input-icon > .pw-reveal > .form-control { padding-left: 34px; }
+.pw-reveal-btn {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: var(--sab-radius-sm);
+  background: none;
+  color: var(--sab-text-faint);
+}
+.pw-reveal-btn:hover { color: var(--sab-text); }
+.pw-reveal-btn:focus-visible { outline: 2px solid var(--sab-green-border); outline-offset: 1px; }

@@ -204,7 +204,7 @@ namespace SchoolInventoryManagement.BLL.Services
                 throw new ArgumentException("Say when you need the item.");
 
             // Today is fine -- a same-day request is urgent, not invalid.
-            if (dto.NeededBy.Value.Date < DateTime.Today)
+            if (dto.NeededBy.Value.Date < PhilippineTime.Today)
                 throw new ArgumentException("The date you need the item cannot be in the past.");
 
             // A department head's own request has nobody above it at the
@@ -214,7 +214,7 @@ namespace SchoolInventoryManagement.BLL.Services
             // a step so the history says why.
             var role = requester.Role.RoleName;
             var skipsDeptHead = role == RoleNames.DepartmentHead || role == RoleNames.Administrator;
-            var now = DateTime.Now;
+            var now = PhilippineTime.Now;
 
             var items = lines.Select(line => new NewItemRequestItem
             {
@@ -452,7 +452,7 @@ namespace SchoolInventoryManagement.BLL.Services
 
             var from = request.RequestStatus;
             var to = NextStage[from];
-            var now = DateTime.Now;
+            var now = PhilippineTime.Now;
 
             request.RequestStatus = to;
             request.ReviewedByUserID = actor.UserID;
@@ -507,7 +507,7 @@ namespace SchoolInventoryManagement.BLL.Services
             var stage = request.RequestStatus == NewItemStatus.AwaitingDeptHead
                 ? "at the department head stage"
                 : "at the Principal's budget check";
-            var now = DateTime.Now;
+            var now = PhilippineTime.Now;
 
             request.RequestStatus = NewItemStatus.Rejected;
             request.ReviewedByUserID = actor.UserID;

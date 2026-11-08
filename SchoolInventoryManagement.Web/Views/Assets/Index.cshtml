@@ -50,7 +50,7 @@
 
 @functions {
     static string StatusLabel(AssetStatus s) =>
-        s == AssetStatus.UnderMaintenance ? "Maintenance" : DisplayText.Humanize(s.ToString());
+        s == AssetStatus.UnderMaintenance ? "Maintenance" : DisplayText.AssetStatusLabel(s);
 
     static string Initials(string name)
     {

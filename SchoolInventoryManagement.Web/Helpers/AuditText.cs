@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -33,6 +34,7 @@ namespace SchoolInventoryManagement.Web.Helpers
             ["SourceLocationID"] = ("Location", "From"),
             ["DestinationLocationID"] = ("Location", "To"),
             ["RequestedLocationID"] = ("Location", "Requested location"),
+            ["PickupLocationID"] = ("Location", "Pickup location"),
             ["ReturnLocationID"] = ("Location", "Returned to"),
             ["LocationID"] = ("Location", "Location"),
             ["DepartmentID"] = ("Department", "Department"),
@@ -63,6 +65,17 @@ namespace SchoolInventoryManagement.Web.Helpers
             "ConditionOnTransfer", "RequestType"
         };
 
+        // Dates are written as "2026-11-05 04:40" (Philippine time); shown as
+        // "Nov 5, 2026 4:40 AM". Older entries written another way stay as is.
+        private static string Dated(string value) =>
+            System.DateTime.TryParseExact(value, "yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture,
+                DateTimeStyles.None, out var d)
+                ? d.ToString("MMM d, yyyy h:mm tt", CultureInfo.InvariantCulture)
+                : value;
+
+        private static bool IsUnsetDate(string value) =>
+            value.StartsWith("1/1/0001") || value.StartsWith("01/01/0001") || value.StartsWith("0001-01-01");
+
         public async Task<string?> FormatAsync(string? description)
         {
             // Nothing to translate: leave it exactly as written.
@@ -79,10 +92,11 @@ namespace SchoolInventoryManagement.Web.Helpers
                 var oldValue = m.Groups["old"].Value;
                 var newValue = m.Groups["new"].Value;
 
-                // A date the database fills in on insert (DateMoved, ...) is
-                // still blank when the entry is written; say nothing rather
-                // than "01/01/0001".
-                if (!hasNew && oldValue.StartsWith("01/01/0001"))
+                // An unset date (year 1; older entries wrote it as 1/1/0001
+                // or 01/01/0001 depending on the server) means nothing.
+                if (IsUnsetDate(oldValue)) oldValue = "";
+                if (hasNew && IsUnsetDate(newValue)) newValue = "";
+                if (!hasNew && oldValue.Length == 0)
                     return "";
 
                 string label;
@@ -92,13 +106,25 @@ namespace SchoolInventoryManagement.Web.Helpers
                     label = target.Label;
                     show = v => Name(target.Table, v);
                 }
+                else if (field.EndsWith("ID") && field.Length > 2)
+                {
+                    // Another record's number: "RequestID: '1017'" reads
+                    // "Request: #1017", not "Request i d: 1017".
+                    label = DisplayText.Humanize(field[..^2]);
+                    show = v => "#" + v;
+                }
+                else if (field == "RequestStatus")
+                {
+                    label = "Request status";
+                    show = v => v == "InTransit" ? DisplayText.InTransitLabel(null) : DisplayText.Humanize(v);
+                }
                 else
                 {
                     label = DisplayText.Humanize(field);
                     if (EnumFields.Contains(field))
                         show = v => DisplayText.Humanize(v);
                     else
-                        show = v => v;
+                        show = Dated;
                 }
 
                 string Value(string v) => v.Length == 0 ? "none" : show(v);

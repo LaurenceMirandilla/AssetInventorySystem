@@ -9,6 +9,7 @@ using SchoolInventoryManagement.BLL.Mappings;
 using SchoolInventoryManagement.DAL.Context;
 using SchoolInventoryManagement.DAL.Entities;
 using SchoolInventoryManagement.DAL.Entities.Enums;
+using SchoolInventoryManagement.DAL.Constants;
 
 namespace SchoolInventoryManagement.BLL.Services
 {
@@ -103,7 +104,7 @@ namespace SchoolInventoryManagement.BLL.Services
 
             _context.Entry(asset).Property(a => a.RowVersion).OriginalValue = assetRowVersion;
 
-            activeDisposal.RestoredDate = DateTime.Now;
+            activeDisposal.RestoredDate = PhilippineTime.Now;
             activeDisposal.RestoredByUserID = actingUser.UserID;
 
             asset.Status = AssetStatus.Available;

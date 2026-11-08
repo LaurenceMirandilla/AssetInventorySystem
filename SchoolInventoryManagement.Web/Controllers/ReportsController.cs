@@ -98,7 +98,7 @@ namespace SchoolInventoryManagement.Web.Controllers
                 new[] { "Totals", "Assets in service", Num(s.InServiceAssets), Money(s.TotalValue) },
                 new[] { "Totals", "Available", Num(s.AvailableCount), null },
                 new[] { "Totals", "Assigned out", Num(s.AssignedCount), null },
-                new[] { "Totals", "Open assignments", Num(s.OutstandingAssignmentCount), null },
+                new[] { "Totals", "Ready for pickup / on its way", Num(s.AwaitingHandoverCount), null },
                 new[] { "Totals", "Under maintenance", Num(s.UnderMaintenanceCount), null },
                 new[] { "Totals", "Damaged condition", Num(s.DamagedCount), null },
                 new[] { "Totals", "Disposed", Num(s.DisposedCount), null },
