@@ -2,8 +2,15 @@
 @using Microsoft.AspNetCore.Mvc.Rendering
 @using SchoolInventoryManagement.DAL.Constants
 @using SchoolInventoryManagement.DAL.Entities.Enums
+@inject SchoolInventoryManagement.BLL.Interfaces.ISupplyService SupplyCounts
 @{
-    ViewData["Title"] = "Assets";
+    ViewData["Title"] = "Items";
+    // For the Assets / Supplies switch. Disposed units are never counted,
+    // so the number stays the same whichever filters are on.
+    var supplyScope = await SupplyCounts.GetBranchScopeAsync(
+        int.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)!.Value));
+    var supplyTotal = await SupplyCounts.CountSuppliesAsync(supplyScope);
+    var assetTotal = ViewBag.AssetTotal is int total ? total : Model.GrandTotalCount;
 
     // Teachers and Staff never reach this page (they get the catalogue), so
     // everyone here may see the units. Only these two may change them.
@@ -66,7 +73,7 @@
 
 <div class="sab-page-head">
     <div>
-        <h2>Assets</h2>
+        <h2>Items</h2>
         <p class="sab-page-sub">
             @if (Model.HasFilters)
             {
@@ -88,13 +95,12 @@
         @if (canManage)
         {
             <a asp-action="BulkCreate" class="btn btn-outline-secondary">+ Bulk register</a>
-            <a asp-action="Create" class="btn btn-primary">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
-                Register asset
-            </a>
+            <partial name="_NewItemMenu" />
         }
     </div>
 </div>
+
+<partial name="_ItemsSwitch" model="@(("Assets", assetTotal, supplyTotal))" />
 
 @* The barcode box submits on its own; its inputs point at this form with
    the form attribute, so it can sit inside the filter toolbar without

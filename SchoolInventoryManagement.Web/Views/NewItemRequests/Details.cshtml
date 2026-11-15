@@ -108,6 +108,14 @@
     <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
 }
 
+@if (Model.RequestStatus == NewItemStatus.Arrived && (User.IsInRole("Asset Officer") || User.IsInRole("Administrator")))
+{
+    <div class="alert alert-info d-flex align-items-center flex-wrap" style="gap:10px;">
+        <span class="flex-grow-1">Were these supplies, not assets? Add them to stock so they can be requested. This request's number is kept as the reference.</span>
+        <a asp-controller="Supplies" asp-action="AddStock" asp-route-newItemRequestId="@Model.NewItemRequestID" class="btn btn-sm btn-primary">Add to supplies stock</a>
+    </div>
+}
+
 <div class="asset-detail-head">
     <div>
         <nav class="asset-crumbs" aria-label="Breadcrumb">

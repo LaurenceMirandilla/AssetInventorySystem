@@ -1,8 +1,10 @@
 ﻿@model SchoolInventoryManagement.BLL.DTOs.CreateCategoryDTO
 @using SchoolInventoryManagement.Web.Helpers
+@using SchoolInventoryManagement.DAL.Entities.Enums
 @inject LookupUsage Usage
 @{
     ViewData["Title"] = "New Category";
+    var isSupply = Model.Kind == CategoryKind.Supply;
 }
 
 <form asp-action="Create" method="post" class="register-form page-fill" id="lkForm">
@@ -11,12 +13,13 @@
     <div class="asset-detail-head">
         <div>
             <nav class="asset-crumbs" aria-label="Breadcrumb">
-                <a asp-action="Index">Categories</a>
+                <a asp-action="Index" asp-route-kind="@(isSupply ? CategoryKind.Supply : (CategoryKind?)null)">Categories</a>
                 <span aria-hidden="true">&rsaquo;</span>
                 <span>New category</span>
             </nav>
             <h2 class="asset-detail-title">New category</h2>
-            <div class="asset-detail-sub">Groups models. Its code prefix starts every asset code in it.</div>
+            <div class="asset-detail-sub" data-kind-show="Asset" hidden="@isSupply">Groups models. Its code prefix starts every asset code in it.</div>
+            <div class="asset-detail-sub" data-kind-show="Supply" hidden="@(!isSupply)">Groups supplies, such as Office supplies or Cleaning. No code prefix.</div>
         </div>
     </div>
 
@@ -28,12 +31,22 @@
                 <div class="register-step-head"><div class="register-step-title">Details</div></div>
                 <div class="register-step-body">
                     <div class="row g-3">
+                        <div class="col-12">
+                            <span class="form-label d-block">This category is for</span>
+                            <div class="nr-seg" id="kindSeg" style="max-width:320px;">
+                                <input type="radio" asp-for="Kind" value="Asset" id="kindAsset" />
+                                <label for="kindAsset" class="@(isSupply ? "" : "is-on")">Assets</label>
+                                <input type="radio" asp-for="Kind" value="Supply" id="kindSupply" />
+                                <label for="kindSupply" class="@(isSupply ? "is-on" : "")">Supplies</label>
+                            </div>
+                            <div class="form-text">Assets or supplies, not both. It can't be changed later.</div>
+                        </div>
                         <div class="col-md-6">
                             <label asp-for="CategoryName" class="form-label">Name</label>
                             <input asp-for="CategoryName" class="form-control" maxlength="100" placeholder="e.g. Whiteboards" />
                             <span asp-validation-for="CategoryName" class="text-danger small"></span>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-6" data-kind-show="Asset" hidden="@isSupply">
                             <label asp-for="CodePrefix" class="form-label">Code prefix</label>
                             <input asp-for="CodePrefix" class="form-control text-uppercase" id="codePrefix" maxlength="3" autocomplete="off" placeholder="e.g. WBD" />
                             <div class="form-text">Exactly 3 letters. Must be unique.</div>
@@ -48,7 +61,7 @@
                 </div>
             </div>
         </div>
-        <div class="col-lg-4">
+        <div class="col-lg-4" data-kind-show="Asset" hidden="@isSupply">
             <div class="asset-card register-step lk-side">
                 <div class="register-step-head"><div class="register-step-title">Asset codes</div></div>
                 <div class="register-step-body">
@@ -64,7 +77,7 @@
 
     <div class="register-footer">
         <div class="d-flex ms-auto" style="gap:8px;">
-            <a asp-action="Index" class="btn btn-outline-secondary">Cancel</a>
+            <a asp-action="Index" asp-route-kind="@(isSupply ? CategoryKind.Supply : (CategoryKind?)null)" class="btn btn-outline-secondary">Cancel</a>
             <button type="submit" class="btn btn-primary">Create category</button>
         </div>
     </div>
@@ -88,6 +101,24 @@
             }
             input.addEventListener('input', sync);
             sync();
+        })();
+
+        // Assets / Supplies: the code prefix and the "Asset codes" card are
+        // for asset categories only.
+        (function () {
+            var radios = document.querySelectorAll('#kindSeg input[type=radio]');
+            function apply() {
+                var kind = document.getElementById('kindSupply').checked ? 'Supply' : 'Asset';
+                radios.forEach(function (r) {
+                    var label = document.querySelector('label[for="' + r.id + '"]');
+                    if (label) label.classList.toggle('is-on', r.checked);
+                });
+                document.querySelectorAll('[data-kind-show]').forEach(function (el) {
+                    el.hidden = el.getAttribute('data-kind-show') !== kind;
+                });
+            }
+            radios.forEach(function (r) { r.addEventListener('change', apply); });
+            apply();
         })();
     </script>
 }

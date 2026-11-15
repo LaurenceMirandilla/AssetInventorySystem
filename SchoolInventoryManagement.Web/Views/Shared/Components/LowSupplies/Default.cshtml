@@ -1,0 +1,22 @@
+﻿@model List<SchoolInventoryManagement.BLL.DTOs.LowSupplyDTO>
+@using SchoolInventoryManagement.Web.Helpers
+<div class="dash-card dash-attention mb-3">
+    <div class="dash-card-head">
+        <h2 class="dash-card-title">Supplies running low</h2>
+        <a asp-controller="Supplies" asp-action="Index" asp-route-status="RunningLow" class="dash-card-meta">View all</a>
+    </div>
+    <ul class="dash-list">
+        @foreach (var s in Model)
+        {
+            <li>
+                <div>
+                    <a asp-controller="Supplies" asp-action="Details" asp-route-id="@s.SupplyID" class="dash-list-title">@s.SupplyName</a>
+                    <div class="dash-list-sub">@(s.LowStockLevel > 0 ? "Low-stock level " + s.LowStockLevel : "No warning level set")</div>
+                </div>
+                <div class="dash-list-end">
+                    <span class="asset-pill asset-status @(s.Quantity <= 0 ? "st-overdue" : "st-low")">@(s.Quantity <= 0 ? "Out of stock" : s.Quantity + " " + SupplyText.Unit(s.Quantity, s.Unit) + " left")</span>
+                </div>
+            </li>
+        }
+    </ul>
+</div>

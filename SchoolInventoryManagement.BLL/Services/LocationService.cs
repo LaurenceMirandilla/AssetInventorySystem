@@ -154,6 +154,15 @@ namespace SchoolInventoryManagement.BLL.Services
                 throw new InvalidOperationException(
                     "This location cannot be deleted because assets, asset requests, or recorded movements still reference it.");
 
+            // Supplies kept here, their stock history, and supply requests
+            // collected here all point at the location too.
+            var usedBySupplies = await _context.SupplyStock.AnyAsync(k => k.LocationID == locationId)
+                || await _context.SupplyTransactions.AnyAsync(t => t.LocationID == locationId)
+                || await _context.SupplyRequests.AnyAsync(r => r.PickupLocationID == locationId);
+            if (usedBySupplies)
+                throw new InvalidOperationException(
+                    "This location cannot be deleted because supplies, their stock history, or supply requests still reference it.");
+
             _context.Locations.Remove(location);
             await _context.SaveChangesAsync();
         }

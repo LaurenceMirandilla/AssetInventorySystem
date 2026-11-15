@@ -83,7 +83,7 @@ namespace SchoolInventoryManagement.Web.Controllers
                     ModelID = m.ModelID,
                     ModelName = m.ModelName,
                     CategoryName = m.Category.CategoryName,
-                    CodePrefix = m.Category.CodePrefix
+                    CodePrefix = m.Category.CodePrefix ?? ""
                 })
                 .ToListAsync();
             foreach (var choice in modelChoices)
@@ -136,7 +136,7 @@ namespace SchoolInventoryManagement.Web.Controllers
             // no code prefix are left out -- no asset could be registered
             // under them anyway.
             ViewBag.QuickAddCategories = await _context.Categories
-                .Where(c => c.CodePrefix != null && c.CodePrefix != "")
+                .Where(c => c.Kind == CategoryKind.Asset && c.CodePrefix != null && c.CodePrefix != "")
                 .OrderBy(c => c.CategoryName)
                 .Select(c => new CategoryDTO
                 {
@@ -157,6 +157,7 @@ namespace SchoolInventoryManagement.Web.Controllers
         private async Task PopulateFilterOptionsAsync(AssetIndexViewModel model)
         {
             model.CategoryOptions = await _context.Categories
+                .Where(c => c.Kind == CategoryKind.Asset)
                 .OrderBy(c => c.CategoryName)
                 .Select(c => new CategoryDTO { CategoryID = c.CategoryID, CategoryName = c.CategoryName })
                 .ToListAsync();
@@ -275,6 +276,10 @@ namespace SchoolInventoryManagement.Web.Controllers
             var grandTotal = showDisposed
                 ? await _context.Assets.CountAsync()
                 : await _context.Assets.CountAsync(a => a.Status != AssetStatus.Disposed);
+            // For the Assets / Supplies switch: never counts disposed units.
+            ViewBag.AssetTotal = showDisposed
+                ? await _context.Assets.CountAsync(a => a.Status != AssetStatus.Disposed)
+                : grandTotal;
 
             var model = new AssetIndexViewModel
             {
@@ -401,6 +406,8 @@ namespace SchoolInventoryManagement.Web.Controllers
                 query = query.Where(m => m.CategoryID == categoryId.Value);
 
             var total = await query.CountAsync();
+            // For the Assets / Supplies switch.
+            ViewBag.AssetTotal = await _context.Assets.CountAsync(a => a.Status != AssetStatus.Disposed);
             var lastPage = Math.Max(1, (int)Math.Ceiling(total / (double)pageSize));
             var currentPage = Math.Clamp(page, 1, lastPage);
 
@@ -426,6 +433,7 @@ namespace SchoolInventoryManagement.Web.Controllers
                     })
                     .ToListAsync(),
                 CategoryOptions = await _context.Categories
+                    .Where(c => c.Kind == CategoryKind.Asset)
                     .OrderBy(c => c.CategoryName)
                     .Select(c => new CategoryDTO { CategoryID = c.CategoryID, CategoryName = c.CategoryName })
                     .ToListAsync()

@@ -1,0 +1,65 @@
+﻿@model List<SchoolInventoryManagement.BLL.DTOs.SupplyRequestResponseDTO>
+@using SchoolInventoryManagement.DAL.Entities.Enums
+@{
+    ViewData["Title"] = "Approvals";
+    var waiting = Model.Where(r => r.Status == SupplyRequestStatus.Pending).ToList();
+    var ready = Model.Where(r => r.Status == SupplyRequestStatus.Approved).ToList();
+}
+
+@if (TempData["SuccessMessage"] != null)
+{
+    <div class="alert alert-success">@TempData["SuccessMessage"]</div>
+}
+@if (TempData["ErrorMessage"] != null)
+{
+    <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
+}
+
+<div class="asset-detail-head mb-3 pb-0 border-0">
+    <div>
+        <h2 class="asset-detail-title">Approvals</h2>
+        <div class="asset-detail-sub">@waiting.Count supply request@(waiting.Count == 1 ? "" : "s") waiting for a decision &middot; @ready.Count approved and waiting to be released.</div>
+    </div>
+    <div class="asset-detail-actions">
+        <a asp-action="History" class="btn btn-outline-secondary">Request History</a>
+    </div>
+</div>
+
+<partial name="_ApprovalsSwitch" model="@("Supplies")" />
+
+@foreach (var group in new[] { (Title: "Waiting for approval", Rows: waiting, Empty: "Nothing is waiting for a decision."), (Title: "Approved, waiting for pick-up", Rows: ready, Empty: "Nothing is waiting to be released.") })
+{
+    <div class="asset-card register-step mb-3">
+        <div class="register-step-head">
+            <div class="register-step-title flex-grow-1">@group.Title</div>
+            <span class="nr-head-note">@group.Rows.Count</span>
+        </div>
+        @if (!group.Rows.Any())
+        {
+            <div class="register-step-body asset-muted">@group.Empty</div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table asset-table mb-0">
+                    <thead>
+                        <tr><th>Request</th><th>Requested by</th><th>Supplies</th><th>Needed by</th><th>@(group.Rows == ready ? "Pick up at" : "Sent")</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var r in group.Rows)
+                        {
+                            <tr>
+                                <td><a asp-action="Details" asp-route-id="@r.SupplyRequestID" class="asset-code-chip">S-@r.SupplyRequestID</a></td>
+                                <td>@r.RequestedByName<div class="asset-muted small">@r.DepartmentName &middot; @r.BranchName</div></td>
+                                <td>@r.ItemsSummary</td>
+                                <td class="asset-muted">@(r.NeededBy?.ToString("MMM d, yyyy") ?? "—")</td>
+                                <td class="asset-muted">@(group.Rows == ready ? (r.PickupLocationName ?? "—") : r.CreatedAt.ToString("MMM d, yyyy"))</td>
+                                <td class="text-end"><a asp-action="Details" asp-route-id="@r.SupplyRequestID" class="btn btn-sm btn-outline-secondary">@(group.Rows == ready ? "Release" : "Review")</a></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+}

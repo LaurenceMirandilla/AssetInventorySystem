@@ -1,0 +1,318 @@
+﻿@model SchoolInventoryManagement.Web.ViewModels.SupplyIndexViewModel
+@using SchoolInventoryManagement.BLL.DTOs
+@using SchoolInventoryManagement.DAL.Constants
+@using SchoolInventoryManagement.Web.Helpers
+@{
+    ViewData["Title"] = "Items";
+
+    var canManage = User.IsInRole(RoleNames.AssetOfficer) || User.IsInRole(RoleNames.Administrator);
+
+    // The current filters as route values, so the pager and the page-size
+    // picker carry the search along.
+    var route = new Dictionary<string, string>();
+    void AddRoute(string key, object? value)
+    {
+        if (value != null) { route[key] = value.ToString()!; }
+    }
+    AddRoute("keyword", string.IsNullOrWhiteSpace(Model.Keyword) ? null : Model.Keyword);
+    AddRoute("categoryId", Model.CategoryId);
+    AddRoute("branchId", Model.BranchId);
+    AddRoute("locationId", Model.LocationId);
+    AddRoute("status", Model.Status);
+
+    Func<int, Dictionary<string, string>> pageRoute = n =>
+    {
+        var r = new Dictionary<string, string>(route) { ["page"] = n.ToString() };
+        if (Model.PageSize != 20) { r["pageSize"] = Model.PageSize.ToString(); }
+        return r;
+    };
+
+    var lastPage = Model.TotalPages;
+    var windowStart = Math.Max(1, Model.Page - 1);
+    var windowEnd = Math.Min(lastPage, Model.Page + 1);
+    if (Model.Page <= 2) { windowEnd = Math.Min(lastPage, 3); }
+    if (Model.Page >= lastPage - 1) { windowStart = Math.Max(1, lastPage - 2); }
+
+    var firstRow = Model.TotalFilteredCount == 0 ? 0 : (Model.Page - 1) * Model.PageSize + 1;
+    var lastRow = Math.Min(Model.Page * Model.PageSize, Model.TotalFilteredCount);
+}
+
+@functions {
+    static string StatusLabel(SupplyStockStatus s) => s switch
+    {
+        SupplyStockStatus.OutOfStock => "Out of stock",
+        SupplyStockStatus.RunningLow => "Running low",
+        _ => "In stock"
+    };
+
+    static string StatusClass(SupplyStockStatus s) => s switch
+    {
+        SupplyStockStatus.OutOfStock => "st-overdue",
+        SupplyStockStatus.RunningLow => "st-low",
+        _ => "st-available"
+    };
+}
+
+@if (TempData["SuccessMessage"] != null)
+{
+    <div class="alert alert-success">@TempData["SuccessMessage"]</div>
+}
+@if (TempData["ErrorMessage"] != null)
+{
+    <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
+}
+
+<div class="sab-page-head">
+    <div>
+        <h2>Items</h2>
+        <p class="sab-page-sub">
+            @if (Model.HasFilters)
+            {
+                <text>@Model.TotalFilteredCount of @Model.SupplyTotal suppl@(Model.SupplyTotal == 1 ? "y" : "ies") match@(Model.TotalFilteredCount == 1 ? "es" : "") your filters</text>
+            }
+            else
+            {
+                <text>@Model.SupplyTotal suppl@(Model.SupplyTotal == 1 ? "y" : "ies")@(Model.ScopedToBranch && Model.BranchOptions.Count == 1 ? " at " + Model.BranchOptions[0].Name : ""). They get used up, so we only count how many are left.</text>
+            }
+        </p>
+    </div>
+    <div class="sab-page-actions">
+        <a asp-controller="SupplyRequests" asp-action="Create" class="btn btn-outline-secondary">Request supplies</a>
+        @if (canManage)
+        {
+            <div class="dropdown">
+                <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">Stock</button>
+                <ul class="dropdown-menu dropdown-menu-end">
+                    <li><a class="dropdown-item" asp-action="AddStock"><strong>Add stock</strong><div class="small text-muted">Supplies that arrived</div></a></li>
+                    <li><a class="dropdown-item" asp-action="Move"><strong>Move stock</strong><div class="small text-muted">To another location or branch</div></a></li>
+                    <li><a class="dropdown-item" asp-action="Count"><strong>Count supplies</strong><div class="small text-muted">Check a location and correct it</div></a></li>
+                </ul>
+            </div>
+            <partial name="_NewItemMenu" />
+        }
+    </div>
+</div>
+
+<partial name="_ItemsSwitch" model="@(("Supplies", Model.AssetTotal, Model.SupplyTotal))" />
+
+<div class="sab-table-card asset-list">
+    <form id="supplyFilters" method="get">
+        <div class="asset-toolbar">
+            <label class="asset-search">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+                <input type="text" name="keyword" id="supplyKeyword" value="@Model.Keyword" autocomplete="off"
+                       placeholder="Search supplies..." aria-label="Search supplies by name or category" />
+                <kbd>/</kbd>
+            </label>
+
+            <div class="dropdown">
+                <button type="button" class="asset-tool-btn @(Model.ActiveFilterCount > 0 ? "active" : "")" data-bs-toggle="dropdown"
+                        data-bs-auto-close="outside" aria-expanded="false" id="supplyFilterToggle">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18l-7 8.5V19l-4 2v-7.5z" /></svg>
+                    Filters
+                    @if (Model.ActiveFilterCount > 0)
+                    {
+                        <span class="asset-filter-count">@Model.ActiveFilterCount</span>
+                    }
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 9l6 6 6-6z" /></svg>
+                </button>
+                <div class="dropdown-menu asset-filter-menu" aria-labelledby="supplyFilterToggle">
+                    <div class="asset-filter-panel">
+                        <div>
+                            <label for="fCategory" class="form-label">Category</label>
+                            <select name="categoryId" id="fCategory" class="form-select form-select-sm">
+                                <option value="">All categories</option>
+                                @foreach (var c in Model.CategoryOptions)
+                                {
+                                    <option value="@c.Id" selected="@(c.Id == Model.CategoryId)">@c.Name</option>
+                                }
+                            </select>
+                        </div>
+                        <div>
+                            <label for="fStatus" class="form-label">Stock</label>
+                            <select name="status" id="fStatus" class="form-select form-select-sm">
+                                <option value="">Any</option>
+                                @foreach (var s in Enum.GetValues<SupplyStockStatus>())
+                                {
+                                    <option value="@s" selected="@(s == Model.Status)">@StatusLabel(s)</option>
+                                }
+                            </select>
+                        </div>
+                        <div hidden="@Model.ScopedToBranch">
+                            <label for="fBranch" class="form-label">Branch</label>
+                            <select name="branchId" id="fBranch" class="form-select form-select-sm">
+                                <option value="">All branches</option>
+                                @foreach (var b in Model.BranchOptions)
+                                {
+                                    <option value="@b.Id" selected="@(b.Id == Model.BranchId)">@b.Name</option>
+                                }
+                            </select>
+                        </div>
+                        <div>
+                            <label for="fLocation" class="form-label">Kept in</label>
+                            <select name="locationId" id="fLocation" class="form-select form-select-sm">
+                                <option value="">All locations</option>
+                                @foreach (var g in Model.LocationOptions.GroupBy(l => l.BranchName))
+                                {
+                                    <optgroup label="@g.Key">
+                                        @foreach (var l in g)
+                                        {
+                                            <option value="@l.Id" data-branch="@l.BranchId" selected="@(l.Id == Model.LocationId)">@l.Name</option>
+                                        }
+                                    </optgroup>
+                                }
+                            </select>
+                        </div>
+                        <div class="asset-filter-actions">
+                            <a asp-action="Index" class="btn btn-outline-secondary btn-sm">Reset</a>
+                            <button type="submit" class="btn btn-primary btn-sm">Apply</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <span class="ms-auto asset-muted small">Showing <strong>@firstRow&ndash;@lastRow</strong> of @Model.TotalFilteredCount</span>
+        </div>
+    </form>
+
+    @if (Model.TotalFilteredCount > 0)
+    {
+        <div class="table-responsive">
+            <table class="table asset-table">
+                <thead>
+                    <tr>
+                        <th>Item</th>
+                        <th>In stock</th>
+                        <th>Status</th>
+                        <th>Kept in</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var s in Model.Supplies)
+                    {
+                        <tr>
+                            <td>
+                                <a asp-action="Details" asp-route-id="@s.SupplyID" class="asset-name" title="@s.Description">@s.SupplyName</a>
+                                <div class="asset-muted small">@s.CategoryName</div>
+                            </td>
+                            <td><strong>@s.TotalQuantity</strong> @SupplyText.Unit(s.TotalQuantity, s.Unit)</td>
+                            <td><span class="asset-pill asset-status @StatusClass(s.Status)">@StatusLabel(s.Status)</span></td>
+                            <td class="asset-muted">@(s.LocationNames.Count == 0 ? "—" : string.Join(", ", s.LocationNames))</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="asset-foot">
+            <select name="pageSize" form="supplyFilters" class="form-select form-select-sm asset-page-size"
+                    aria-label="Rows per page" onchange="this.form.submit()">
+                @foreach (var size in Model.PageSizeOptions)
+                {
+                    <option value="@size" selected="@(size == Model.PageSize)">@size per page</option>
+                }
+            </select>
+
+            <div class="asset-pager">
+                <span class="asset-page-label">Page @Model.Page of @lastPage</span>
+                <nav aria-label="Supply pages" class="d-flex" style="gap:6px;">
+                    @if (Model.Page > 1)
+                    {
+                        <a class="asset-page" asp-action="Index" asp-all-route-data="pageRoute(Model.Page - 1)" aria-label="Previous page">&lsaquo;</a>
+                    }
+                    else
+                    {
+                        <span class="asset-page disabled" aria-hidden="true">&lsaquo;</span>
+                    }
+
+                    @if (windowStart > 1)
+                    {
+                        <a class="asset-page" asp-action="Index" asp-all-route-data="pageRoute(1)">1</a>
+                        if (windowStart > 2)
+                        {
+                            <span class="asset-page-gap">…</span>
+                        }
+                    }
+
+                    @for (var n = windowStart; n <= windowEnd; n++)
+                    {
+                        if (n == Model.Page)
+                        {
+                            <span class="asset-page current" aria-current="page">@n</span>
+                        }
+                        else
+                        {
+                            <a class="asset-page" asp-action="Index" asp-all-route-data="pageRoute(n)">@n</a>
+                        }
+                    }
+
+                    @if (windowEnd < lastPage)
+                    {
+                        if (windowEnd < lastPage - 1)
+                        {
+                            <span class="asset-page-gap">…</span>
+                        }
+                        <a class="asset-page" asp-action="Index" asp-all-route-data="pageRoute(lastPage)">@lastPage</a>
+                    }
+
+                    @if (Model.Page < lastPage)
+                    {
+                        <a class="asset-page" asp-action="Index" asp-all-route-data="pageRoute(Model.Page + 1)" aria-label="Next page">&rsaquo;</a>
+                    }
+                    else
+                    {
+                        <span class="asset-page disabled" aria-hidden="true">&rsaquo;</span>
+                    }
+                </nav>
+            </div>
+        </div>
+    }
+    else if (Model.HasFilters)
+    {
+        <div class="sab-empty">
+            <div class="sab-empty-title">No supplies match these filters</div>
+            <p>Clear the filters to see every supply.</p>
+            <a asp-action="Index" class="btn btn-outline-secondary">Reset filters</a>
+        </div>
+    }
+    else
+    {
+        <div class="sab-empty">
+            <div class="sab-empty-title">No supplies yet</div>
+            <p>@(Model.ScopedToBranch ? "No supplies are kept at your branch yet." : "Supplies are things that get used up, such as bond paper, markers and alcohol.")</p>
+            @if (canManage)
+            {
+                <a asp-action="Create" class="btn btn-primary">+ New supply</a>
+            }
+        </div>
+    }
+</div>
+
+@section Scripts {
+    <script>
+        // "/" jumps to the search box, as on the Assets tab.
+        document.addEventListener('keydown', function (e) {
+            if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
+            var t = e.target;
+            if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+            e.preventDefault();
+            document.getElementById('supplyKeyword').focus();
+        });
+
+        // Picking a location selects its branch; picking a branch clears a
+        // location that is not in it.
+        (function () {
+            var branch = document.getElementById('fBranch');
+            var location = document.getElementById('fLocation');
+            if (!branch || !location) return;
+            location.addEventListener('change', function () {
+                var opt = location.options[location.selectedIndex];
+                if (opt && opt.dataset.branch) branch.value = opt.dataset.branch;
+            });
+            branch.addEventListener('change', function () {
+                var opt = location.options[location.selectedIndex];
+                if (branch.value && opt && opt.dataset.branch && opt.dataset.branch !== branch.value) location.value = '';
+            });
+        })();
+    </script>
+}

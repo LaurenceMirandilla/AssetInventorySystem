@@ -80,6 +80,8 @@ builder.Services.AddScoped<IAssetMovementService, AssetMovementService>();
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IDisposalService, DisposalService>();
 builder.Services.AddScoped<ICategoryService, CategoryService>();
+builder.Services.AddScoped<ISupplyService, SupplyService>();
+builder.Services.AddScoped<ISupplyRequestService, SupplyRequestService>();
 builder.Services.AddScoped<IModelService, ModelService>();
 builder.Services.AddScoped<IBranchService, BranchService>();
 builder.Services.AddScoped<IDepartmentService, DepartmentService>();

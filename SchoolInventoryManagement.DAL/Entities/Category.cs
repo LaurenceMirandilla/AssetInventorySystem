@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using SchoolInventoryManagement.DAL.Entities.Enums;
 
 namespace SchoolInventoryManagement.DAL.Entities
 {
@@ -13,12 +14,15 @@ namespace SchoolInventoryManagement.DAL.Entities
         [MaxLength(100)]
         public string CategoryName { get; set; } = null!;
 
+        // Assets or Supplies (Scripts/015). Existing rows are Asset.
+        public CategoryKind Kind { get; set; } = CategoryKind.Asset;
+
         // Third part of every asset code in this category: "CHR" gives
         // M-LIB-CHR-0001. Exactly three letters, stored upper-case, unique
-        // across categories (UX_Categories_CodePrefix).
-        [Required]
+        // across categories (UX_Categories_CodePrefix). Null for a supply
+        // category, which has no codes.
         [MaxLength(3)]
-        public string CodePrefix { get; set; } = null!;
+        public string? CodePrefix { get; set; }
 
         [MaxLength(255)]
         public string? Description { get; set; }

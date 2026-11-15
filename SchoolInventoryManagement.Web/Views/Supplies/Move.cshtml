@@ -1,0 +1,173 @@
+﻿@model SchoolInventoryManagement.BLL.DTOs.MoveStockDTO
+@using SchoolInventoryManagement.BLL.DTOs
+@using SchoolInventoryManagement.Web.Helpers
+@using SchoolInventoryManagement.Web.ViewModels
+@{
+    ViewData["Title"] = "Move Stock";
+    var supplies = ViewBag.SupplyChoices as List<SupplyChoiceDTO> ?? new();
+    var stock = ViewBag.StockChoices as List<SupplyStockChoiceDTO> ?? new();
+    var locations = ViewBag.Locations as List<SupplyLocationOption> ?? new();
+    var backId = ViewBag.BackToSupplyId as int?;
+}
+
+<form asp-action="Move" method="post" class="register-form page-fill" id="moveForm">
+    @Html.AntiForgeryToken()
+    @Html.FormTicket()
+    <input type="hidden" name="backToSupplyId" value="@backId" />
+
+    <div class="asset-detail-head">
+        <div>
+            <nav class="asset-crumbs" aria-label="Breadcrumb">
+                <a asp-controller="Assets" asp-action="Index">Items</a>
+                <span aria-hidden="true">&rsaquo;</span>
+                <a asp-action="Index">Supplies</a>
+                <span aria-hidden="true">&rsaquo;</span>
+                <span>Move stock</span>
+            </nav>
+            <h2 class="asset-detail-title">Move stock</h2>
+            <div class="asset-detail-sub">Take a supply out of one location and put it in another, in the same branch or a different one. The school total stays the same.</div>
+        </div>
+    </div>
+
+    <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+
+    <div class="row g-3 align-items-start">
+        <div class="col-lg-8">
+            <div class="asset-card register-step">
+                <div class="register-step-head"><div class="register-step-title">What to move</div></div>
+                <div class="register-step-body">
+                    <div class="row g-3">
+                        <div class="col-md-8">
+                            <label asp-for="SupplyID" class="form-label">Supply</label>
+                            <select asp-for="SupplyID" class="form-select" id="mvSupply">
+                                <option value="">Pick a supply</option>
+                                @foreach (var s in supplies)
+                                {
+                                    <option value="@s.SupplyID" data-unit="@s.Unit">@s.SupplyName</option>
+                                }
+                            </select>
+                            <span asp-validation-for="SupplyID" class="text-danger small"></span>
+                        </div>
+                        <div class="col-md-4">
+                            <label asp-for="Quantity" class="form-label">How many</label>
+                            <input asp-for="Quantity" class="form-control" id="mvQty" type="number" min="1" step="1" inputmode="numeric" />
+                            <span asp-validation-for="Quantity" class="text-danger small"></span>
+                        </div>
+                        <div class="col-md-6">
+                            <label asp-for="FromLocationID" class="form-label">From</label>
+                            <select asp-for="FromLocationID" class="form-select" id="mvFrom" data-selected="@Model.FromLocationID">
+                                <option value="">Pick a supply first</option>
+                            </select>
+                            <div class="form-text">Only locations that have it.</div>
+                            <span asp-validation-for="FromLocationID" class="text-danger small"></span>
+                        </div>
+                        <div class="col-md-6">
+                            <label asp-for="ToLocationID" class="form-label">To</label>
+                            <select asp-for="ToLocationID" class="form-select" id="mvTo">
+                                <option value="">Pick a location</option>
+                                @foreach (var g in locations.GroupBy(l => l.BranchName))
+                                {
+                                    <optgroup label="@g.Key">
+                                        @foreach (var l in g)
+                                        {
+                                            <option value="@l.Id">@l.Name</option>
+                                        }
+                                    </optgroup>
+                                }
+                            </select>
+                            <div class="form-text">Any location, in any branch.</div>
+                            <span asp-validation-for="ToLocationID" class="text-danger small"></span>
+                        </div>
+                        <div class="col-12">
+                            <label asp-for="Note" class="form-label">Note <span class="register-optional">optional</span></label>
+                            <input asp-for="Note" class="form-control" maxlength="150" autocomplete="off" placeholder="e.g. For a supply request at the Annex" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="asset-card register-step lk-side">
+                <div class="register-step-head"><div class="register-step-title">After the move</div></div>
+                <div class="register-step-body">
+                    <p class="lk-side-note" id="mvFromAfter">Pick a supply and where it is moved from.</p>
+                    <p class="lk-side-note mb-0" id="mvToAfter"></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="register-footer">
+        <div class="d-flex ms-auto" style="gap:8px;">
+            @if (backId.HasValue)
+            {
+                <a asp-action="Details" asp-route-id="@backId" class="btn btn-outline-secondary">Cancel</a>
+            }
+            else
+            {
+                <a asp-action="Index" class="btn btn-outline-secondary">Cancel</a>
+            }
+            <button type="submit" class="btn btn-primary">Move stock</button>
+        </div>
+    </div>
+</form>
+
+@section Scripts {
+    @{
+        await Html.RenderPartialAsync("_ValidationScriptsPartial");
+    }
+    <script>
+        (function () {
+            // Where each supply is kept: [{SupplyID, LocationID, LocationName, BranchName, Quantity}]
+            var stock = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(stock));
+            var supply = document.getElementById('mvSupply'), from = document.getElementById('mvFrom'),
+                to = document.getElementById('mvTo'), qty = document.getElementById('mvQty');
+
+            function fillFrom() {
+                var keep = from.value || from.dataset.selected || '';
+                from.innerHTML = '';
+                var rows = stock.filter(function (k) { return String(k.SupplyID) === supply.value; });
+                var first = document.createElement('option');
+                first.value = '';
+                first.textContent = !supply.value ? 'Pick a supply first' : rows.length ? 'Pick a location' : 'None in stock anywhere';
+                from.appendChild(first);
+                rows.forEach(function (k) {
+                    var o = document.createElement('option');
+                    o.value = k.LocationID;
+                    o.textContent = k.LocationName + ' (' + k.BranchName + ') \u00B7 has ' + k.Quantity;
+                    o.dataset.qty = k.Quantity;
+                    o.dataset.name = k.LocationName;
+                    from.appendChild(o);
+                });
+                from.value = rows.some(function (k) { return String(k.LocationID) === keep; }) ? keep : '';
+                from.dataset.selected = '';
+            }
+
+            function sync() {
+                var f = from.options[from.selectedIndex], t = to.options[to.selectedIndex];
+                var q = Math.max(0, parseInt(qty.value, 10) || 0);
+                var fromText = document.getElementById('mvFromAfter'), toText = document.getElementById('mvToAfter');
+                if (!supply.value || !from.value) {
+                    fromText.textContent = 'Pick a supply and where it is moved from.';
+                    toText.textContent = '';
+                    qty.removeAttribute('max');
+                    return;
+                }
+                var has = parseInt(f.dataset.qty, 10) || 0;
+                qty.max = has;
+                fromText.textContent = f.dataset.name + ': ' + has + ' \u2192 ' + Math.max(0, has - q) + (q > has ? ' (not enough there)' : '');
+                if (to.value) {
+                    var there = stock.filter(function (k) { return String(k.SupplyID) === supply.value && String(k.LocationID) === to.value; })[0];
+                    var now = there ? there.Quantity : 0;
+                    toText.textContent = t.textContent.trim() + ': ' + now + ' \u2192 ' + (now + q) + (to.value === from.value ? ' (same location)' : '');
+                } else {
+                    toText.textContent = '';
+                }
+            }
+
+            supply.addEventListener('change', function () { fillFrom(); sync(); });
+            [from, to, qty].forEach(function (el) { el.addEventListener('change', sync); el.addEventListener('input', sync); });
+            fillFrom(); sync();
+        })();
+    </script>
+}

@@ -226,6 +226,52 @@ namespace SchoolInventoryManagement.Web.Controllers
         }
 
         // ==================================================================
+        // Supplies
+        // ==================================================================
+
+        // GET /Reports/Supplies
+        public async Task<IActionResult> Supplies(
+            [FromServices] ISupplyService supplies, DateTime? fromDate, DateTime? toDate, int? branchId, int? departmentId)
+        {
+            // Default: this month so far.
+            fromDate ??= new DateTime(PhilippineTime.Today.Year, PhilippineTime.Today.Month, 1);
+            toDate ??= PhilippineTime.Today;
+
+            ViewBag.FromDate = fromDate;
+            ViewBag.ToDate = toDate;
+            ViewBag.BranchId = branchId;
+            ViewBag.DepartmentId = departmentId;
+            ViewBag.Branches = await _branchService.GetAllBranchesAsync();
+            ViewBag.Departments = await _departmentService.GetAllDepartmentsAsync();
+
+            return View(await supplies.GetReportAsync(fromDate, toDate, branchId, departmentId));
+        }
+
+        // GET /Reports/ExportSupplies
+        public async Task<IActionResult> ExportSupplies(
+            [FromServices] ISupplyService supplies, DateTime? fromDate, DateTime? toDate, int? branchId, int? departmentId)
+        {
+            fromDate ??= new DateTime(PhilippineTime.Today.Year, PhilippineTime.Today.Month, 1);
+            toDate ??= PhilippineTime.Today;
+            var report = await supplies.GetReportAsync(fromDate, toDate, branchId, departmentId);
+
+            var csv = CsvExportHelper.Build(
+                new[] { "Supply", "Unit", "Received", "Issued", "Adjusted", "In Stock Now", "Status" },
+                report.ByItem.Select(i => new string?[]
+                {
+                    i.SupplyName,
+                    i.Unit,
+                    i.Received.ToString(CultureInfo.InvariantCulture),
+                    i.Issued.ToString(CultureInfo.InvariantCulture),
+                    i.Adjusted.ToString(CultureInfo.InvariantCulture),
+                    i.InStock.ToString(CultureInfo.InvariantCulture),
+                    i.Status.ToString()
+                }));
+
+            return File(csv, "text/csv", CsvExportHelper.TimestampedFileName("supplies"));
+        }
+
+        // ==================================================================
         // Request activity
         // ==================================================================
 

@@ -1,0 +1,118 @@
+﻿@model SchoolInventoryManagement.BLL.DTOs.UpdateSupplyDTO
+@using SchoolInventoryManagement.BLL.DTOs
+@using SchoolInventoryManagement.Web.Helpers
+@using SchoolInventoryManagement.Web.ViewModels
+@{
+    ViewData["Title"] = "Edit Supply";
+    var id = (int)ViewBag.SupplyID;
+    var supply = (SupplyDetailsDTO)ViewBag.Supply;
+    var categories = ViewBag.SupplyCategories as List<SupplyOption> ?? new();
+    var units = ViewBag.Units as List<string> ?? new();
+    var commonUnits = new[] { "piece", "box", "ream", "bottle", "pack", "roll", "set", "gallon" };
+}
+
+<form asp-action="Edit" asp-route-id="@id" method="post" class="register-form page-fill">
+    @Html.AntiForgeryToken()
+
+    <div class="asset-detail-head">
+        <div>
+            <nav class="asset-crumbs" aria-label="Breadcrumb">
+                <a asp-controller="Assets" asp-action="Index">Items</a>
+                <span aria-hidden="true">&rsaquo;</span>
+                <a asp-action="Index">Supplies</a>
+                <span aria-hidden="true">&rsaquo;</span>
+                <a asp-action="Details" asp-route-id="@id">@supply.SupplyName</a>
+                <span aria-hidden="true">&rsaquo;</span>
+                <span>Edit</span>
+            </nav>
+            <h2 class="asset-detail-title">Edit supply</h2>
+            <div class="asset-detail-sub">Its details and warning level. The quantity is not changed here.</div>
+        </div>
+    </div>
+
+    <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+
+    <div class="row g-3 align-items-start">
+        <div class="col-lg-8">
+            <div class="asset-card register-step">
+                <div class="register-step-head"><div class="register-step-title">Details</div></div>
+                <div class="register-step-body">
+                    <div class="row g-3">
+                        <div class="col-md-7">
+                            <label asp-for="SupplyName" class="form-label">Name</label>
+                            <input asp-for="SupplyName" class="form-control" maxlength="150" autocomplete="off" />
+                            <span asp-validation-for="SupplyName" class="text-danger small"></span>
+                        </div>
+                        <div class="col-md-5">
+                            <label asp-for="CategoryID" class="form-label">Category</label>
+                            <select asp-for="CategoryID" class="form-select">
+                                @foreach (var c in categories)
+                                {
+                                    <option value="@c.Id">@c.Name</option>
+                                }
+                            </select>
+                            <span asp-validation-for="CategoryID" class="text-danger small"></span>
+                        </div>
+                        <div class="col-md-4">
+                            <label asp-for="Unit" class="form-label">Counted per</label>
+                            <input asp-for="Unit" class="form-control" maxlength="30" autocomplete="off" list="unitList" />
+                            <datalist id="unitList">
+                                @foreach (var u in units.Concat(commonUnits).Distinct(StringComparer.OrdinalIgnoreCase))
+                                {
+                                    <option value="@u"></option>
+                                }
+                            </datalist>
+                            <div class="form-text">Changing this renames the unit; it does not convert the quantity.</div>
+                            <span asp-validation-for="Unit" class="text-danger small"></span>
+                        </div>
+                        <div class="col-md-4">
+                            <label asp-for="UnitPrice" class="form-label">Price per unit <span class="register-optional">optional</span></label>
+                            <div class="input-group">
+                                <span class="input-group-text">&#8369;</span>
+                                <input asp-for="UnitPrice" class="form-control" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0.00" />
+                            </div>
+                            <span asp-validation-for="UnitPrice" class="text-danger small"></span>
+                        </div>
+                        <div class="col-md-4">
+                            <label asp-for="LowStockLevel" class="form-label">Low-stock level</label>
+                            <input asp-for="LowStockLevel" class="form-control" type="number" min="0" step="1" inputmode="numeric" />
+                            <div class="form-text">0 turns the warning off.</div>
+                            <span asp-validation-for="LowStockLevel" class="text-danger small"></span>
+                        </div>
+                        <div class="col-12">
+                            <label asp-for="Description" class="form-label">Description <span class="register-optional">optional</span></label>
+                            <textarea asp-for="Description" class="form-control" rows="2" maxlength="255"></textarea>
+                            <span asp-validation-for="Description" class="text-danger small"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="asset-card register-step lk-side">
+                <div class="register-step-head"><div class="register-step-title">In stock now</div></div>
+                <div class="register-step-body">
+                    <div class="lk-code-box">
+                        <div class="lk-code-label">@supply.SupplyName</div>
+                        <div class="lk-code-big">@supply.TotalQuantity @SupplyText.Unit(supply.TotalQuantity, supply.Unit)</div>
+                    </div>
+                    <p class="lk-side-note">The quantity only changes when stock is received, released or counted, so every change has a record.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="register-footer">
+        <div class="d-flex ms-auto" style="gap:8px;">
+            <a asp-action="Details" asp-route-id="@id" class="btn btn-outline-secondary">Cancel</a>
+            <button type="submit" class="btn btn-primary">Save changes</button>
+        </div>
+    </div>
+</form>
+
+@section Scripts {
+    @{
+        await Html.RenderPartialAsync("_ValidationScriptsPartial");
+    }
+}

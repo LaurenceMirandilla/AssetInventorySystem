@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Mvc.Rendering;
 using SchoolInventoryManagement.BLL.DTOs;
 using SchoolInventoryManagement.BLL.Interfaces;
 using SchoolInventoryManagement.DAL.Constants;
+using SchoolInventoryManagement.DAL.Entities.Enums;
 
 namespace SchoolInventoryManagement.Web.Controllers
 {
@@ -29,7 +30,8 @@ namespace SchoolInventoryManagement.Web.Controllers
 
         private async Task PopulateCategoryDropdownAsync()
         {
-            var categories = await _categoryService.GetAllCategoriesAsync();
+            // Models sit under asset categories only.
+            var categories = await _categoryService.GetAllCategoriesAsync(CategoryKind.Asset);
             ViewBag.Categories = new SelectList(categories, "CategoryID", "CategoryName");
         }
 
@@ -38,7 +40,7 @@ namespace SchoolInventoryManagement.Web.Controllers
             var models = await _modelService.GetAllModelsAsync();
             ViewBag.Usage = await usage.ModelsAsync();
             // For the Category list in each model's edit form.
-            ViewBag.CategoryList = (await _categoryService.GetAllCategoriesAsync())
+            ViewBag.CategoryList = (await _categoryService.GetAllCategoriesAsync(CategoryKind.Asset))
                 .OrderBy(c => c.CategoryName).ToList();
             return View(models);
         }

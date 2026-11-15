@@ -1,5 +1,10 @@
-@model SchoolInventoryManagement.Web.ViewModels.AssetCatalogViewModel
+﻿@model SchoolInventoryManagement.Web.ViewModels.AssetCatalogViewModel
+@inject SchoolInventoryManagement.BLL.Interfaces.ISupplyService SupplyCounts
 @{
+    var supplyScope = await SupplyCounts.GetBranchScopeAsync(
+        int.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)!.Value));
+    var supplyTotal = await SupplyCounts.CountSuppliesAsync(supplyScope);
+    var assetTotal = ViewBag.AssetTotal is int total ? total : 0;
     ViewData["Title"] = "Browse items";
 
     // The current search as route values, so the pager carries it along.
@@ -42,6 +47,8 @@
         </a>
     </div>
 </div>
+
+<partial name="_ItemsSwitch" model="@(("Assets", assetTotal, supplyTotal))" />
 
 <div class="sab-table-card asset-list">
     <form id="catalogFilters" asp-action="Index" method="get">

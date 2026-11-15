@@ -29,9 +29,13 @@ namespace SchoolInventoryManagement.BLL.Services
         {
             await PermissionHelper.EnsureIsAssetManagerAsync(_context, actingUserId);
 
-            var categoryExists = await _context.Categories.AnyAsync(c => c.CategoryID == dto.CategoryID);
-            if (!categoryExists)
+            var category = await _context.Categories.FirstOrDefaultAsync(c => c.CategoryID == dto.CategoryID);
+            if (category is null)
                 throw new KeyNotFoundException("Category not found.");
+            // Models belong to asset categories only; supplies have no models.
+            if (category.Kind != CategoryKind.Asset)
+                throw new InvalidOperationException(
+                    $"{category.CategoryName} is a supply category. Pick an asset category for a model.");
 
             // Prevent duplicate model names within the same category
             var duplicateExists = await _context.Models.AnyAsync(m =>
@@ -86,9 +90,13 @@ namespace SchoolInventoryManagement.BLL.Services
             if (model is null)
                 throw new KeyNotFoundException("Model not found.");
 
-            var categoryExists = await _context.Categories.AnyAsync(c => c.CategoryID == dto.CategoryID);
-            if (!categoryExists)
+            var category = await _context.Categories.FirstOrDefaultAsync(c => c.CategoryID == dto.CategoryID);
+            if (category is null)
                 throw new KeyNotFoundException("Category not found.");
+            // Models belong to asset categories only; supplies have no models.
+            if (category.Kind != CategoryKind.Asset)
+                throw new InvalidOperationException(
+                    $"{category.CategoryName} is a supply category. Pick an asset category for a model.");
 
             // Prevent duplicate names, excluding this model's own current row
             var duplicateExists = await _context.Models.AnyAsync(m =>

@@ -1,0 +1,383 @@
+﻿@model SchoolInventoryManagement.BLL.DTOs.SupplyRequestResponseDTO
+@using SchoolInventoryManagement.DAL.Entities.Enums
+@using SchoolInventoryManagement.Web.Helpers
+@using SchoolInventoryManagement.BLL.DTOs
+@using SchoolInventoryManagement.DAL.Constants
+@{
+    var approval = ViewBag.Approval as SupplyApprovalInfoDTO;
+    var release = ViewBag.Release as SupplyReleaseInfoDTO;
+    var isManager = User.IsInRole(RoleNames.AssetOfficer) || User.IsInRole(RoleNames.Administrator);
+    var isApproverRole = isManager || User.IsInRole(RoleNames.Principal);
+    ViewData["Title"] = "Supply request S-" + Model.SupplyRequestID;
+    var isMine = ViewBag.IsMine is true;
+    var s = Model.Status;
+
+    var statusLabel = s switch
+    {
+        SupplyRequestStatus.Pending => "Waiting for approval",
+        SupplyRequestStatus.Approved => "Ready for pick-up",
+        _ => s.ToString()
+    };
+    var statusClass = s switch
+    {
+        SupplyRequestStatus.Pending => "st-low",
+        SupplyRequestStatus.Approved => "st-intransit",
+        SupplyRequestStatus.Released => "st-available",
+        SupplyRequestStatus.Rejected => "st-overdue",
+        _ => "st-undermaintenance"
+    };
+    var decided = s is SupplyRequestStatus.Approved or SupplyRequestStatus.Released;
+}
+
+@if (TempData["SuccessMessage"] != null)
+{
+    <div class="alert alert-success">@TempData["SuccessMessage"]</div>
+}
+@if (TempData["ErrorMessage"] != null)
+{
+    <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
+}
+
+<div class="asset-detail-head">
+    <div>
+        <nav class="asset-crumbs" aria-label="Breadcrumb">
+            @if (isMine || !isApproverRole)
+            {
+                <a asp-action="Index">My Requests</a>
+            }
+            else
+            {
+                <a asp-action="Pending">Approvals</a>
+            }
+            <span aria-hidden="true">&rsaquo;</span>
+            <span>Supply request S-@Model.SupplyRequestID</span>
+        </nav>
+        <h2 class="asset-detail-title">Supply request S-@Model.SupplyRequestID <span class="asset-pill asset-status @statusClass">@statusLabel</span></h2>
+        <div class="asset-detail-sub">@Model.RequestedByName &middot; @Model.DepartmentName &middot; @Model.BranchName &middot; sent @Model.CreatedAt.ToString("MMM d, yyyy h:mm tt")</div>
+    </div>
+</div>
+
+<div class="row g-3 align-items-start">
+    <div class="col-lg-8">
+        <div class="asset-card register-step mb-3">
+            <div class="register-step-head"><div class="register-step-title">Progress</div></div>
+            <div class="register-step-body">
+                @if (s == SupplyRequestStatus.Rejected)
+                {
+                    <p class="mb-1"><strong>Rejected</strong>@(Model.DecidedAt.HasValue ? " on " + Model.DecidedAt.Value.ToString("MMM d, yyyy") : "")@(Model.DecidedByName is null ? "" : " by " + Model.DecidedByName).</p>
+                    @if (!string.IsNullOrWhiteSpace(Model.DecisionNote))
+                    {
+                        <p class="asset-muted mb-0">Reason: @Model.DecisionNote</p>
+                    }
+                }
+                else if (s == SupplyRequestStatus.Cancelled)
+                {
+                    <p class="mb-0"><strong>Cancelled</strong>@(Model.CancelledAt.HasValue ? " on " + Model.CancelledAt.Value.ToString("MMM d, yyyy") : "") by the requester.</p>
+                }
+                else
+                {
+                    <div class="myassets-stats lk-stats-3 mt-0">
+                        <div>
+                            <span>1 &middot; Submitted</span>
+                            <strong>@Model.CreatedAt.ToString("MMM d")</strong>
+                        </div>
+                        <div>
+                            <span>2 &middot; Approved</span>
+                            <strong>@(decided && Model.DecidedAt.HasValue ? Model.DecidedAt.Value.ToString("MMM d") : "Waiting")</strong>
+                        </div>
+                        <div>
+                            <span>3 &middot; Released</span>
+                            <strong>@(Model.ReleasedAt.HasValue ? Model.ReleasedAt.Value.ToString("MMM d") : decided ? "Waiting for pick-up" : "—")</strong>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+
+        @if (approval is not null && !isMine)
+        {
+            <div class="asset-card register-step mb-3">
+                <div class="register-step-head">
+                    <div class="register-step-title flex-grow-1">Decide</div>
+                    <span class="nr-head-note">stock shown for @Model.BranchName</span>
+                </div>
+                <form asp-action="Approve" asp-route-id="@Model.SupplyRequestID" method="post" id="approveForm">
+                    @Html.AntiForgeryToken()
+                    <div class="table-responsive">
+                        <table class="table asset-table mb-0 align-middle">
+                            <thead>
+                                <tr><th>Supply</th><th class="text-end">Asked</th><th class="text-end">Available here</th><th class="text-end">Other branches</th><th style="width:130px;">Approve</th></tr>
+                            </thead>
+                            <tbody>
+                                @for (var n = 0; n < Model.Items.Count; n++)
+                                {
+                                    var item = Model.Items[n];
+                                    var info = approval.Lines.FirstOrDefault(l => l.SupplyID == item.SupplyID);
+                                    var available = info?.AvailableQuantity ?? 0;
+                                    var suggest = Math.Min(item.QuantityRequested, available);
+                                    <tr>
+                                        <td>
+                                            <strong>@item.SupplyName</strong>
+                                            @if (info is not null && info.HeldQuantity > 0)
+                                            {
+                                                <div class="asset-muted small">@info.BranchQuantity in the branch, @info.HeldQuantity held for other approved requests</div>
+                                            }
+                                        </td>
+                                        <td class="text-end">@item.QuantityRequested @SupplyText.Unit(item.QuantityRequested, item.Unit)</td>
+                                        <td class="text-end"><strong>@available</strong> @SupplyText.Unit(available, item.Unit)</td>
+                                        <td class="text-end asset-muted">@(info?.ElsewhereQuantity ?? 0)</td>
+                                        <td>
+                                            <input type="hidden" name="Items[@n].SupplyID" value="@item.SupplyID" />
+                                            <input type="number" name="Items[@n].Quantity" value="@suggest" min="0" max="@suggest" step="1" inputmode="numeric"
+                                                   class="form-control form-control-sm" aria-label="Amount to approve for @item.SupplyName" data-asked="@item.QuantityRequested" />
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="register-step-body">
+                        <div class="form-text mb-3">You can lower an amount or set it to 0. You cannot approve more than is available in @Model.BranchName; other branches are shown for information only.</div>
+                        <div class="row g-3">
+                            <div class="col-md-5">
+                                <label class="form-label" for="pickup">Pick up at</label>
+                                <select name="PickupLocationID" id="pickup" class="form-select" required>
+                                    <option value="">Pick a location</option>
+                                    @foreach (var l in approval.PickupLocations)
+                                    {
+                                        <option value="@l.LocationID">@l.LocationName</option>
+                                    }
+                                </select>
+                                <div class="form-text">Only locations in @Model.BranchName.</div>
+                            </div>
+                            <div class="col-md-7">
+                                <label class="form-label" for="approveNote">Note to requester <span class="register-optional" id="noteHint">optional</span></label>
+                                <textarea name="Note" id="approveNote" class="form-control" rows="2" maxlength="500"></textarea>
+                                <div class="form-text">Required when you lower an amount.</div>
+                            </div>
+                        </div>
+                        <div class="d-flex justify-content-end mt-3" style="gap:8px;">
+                            <button type="button" class="btn btn-outline-danger" data-bs-toggle="collapse" data-bs-target="#rejectBox">Reject</button>
+                            <button type="submit" class="btn btn-primary">Approve these amounts</button>
+                        </div>
+                    </div>
+                </form>
+                <div class="collapse" id="rejectBox">
+                    <form asp-action="Reject" asp-route-id="@Model.SupplyRequestID" method="post" class="register-step-body border-top">
+                        @Html.AntiForgeryToken()
+                        <label class="form-label" for="rejectReason">Reason for rejecting <span class="register-optional">optional</span></label>
+                        <textarea name="reason" id="rejectReason" class="form-control" rows="2" maxlength="500"></textarea>
+                        <div class="d-flex justify-content-end mt-3">
+                            <button type="submit" class="btn btn-danger">Reject request</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        }
+        else if (approval is not null && isMine)
+        {
+            <div class="alert alert-warning">This is your own request, so someone else has to approve it.</div>
+        }
+
+        @if (release is not null)
+        {
+            <div class="asset-card register-step mb-3">
+                <div class="register-step-head">
+                    <div class="register-step-title flex-grow-1">Hand over</div>
+                    <span class="nr-head-note">stock goes down when you release</span>
+                </div>
+                <form asp-action="Release" asp-route-id="@Model.SupplyRequestID" method="post" id="releaseForm">
+                    @Html.AntiForgeryToken()
+                    @Html.FormTicket()
+                    @{ var lineNo = 0; }
+                    @foreach (var item in Model.Items.Where(i => (i.QuantityApproved ?? 0) > 0))
+                    {
+                        var approved = item.QuantityApproved ?? 0;
+                        var rooms = release.RoomsBySupply.GetValueOrDefault(item.SupplyID) ?? new List<SupplyRoomDTO>();
+                        var left = approved;
+                        <div class="register-step-body border-bottom" data-release-item data-approved="@approved">
+                            <div class="d-flex align-items-center flex-wrap mb-2" style="gap:10px;">
+                                <strong class="flex-grow-1">@item.SupplyName</strong>
+                                <span class="asset-muted small">Approved: <strong>@approved @SupplyText.Unit(approved, item.Unit)</strong></span>
+                                <span class="asset-pill asset-status st-available" data-chosen></span>
+                            </div>
+                            @if (!rooms.Any())
+                            {
+                                <div class="asset-muted">None left in @Model.BranchName. It will be released as 0 and the requester is told.</div>
+                            }
+                            @foreach (var room in rooms)
+                            {
+                                var take = Math.Min(left, room.Quantity);
+                                left -= take;
+                                <div class="d-flex align-items-center flex-wrap mb-2" style="gap:10px;">
+                                    <span class="flex-grow-1">@room.LocationName <span class="asset-muted small">has @room.Quantity</span></span>
+                                    <span class="asset-muted small">take</span>
+                                    <input type="hidden" name="Lines[@lineNo].SupplyID" value="@item.SupplyID" />
+                                    <input type="hidden" name="Lines[@lineNo].LocationID" value="@room.LocationID" />
+                                    <input type="number" name="Lines[@lineNo].Quantity" value="@take" min="0" max="@room.Quantity" step="1" inputmode="numeric"
+                                           class="form-control form-control-sm" style="width:100px;" data-take aria-label="Take from @room.LocationName" />
+                                </div>
+                                lineNo++;
+                            }
+                        </div>
+                    }
+                    <div class="register-step-body">
+                        <div class="form-text mb-3">A supply can be taken from more than one location. The amounts must add up to what was approved, unless the branch has none left.</div>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label" for="receivedBy">Received by</label>
+                                <input name="ReceivedByName" id="receivedBy" class="form-control" maxlength="100" value="@Model.RequestedByName" required />
+                                <div class="form-text">Change this if someone else collects it.</div>
+                            </div>
+                        </div>
+                        <div class="d-flex justify-content-end mt-3" style="gap:8px;">
+                            <button type="submit" form="uncollectedForm" class="btn btn-outline-secondary">Not collected, cancel request</button>
+                            <button type="submit" class="btn btn-primary">Release and deduct stock</button>
+                        </div>
+                    </div>
+                </form>
+                <form asp-action="CancelUncollected" asp-route-id="@Model.SupplyRequestID" method="post" id="uncollectedForm"
+                      onsubmit="return confirm('Cancel this request? The held supplies become available again.');">
+                    @Html.AntiForgeryToken()
+                </form>
+            </div>
+        }
+
+        <div class="asset-card register-step mb-3">
+            <div class="register-step-head">
+                <div class="register-step-title flex-grow-1">What was asked for</div>
+                <span class="nr-head-note">@Model.Items.Count item@(Model.Items.Count == 1 ? "" : "s")</span>
+            </div>
+            <div class="table-responsive">
+                <table class="table asset-table mb-0">
+                    <thead>
+                        <tr><th>Supply</th><th class="text-end">Asked</th><th class="text-end">Approved</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var i in Model.Items)
+                        {
+                            <tr>
+                                <td><a asp-controller="Supplies" asp-action="Details" asp-route-id="@i.SupplyID" class="asset-name">@i.SupplyName</a></td>
+                                <td class="text-end">@i.QuantityRequested @SupplyText.Unit(i.QuantityRequested, i.Unit)</td>
+                                <td class="text-end">
+                                    @if (i.QuantityApproved.HasValue)
+                                    {
+                                        <strong>@i.QuantityApproved @SupplyText.Unit(i.QuantityApproved.Value, i.Unit)</strong>
+                                        @if (i.QuantityApproved.Value < i.QuantityRequested)
+                                        {
+                                            <span class="asset-pill asset-status st-low">Reduced</span>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <span class="asset-muted">&mdash;</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            @if (decided && !string.IsNullOrWhiteSpace(Model.DecisionNote))
+            {
+                <div class="register-step-body"><strong>Note from @(Model.DecidedByName ?? "the approver"):</strong> @Model.DecisionNote</div>
+            }
+        </div>
+
+        <div class="asset-card register-step">
+            <div class="register-step-head"><div class="register-step-title">Details</div></div>
+            <div class="register-step-body">
+                <div class="row g-3">
+                    <div class="col-md-4"><div class="asset-muted small">Needed by</div><strong>@(Model.NeededBy?.ToString("MMM d, yyyy") ?? "Not given")</strong></div>
+                    <div class="col-md-8"><div class="asset-muted small">Reason</div><strong>@(string.IsNullOrWhiteSpace(Model.Reason) ? "Not given" : Model.Reason)</strong></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="asset-card register-step lk-side">
+            <div class="register-step-head"><div class="register-step-title">Pick up at</div></div>
+            <div class="register-step-body">
+                <div class="lk-code-box">
+                    <div class="lk-code-label">@(s == SupplyRequestStatus.Approved ? "Ready for pick-up" : s == SupplyRequestStatus.Released ? "Collected from" : "Pick-up location")</div>
+                    <div class="lk-code-big">@(Model.PickupLocationName ?? (s == SupplyRequestStatus.Pending ? "Decided on approval" : "—"))</div>
+                </div>
+                @if (Model.PickupLocationName is not null)
+                {
+                    <p class="lk-side-note">@Model.BranchName@(Model.DecidedByName is null ? "" : " · set by " + Model.DecidedByName)</p>
+                }
+                @if (s == SupplyRequestStatus.Approved)
+                {
+                    <p class="lk-side-note mb-0">Bring this request number: <strong>S-@Model.SupplyRequestID</strong>.</p>
+                }
+                @if (s == SupplyRequestStatus.Released)
+                {
+                    <p class="lk-side-note mb-0">Released@(Model.ReleasedAt.HasValue ? " " + Model.ReleasedAt.Value.ToString("MMM d, yyyy") : "")@(Model.ReleasedByName is null ? "" : " by " + Model.ReleasedByName)@(Model.ReceivedByName is null ? "" : " · received by " + Model.ReceivedByName).</p>
+                }
+                @if (s == SupplyRequestStatus.Pending)
+                {
+                    <p class="lk-side-note mb-0">The approver chooses a storage room in @Model.BranchName.</p>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="lk-foot mt-3">
+    @if (isMine && s == SupplyRequestStatus.Pending)
+    {
+        <form asp-action="Cancel" asp-route-id="@Model.SupplyRequestID" method="post" onsubmit="return confirm('Cancel this request?');">
+            @Html.AntiForgeryToken()
+            <button type="submit" class="btn btn-outline-danger">Cancel request</button>
+        </form>
+        <span class="lk-why">You can cancel while it is waiting for approval.</span>
+    }
+    <div class="lk-foot-actions">
+        @if (isMine || !isApproverRole)
+        {
+            <a asp-action="Index" class="btn btn-outline-secondary">Back to my requests</a>
+        }
+        else
+        {
+            <a asp-action="Pending" class="btn btn-outline-secondary">Back to approvals</a>
+        }
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        // Approve: the note becomes required once an amount is lowered.
+        (function () {
+            var form = document.getElementById('approveForm');
+            if (!form) return;
+            var note = document.getElementById('approveNote'), hint = document.getElementById('noteHint');
+            function sync() {
+                var lowered = Array.prototype.some.call(form.querySelectorAll('[data-asked]'), function (i) {
+                    return (parseInt(i.value, 10) || 0) < (parseInt(i.dataset.asked, 10) || 0);
+                });
+                note.required = lowered;
+                hint.textContent = lowered ? 'required' : 'optional';
+            }
+            form.addEventListener('input', sync);
+            sync();
+        })();
+
+        // Release: show how much of each approved amount has been chosen.
+        (function () {
+            var form = document.getElementById('releaseForm');
+            if (!form) return;
+            function sync() {
+                form.querySelectorAll('[data-release-item]').forEach(function (box) {
+                    var approved = parseInt(box.dataset.approved, 10) || 0, chosen = 0;
+                    box.querySelectorAll('[data-take]').forEach(function (i) { chosen += Math.max(0, parseInt(i.value, 10) || 0); });
+                    var pill = box.querySelector('[data-chosen]');
+                    pill.textContent = chosen + ' of ' + approved + ' chosen';
+                    pill.className = 'asset-pill asset-status ' + (chosen === approved ? 'st-available' : chosen > approved ? 'st-overdue' : 'st-low');
+                });
+            }
+            form.addEventListener('input', sync);
+            sync();
+        })();
+    </script>
+}

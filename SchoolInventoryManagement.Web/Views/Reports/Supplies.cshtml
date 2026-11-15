@@ -1,0 +1,160 @@
+﻿@model SchoolInventoryManagement.BLL.DTOs.SupplyReportDTO
+@using SchoolInventoryManagement.BLL.DTOs
+@using SchoolInventoryManagement.Web.Helpers
+@{
+    ViewData["Title"] = "Supplies";
+    var branches = ViewBag.Branches as List<BranchDTO> ?? new();
+    var departments = ViewBag.Departments as List<DepartmentDTO> ?? new();
+    var branchId = ViewBag.BranchId as int?;
+    var departmentId = ViewBag.DepartmentId as int?;
+    var from = ViewBag.FromDate as DateTime?;
+    var to = ViewBag.ToDate as DateTime?;
+    var topUnits = Model.ByDepartment.Count == 0 ? 0 : Model.ByDepartment.Max(d => d.Units);
+    var topItems = Model.ByItem.Where(i => i.Issued > 0).OrderByDescending(i => i.Issued).Take(5).ToList();
+    var topIssued = topItems.Count == 0 ? 0 : topItems.Max(i => i.Issued);
+
+    string Label(SupplyStockStatus s) => s == SupplyStockStatus.OutOfStock ? "Out of stock" : s == SupplyStockStatus.RunningLow ? "Running low" : "In stock";
+    string Pill(SupplyStockStatus s) => s == SupplyStockStatus.OutOfStock ? "st-overdue" : s == SupplyStockStatus.RunningLow ? "st-low" : "st-available";
+    int Pct(int value, int max) => max <= 0 ? 0 : Math.Max(2, (int)Math.Round(100.0 * value / max));
+}
+
+<div class="asset-detail-head mb-2 pb-0 border-0">
+    <div>
+        <h2 class="asset-detail-title">Reports</h2>
+        <div class="asset-detail-sub">Supplies handed out, who used them, and what is left.</div>
+    </div>
+    <div class="asset-detail-actions">
+        <a asp-action="ExportSupplies"
+           asp-route-fromDate="@(from?.ToString("yyyy-MM-dd"))"
+           asp-route-toDate="@(to?.ToString("yyyy-MM-dd"))"
+           asp-route-branchId="@branchId"
+           asp-route-departmentId="@departmentId"
+           class="btn btn-primary">&darr; Export CSV</a>
+    </div>
+</div>
+
+@await Html.PartialAsync("_ReportsNav")
+
+<form method="get" class="rp-filters">
+    <label class="rp-field">
+        <span>From</span>
+        <input type="date" name="fromDate" class="form-control" value="@(from?.ToString("yyyy-MM-dd"))" />
+    </label>
+    <label class="rp-field">
+        <span>To</span>
+        <input type="date" name="toDate" class="form-control" value="@(to?.ToString("yyyy-MM-dd"))" />
+    </label>
+    <label class="rp-field">
+        <span>Branch</span>
+        <select name="branchId" class="form-select">
+            <option value="">All branches</option>
+            @foreach (var b in branches)
+            {
+                <option value="@b.BranchID" selected="@(b.BranchID == branchId)">@b.BranchName</option>
+            }
+        </select>
+    </label>
+    <label class="rp-field">
+        <span>Department</span>
+        <select name="departmentId" class="form-select">
+            <option value="">All departments</option>
+            @foreach (var d in departments)
+            {
+                <option value="@d.DepartmentID" selected="@(d.DepartmentID == departmentId)">@d.DepartmentName</option>
+            }
+        </select>
+    </label>
+    <div class="rp-actions">
+        <a asp-action="Supplies" class="btn btn-outline-secondary">Reset</a>
+        <button type="submit" class="btn btn-primary">Apply</button>
+    </div>
+</form>
+
+<div class="myassets-stats lk-stats-4 mt-0 mb-3">
+    <div><span>Requests released</span><strong>@Model.RequestsReleased</strong></div>
+    <div><span>Units issued</span><strong>@Model.UnitsIssued</strong></div>
+    <div><span>Value issued</span><strong>@DisplayText.Peso(Model.ValueIssued)</strong><span class="text-muted small">from each supply's price per unit</span></div>
+    <div>
+        <span>Running low / out now</span><strong>@Model.RunningLow / @Model.OutOfStock</strong>
+        <a asp-controller="Supplies" asp-action="Index" asp-route-status="RunningLow" class="lk-link">Show low supplies &rarr;</a>
+    </div>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-lg-8">
+        <div class="sab-table-card h-100">
+            <div class="register-step-head"><div class="register-step-title flex-grow-1">Who used the most</div><span class="nr-head-note">by department, from released requests</span></div>
+            @if (Model.ByDepartment.Any())
+            {
+                <div class="table-responsive">
+                    <table class="table asset-table mb-0 align-middle">
+                        <thead><tr><th>Department</th><th class="text-end">Requests</th><th class="text-end">Units</th><th style="width:30%;">Share</th><th class="text-end">Value</th></tr></thead>
+                        <tbody>
+                            @foreach (var d in Model.ByDepartment)
+                            {
+                                <tr>
+                                    <td><strong>@d.DepartmentName</strong></td>
+                                    <td class="text-end">@d.Requests</td>
+                                    <td class="text-end"><strong>@d.Units</strong></td>
+                                    <td><div class="rp-bar"><div style="width:@Pct(d.Units, topUnits)%;"></div></div></td>
+                                    <td class="text-end">@DisplayText.Peso(d.Value)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            else
+            {
+                <div class="sab-empty"><div class="sab-empty-title">No supplies were released in this period</div></div>
+            }
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="sab-table-card h-100">
+            <div class="register-step-head"><div class="register-step-title flex-grow-1">Most issued</div><span class="nr-head-note">top 5</span></div>
+            <div class="register-step-body">
+                @if (!topItems.Any())
+                {
+                    <div class="asset-muted">Nothing issued in this period.</div>
+                }
+                @foreach (var i in topItems)
+                {
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between"><strong>@i.SupplyName</strong><span class="asset-muted">@i.Issued @SupplyText.Unit(i.Issued, i.Unit)</span></div>
+                        <div class="rp-bar mt-1"><div style="width:@Pct(i.Issued, topIssued)%;"></div></div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="sab-table-card" data-pager data-page-size="10" data-noun="supplies">
+    <div class="register-step-head"><div class="register-step-title flex-grow-1">In, out and what is left</div><span class="nr-head-note">by supply, lowest stock first</span></div>
+    @if (Model.ByItem.Any())
+    {
+        <div class="table-responsive">
+            <table class="table asset-table mb-0">
+                <thead><tr><th>Supply</th><th class="text-end">Received</th><th class="text-end">Issued</th><th class="text-end">Adjusted</th><th class="text-end">In stock now</th><th>Status</th></tr></thead>
+                <tbody>
+                    @foreach (var i in Model.ByItem)
+                    {
+                        <tr>
+                            <td><a asp-controller="Supplies" asp-action="Details" asp-route-id="@i.SupplyID" class="asset-name">@i.SupplyName</a></td>
+                            <td class="text-end text-success">@(i.Received > 0 ? "+" + i.Received : "0")</td>
+                            <td class="text-end text-danger">@(i.Issued > 0 ? "−" + i.Issued : "0")</td>
+                            <td class="text-end">@(i.Adjusted > 0 ? "+" + i.Adjusted : i.Adjusted.ToString())</td>
+                            <td class="text-end"><strong>@i.InStock</strong> @SupplyText.Unit(i.InStock, i.Unit)</td>
+                            <td><span class="asset-pill asset-status @Pill(i.Status)">@Label(i.Status)</span></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+    else
+    {
+        <div class="sab-empty"><div class="sab-empty-title">No supplies yet</div></div>
+    }
+</div>

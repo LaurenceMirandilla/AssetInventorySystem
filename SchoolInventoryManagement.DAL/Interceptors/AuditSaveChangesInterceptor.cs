@@ -114,7 +114,7 @@ namespace SchoolInventoryManagement.DAL.Interceptors
          e.Entity is Category || e.Entity is Model ||
          e.Entity is Branch || e.Entity is Department || e.Entity is Location ||
          e.Entity is Role || e.Entity is NewItemRequest || e.Entity is AssetRequestItem ||
-         e.Entity is NewItemRequestItem) &&
+         e.Entity is NewItemRequestItem || e.Entity is Supply || e.Entity is SupplyRequest) &&
         (e.State == EntityState.Added || e.State == EntityState.Modified || e.State == EntityState.Deleted))
     .ToList();
 

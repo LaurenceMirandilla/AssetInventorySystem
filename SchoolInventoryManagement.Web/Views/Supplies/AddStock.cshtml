@@ -1,0 +1,241 @@
+﻿@model SchoolInventoryManagement.BLL.DTOs.AddStockDTO
+@using SchoolInventoryManagement.BLL.DTOs
+@using SchoolInventoryManagement.Web.Helpers
+@using SchoolInventoryManagement.Web.ViewModels
+@{
+    ViewData["Title"] = "Add Stock";
+    var supplies = ViewBag.SupplyChoices as List<SupplyChoiceDTO> ?? new();
+    var locations = ViewBag.Locations as List<SupplyLocationOption> ?? new();
+    var sources = ViewBag.Sources as string[] ?? Array.Empty<string>();
+    var backId = ViewBag.BackToSupplyId as int?;
+}
+
+<form asp-action="AddStock" method="post" class="register-form page-fill" id="addStockForm">
+    @Html.AntiForgeryToken()
+    @Html.FormTicket()
+    <input type="hidden" name="backToSupplyId" value="@backId" />
+
+    <div class="asset-detail-head">
+        <div>
+            <nav class="asset-crumbs" aria-label="Breadcrumb">
+                <a asp-controller="Assets" asp-action="Index">Items</a>
+                <span aria-hidden="true">&rsaquo;</span>
+                <a asp-action="Index">Supplies</a>
+                <span aria-hidden="true">&rsaquo;</span>
+                <span>Add stock</span>
+            </nav>
+            <h2 class="asset-detail-title">Add stock</h2>
+            <div class="asset-detail-sub">For supplies that arrived without a new-item request: a direct purchase, or unused supplies handed back.</div>
+        </div>
+    </div>
+
+    <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+
+    @if (!supplies.Any())
+    {
+        <div class="alert alert-warning">There are no supplies yet. <a asp-action="Create">Add a supply first</a>.</div>
+    }
+
+    <div class="asset-card register-step mb-3">
+        <div class="register-step-head"><div class="register-step-title">Where it came from</div></div>
+        <div class="register-step-body">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label asp-for="Source" class="form-label">Source</label>
+                    <select asp-for="Source" class="form-select">
+                        <option value="">Pick one</option>
+                        @foreach (var s in sources)
+                        {
+                            <option value="@s">@s</option>
+                        }
+                        @if (Model.Source == SchoolInventoryManagement.BLL.Services.SupplyService.NewItemSource)
+                        {
+                            <option value="@Model.Source" selected>@Model.Source</option>
+                        }
+                    </select>
+                    <span asp-validation-for="Source" class="text-danger small"></span>
+                </div>
+                <div class="col-md-4">
+                    <label asp-for="SourceName" class="form-label">From <span class="register-optional">optional</span></label>
+                    <input asp-for="SourceName" class="form-control" maxlength="100" autocomplete="off" placeholder="Who sold or returned it" />
+                </div>
+                <div class="col-md-4">
+                    <label asp-for="Reference" class="form-label">Receipt or reference no. <span class="register-optional">optional</span></label>
+                    <input asp-for="Reference" class="form-control" maxlength="50" autocomplete="off" />
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="asset-card register-step">
+        <div class="register-step-head">
+            <div class="register-step-title flex-grow-1">What to add</div>
+            <span class="nr-head-note" id="lineSummary"></span>
+        </div>
+        <div class="table-responsive">
+            <table class="table asset-table mb-0 align-middle">
+                <thead>
+                    <tr>
+                        <th style="min-width:220px;">Supply</th>
+                        <th>In stock now</th>
+                        <th style="width:130px;">Add</th>
+                        <th style="min-width:200px;">Put in</th>
+                        <th>In stock after</th>
+                        <th><span class="visually-hidden">Remove</span></th>
+                    </tr>
+                </thead>
+                <tbody id="lineRows">
+                    @for (var i = 0; i < Model.Lines.Count; i++)
+                    {
+                        var line = Model.Lines[i];
+                        <tr data-line>
+                            <td>
+                                <select name="Lines[@i].SupplyID" class="form-select form-select-sm" data-field="SupplyID" aria-label="Supply">
+                                    <option value="">Pick a supply</option>
+                                    @foreach (var s in supplies)
+                                    {
+                                        <option value="@s.SupplyID" data-unit="@s.Unit" data-total="@s.TotalQuantity" data-location="@s.DefaultLocationID"
+                                                selected="@(s.SupplyID == line.SupplyID)">@s.SupplyName</option>
+                                    }
+                                </select>
+                            </td>
+                            <td class="asset-muted" data-now>&mdash;</td>
+                            <td>
+                                <input name="Lines[@i].Quantity" value="@line.Quantity" type="number" min="1" step="1" inputmode="numeric"
+                                       class="form-control form-control-sm" data-field="Quantity" aria-label="Quantity to add" />
+                            </td>
+                            <td>
+                                <select name="Lines[@i].LocationID" class="form-select form-select-sm" data-field="LocationID" aria-label="Put in">
+                                    <option value="">Pick a location</option>
+                                    @foreach (var g in locations.GroupBy(l => l.BranchName))
+                                    {
+                                        <optgroup label="@g.Key">
+                                            @foreach (var l in g)
+                                            {
+                                                <option value="@l.Id" selected="@(l.Id == line.LocationID)">@l.Name</option>
+                                            }
+                                        </optgroup>
+                                    }
+                                </select>
+                            </td>
+                            <td data-after>&mdash;</td>
+                            <td class="text-end">
+                                <button type="button" class="btn btn-sm btn-outline-secondary" data-remove aria-label="Remove this row">&times;</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <div class="register-step-body">
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="addLine">+ Add another supply</button>
+            <div class="form-text mt-2">Only supplies already on the list can be picked. For something new, use New item &rsaquo; Supply first. "In stock now" is the total across every location.</div>
+        </div>
+    </div>
+
+    <div class="register-footer">
+        <div class="d-flex ms-auto" style="gap:8px;">
+            @if (backId.HasValue)
+            {
+                <a asp-action="Details" asp-route-id="@backId" class="btn btn-outline-secondary">Cancel</a>
+            }
+            else
+            {
+                <a asp-action="Index" class="btn btn-outline-secondary">Cancel</a>
+            }
+            <button type="submit" class="btn btn-primary" disabled="@(!supplies.Any())">Save and add to stock</button>
+        </div>
+    </div>
+</form>
+
+@section Scripts {
+    @{
+        await Html.RenderPartialAsync("_ValidationScriptsPartial");
+    }
+    <script>
+        (function () {
+            var body = document.getElementById('lineRows');
+            var summary = document.getElementById('lineSummary');
+
+            // Same rule as SupplyText.Unit: 1 box, 6 boxes, 42 reams.
+            function plural(u, q) {
+                if (!u || q === 1) return u || '';
+                var l = u.toLowerCase();
+                if (/s$/.test(l) && !/ss$/.test(l)) return u;
+                if (/(x|ch|sh|ss)$/.test(l)) return u + 'es';
+                return u + 's';
+            }
+
+            function rows() { return Array.prototype.slice.call(body.querySelectorAll('tr[data-line]')); }
+
+            // The model binder needs Lines[0], Lines[1]... with no gaps.
+            function renumber() {
+                rows().forEach(function (row, i) {
+                    row.querySelectorAll('[data-field]').forEach(function (el) {
+                        el.name = 'Lines[' + i + '].' + el.getAttribute('data-field');
+                    });
+                    row.querySelector('[data-remove]').disabled = rows().length === 1;
+                });
+            }
+
+            function sync() {
+                var units = 0, filled = 0;
+                rows().forEach(function (row) {
+                    var supply = row.querySelector('[data-field=SupplyID]');
+                    var qty = row.querySelector('[data-field=Quantity]');
+                    var opt = supply.options[supply.selectedIndex];
+                    var q = Math.max(0, parseInt(qty.value, 10) || 0);
+                    var now = row.querySelector('[data-now]'), after = row.querySelector('[data-after]');
+                    if (supply.value) {
+                        var total = parseInt(opt.dataset.total, 10) || 0, u = opt.dataset.unit;
+                        now.textContent = total + ' ' + plural(u, total);
+                        after.innerHTML = '';
+                        var strong = document.createElement('strong');
+                        strong.textContent = (total + q);
+                        after.appendChild(strong);
+                        after.appendChild(document.createTextNode(' ' + plural(u, total + q)));
+                        filled++; units += q;
+                    } else {
+                        now.textContent = '\u2014'; after.textContent = '\u2014';
+                    }
+                });
+                summary.textContent = filled + ' suppl' + (filled === 1 ? 'y' : 'ies') + ' \u00B7 ' + units + ' unit' + (units === 1 ? '' : 's');
+            }
+
+            body.addEventListener('change', function (e) {
+                var el = e.target;
+                // Picking a supply offers the room it is already kept in.
+                if (el.matches('[data-field=SupplyID]')) {
+                    var row = el.closest('tr'), loc = row.querySelector('[data-field=LocationID]');
+                    var opt = el.options[el.selectedIndex];
+                    if (!loc.value && opt && opt.dataset.location) loc.value = opt.dataset.location;
+                }
+                sync();
+            });
+            body.addEventListener('input', sync);
+            body.addEventListener('click', function (e) {
+                var btn = e.target.closest('[data-remove]');
+                if (!btn || rows().length === 1) return;
+                btn.closest('tr').remove();
+                renumber(); sync();
+            });
+
+            document.getElementById('addLine').addEventListener('click', function () {
+                var copy = rows()[0].cloneNode(true);
+                copy.querySelectorAll('select').forEach(function (s) { s.selectedIndex = 0; });
+                copy.querySelector('[data-field=Quantity]').value = 1;
+                body.appendChild(copy);
+                renumber(); sync();
+                copy.querySelector('[data-field=SupplyID]').focus();
+            });
+
+            // A row opened for one supply starts with its usual room.
+            rows().forEach(function (row) {
+                var supply = row.querySelector('[data-field=SupplyID]'), loc = row.querySelector('[data-field=LocationID]');
+                var opt = supply.options[supply.selectedIndex];
+                if (supply.value && !loc.value && opt.dataset.location) loc.value = opt.dataset.location;
+            });
+            renumber(); sync();
+        })();
+    </script>
+}

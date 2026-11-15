@@ -91,7 +91,7 @@ namespace SchoolInventoryManagement.BLL.Services
         {
             var prefixes = await _context.Categories
                 .Where(c => c.CodePrefix != null && c.CodePrefix != "")
-                .Select(c => c.CodePrefix)
+                .Select(c => c.CodePrefix!)
                 .ToListAsync();
 
             var codes = await _context.Assets.Select(a => a.AssetCode).ToListAsync();

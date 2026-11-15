@@ -38,6 +38,11 @@ namespace SchoolInventoryManagement.Web.ViewComponents
                     .Select(u => u.RoleID).FirstOrDefaultAsync();
                 pending = await _context.AssetRequests.CountAsync(r =>
                     r.RequestStatus == RequestStatus.Pending && r.RequestedByUser.RoleID != roleId);
+                // Supply requests waiting for a decision, by the same rule.
+                pending += await _context.SupplyRequests.CountAsync(r =>
+                    r.Status == SupplyRequestStatus.Pending
+                    && r.RequestedByUserID != userId
+                    && r.RequestedBy.RoleID != roleId);
             }
 
             // Same pill as the notifications count.

@@ -1,6 +1,7 @@
 ﻿using System.Collections.Generic;
 using System.Threading.Tasks;
 using SchoolInventoryManagement.BLL.DTOs;
+using SchoolInventoryManagement.DAL.Entities.Enums;
 
 namespace SchoolInventoryManagement.BLL.Interfaces
 {
@@ -8,7 +9,8 @@ namespace SchoolInventoryManagement.BLL.Interfaces
     {
         Task<CategoryDTO> CreateCategoryAsync(CreateCategoryDTO dto, int actingUserId);
         Task<CategoryDTO?> GetCategoryByIdAsync(int categoryId);
-        Task<List<CategoryDTO>> GetAllCategoriesAsync();
+        // kind: only asset categories, only supply categories, or (null) both.
+        Task<List<CategoryDTO>> GetAllCategoriesAsync(CategoryKind? kind = null);
         Task UpdateCategoryAsync(int categoryId, UpdateCategoryDTO dto, int actingUserId);
 
         // A real hard delete, unlike Assets and Users — but only while

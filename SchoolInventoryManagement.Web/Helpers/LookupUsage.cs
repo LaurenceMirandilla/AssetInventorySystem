@@ -33,7 +33,8 @@ namespace SchoolInventoryManagement.Web.Helpers
             { AssetStatus.Assigned, AssetStatus.InTransit, AssetStatus.Overdue };
 
         // ---- Categories -------------------------------------------------
-        public record CategoryUsage(string NextCode, string? Blocked);
+        // NextCode is null for a supply category: it has no codes.
+        public record CategoryUsage(string? NextCode, string? Blocked);
 
         public async Task<Dictionary<int, CategoryUsage>> CategoriesAsync()
         {
@@ -43,13 +44,21 @@ namespace SchoolInventoryManagement.Web.Helpers
             // Every code, as AssetService numbers them: the next free number
             // after the highest code with the prefix.
             var codes = await _context.Assets.Select(a => a.AssetCode).ToListAsync();
+            var supplies = await _context.Supplies
+                .GroupBy(s => s.CategoryID)
+                .Select(g => new { CategoryID = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.CategoryID, x => x.Count);
 
             return categories.ToDictionary(c => c.CategoryID, c =>
             {
-                var next = AssetCodes.NextNumber(c.CodePrefix, codes);
+                var nextCode = string.IsNullOrEmpty(c.CodePrefix)
+                    ? null
+                    : AssetCodes.Format(c.CodePrefix, AssetCodes.NextNumber(c.CodePrefix, codes));
+                var inIt = supplies.GetValueOrDefault(c.CategoryID);
                 return new CategoryUsage(
-                    AssetCodes.Format(c.CodePrefix, next),
-                    c.Models > 0 ? $"Can't delete: {c.Models} model{(c.Models == 1 ? "" : "s")} use{(c.Models == 1 ? "s" : "")} it." : null);
+                    nextCode,
+                    c.Models > 0 ? $"Can't delete: {c.Models} model{(c.Models == 1 ? "" : "s")} use{(c.Models == 1 ? "s" : "")} it." :
+                    inIt > 0 ? $"Can't delete: {inIt} suppl{(inIt == 1 ? "y is" : "ies are")} in it." : null);
             });
         }
 
@@ -110,6 +119,12 @@ namespace SchoolInventoryManagement.Web.Helpers
             var requested = await _context.AssetRequests.Where(r => r.RequestedLocationID != null)
                 .Select(r => r.RequestedLocationID!.Value).Distinct().ToListAsync();
 
+            // Supplies kept here, ever moved through here, or collected here.
+            var supplyUse = await _context.SupplyStock.Select(k => k.LocationID)
+                .Union(_context.SupplyTransactions.Select(t => t.LocationID))
+                .Union(_context.SupplyRequests.Where(r => r.PickupLocationID != null).Select(r => r.PickupLocationID!.Value))
+                .ToListAsync();
+
             var ids = await _context.Locations.Select(l => l.LocationID).ToListAsync();
             return ids.ToDictionary(id => id, id =>
             {
@@ -117,7 +132,8 @@ namespace SchoolInventoryManagement.Web.Helpers
                 var units = h?.Units ?? 0;
                 var blocked = units > 0 ? $"Can't delete: {units} asset{(units == 1 ? " is" : "s are")} here."
                     : requested.Contains(id) ? "Can't delete: requests name it."
-                    : everMoved.Contains(id) ? "Can't delete: its movement history refers to it." : null;
+                    : everMoved.Contains(id) ? "Can't delete: its movement history refers to it."
+                    : supplyUse.Contains(id) ? "Can't delete: supplies or their history refer to it." : null;
                 return new LocationUsage(units, movesIn.GetValueOrDefault(id) + movesOut.GetValueOrDefault(id), h?.Depts ?? 0, blocked);
             });
         }

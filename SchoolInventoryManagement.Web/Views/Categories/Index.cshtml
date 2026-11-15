@@ -1,7 +1,12 @@
 ﻿@model List<SchoolInventoryManagement.BLL.DTOs.CategoryDTO>
 @using SchoolInventoryManagement.Web.Helpers
+@using SchoolInventoryManagement.DAL.Entities.Enums
 @{
     ViewData["Title"] = "Categories";
+    var kind = ViewBag.Kind is CategoryKind k ? k : CategoryKind.Asset;
+    var isSupply = kind == CategoryKind.Supply;
+    var assetTotal = (int)(ViewBag.AssetCategoryCount ?? 0);
+    var supplyTotal = (int)(ViewBag.SupplyCategoryCount ?? 0);
     var usage = ViewBag.Usage as Dictionary<int, LookupUsage.CategoryUsage> ?? new();
     var categories = Model.OrderBy(c => c.CategoryName).ToList();
 }
@@ -13,20 +18,41 @@
 <div class="asset-detail-head mb-3 pb-0 border-0">
     <div>
         <h2 class="asset-detail-title">Categories</h2>
-        <div class="asset-detail-sub">@Model.Count categor@(Model.Count == 1 ? "y" : "ies") · the code prefix starts every asset code</div>
+        @if (isSupply)
+        {
+            <div class="asset-detail-sub">@Model.Count supply categor@(Model.Count == 1 ? "y" : "ies") · they group supplies, and have no code prefix</div>
+        }
+        else
+        {
+            <div class="asset-detail-sub">@Model.Count asset categor@(Model.Count == 1 ? "y" : "ies") · the code prefix starts every asset code</div>
+        }
     </div>
     <div class="asset-detail-actions">
-        <a asp-action="Create" class="btn btn-primary">+ New category</a>
+        <a asp-action="Create" asp-route-kind="@kind" class="btn btn-primary">+ New category</a>
     </div>
 </div>
+
+@* Assets / Supplies. A category belongs to one side only. *@
+<nav class="sab-seg mb-3" aria-label="Category kind">
+    <a asp-action="Index" class="@(isSupply ? "" : "active")" aria-current="@(isSupply ? null : "page")">Assets · @assetTotal</a>
+    <a asp-action="Index" asp-route-kind="@CategoryKind.Supply" class="@(isSupply ? "active" : "")" aria-current="@(isSupply ? "page" : null)">Supplies · @supplyTotal</a>
+</nav>
 
 @if (!categories.Any())
 {
     <div class="sab-table-card">
         <div class="sab-empty">
-            <div class="sab-empty-title">No categories yet</div>
-            <p>A category is the top of the catalog. Add one before adding models.</p>
-            <a asp-action="Create" class="btn btn-primary">+ New category</a>
+            @if (isSupply)
+            {
+                <div class="sab-empty-title">No supply categories yet</div>
+                <p>Supply categories group things that get used up, such as Office supplies or Cleaning.</p>
+            }
+            else
+            {
+                <div class="sab-empty-title">No categories yet</div>
+                <p>A category is the top of the catalog. Add one before adding models.</p>
+            }
+            <a asp-action="Create" asp-route-kind="@kind" class="btn btn-primary">+ New category</a>
         </div>
     </div>
 }
@@ -47,9 +73,23 @@ else
                             data-search="@($"{c.CategoryName} {c.CodePrefix} {c.Description}".ToLowerInvariant())">
                         <span class="myassets-item-main">
                             <span class="myassets-item-title">@c.CategoryName</span>
-                            <span class="myassets-item-sub">@c.ModelCount model@(c.ModelCount == 1 ? "" : "s")</span>
+                            @if (isSupply)
+                            {
+                                <span class="myassets-item-sub">Supply category</span>
+                            }
+                            else
+                            {
+                                <span class="myassets-item-sub">@c.ModelCount model@(c.ModelCount == 1 ? "" : "s")</span>
+                            }
                         </span>
-                        <span class="lk-count">@c.AssetCount asset@(c.AssetCount == 1 ? "" : "s")</span>
+                        @if (isSupply)
+                        {
+                            <span class="lk-count">@c.SupplyCount suppl@(c.SupplyCount == 1 ? "y" : "ies")</span>
+                        }
+                        else
+                        {
+                            <span class="lk-count">@c.AssetCount asset@(c.AssetCount == 1 ? "" : "s")</span>
+                        }
                     </button>
                 }
             </div>
@@ -65,8 +105,26 @@ else
                 <article class="myassets-panel" data-panel="c-@c.CategoryID" hidden>
                     <button type="button" class="myassets-back" data-back>&larr; All categories</button>
                     <h3 class="myassets-panel-title mt-0">@c.CategoryName</h3>
-                    <div class="lk-sub">Code prefix @c.CodePrefix@(u is null ? "" : " · new assets are numbered " + u.NextCode + "...")</div>
+                    @if (isSupply)
+                    {
+                        <div class="lk-sub">Supply category · no code prefix, because supplies are counted by quantity and have no codes</div>
+                    }
+                    else
+                    {
+                        <div class="lk-sub">Code prefix @c.CodePrefix@(u?.NextCode is null ? "" : " · new assets are numbered " + u.NextCode + "...")</div>
+                    }
 
+                    @if (isSupply)
+                    {
+                        <div class="myassets-stats lk-stats-3">
+                            <div>
+                                <span>Supplies</span><strong>@c.SupplyCount</strong>
+                                <a asp-controller="Supplies" asp-action="Index" asp-route-categoryId="@c.CategoryID" class="lk-link">View supplies &rarr;</a>
+                            </div>
+                        </div>
+                    }
+                    @if (!isSupply)
+                    {
                     <div class="myassets-stats lk-stats-3">
                         <div>
                             <span>Models</span><strong>@c.ModelCount</strong>
@@ -79,6 +137,7 @@ else
                         </div>
                         <div><span>Available now</span><strong>@c.AvailableCount</strong></div>
                     </div>
+                    }
 
                     <div class="asset-card register-step mt-3">
                         <div class="register-step-head">
@@ -93,10 +152,19 @@ else
                                     <input id="@formId-name" name="CategoryName" value="@c.CategoryName" class="form-control" maxlength="100" required />
                                 </div>
                                 <div class="col-md-6">
-                                    <label class="form-label" for="@formId-code">Code prefix</label>
-                                    <input id="@formId-code" name="CodePrefix" value="@c.CodePrefix" class="form-control text-uppercase lk-prefix" maxlength="3"
-                                           pattern="[A-Za-z]{3}" required autocomplete="off" />
-                                    <div class="form-text">Exactly 3 letters. Changing it only affects new assets.</div>
+                                    @if (isSupply)
+                                    {
+                                        <label class="form-label" for="@formId-kind">Used for</label>
+                                        <input id="@formId-kind" value="Supplies" class="form-control" disabled />
+                                        <div class="form-text">Set when the category was created. It can't be changed.</div>
+                                    }
+                                    else
+                                    {
+                                        <label class="form-label" for="@formId-code">Code prefix</label>
+                                        <input id="@formId-code" name="CodePrefix" value="@c.CodePrefix" class="form-control text-uppercase lk-prefix" maxlength="3"
+                                               pattern="[A-Za-z]{3}" required autocomplete="off" />
+                                        <div class="form-text">Exactly 3 letters. Changing it only affects new assets.</div>
+                                    }
                                 </div>
                                 <div class="col-12">
                                     <label class="form-label" for="@formId-desc">Description <span class="register-optional">optional</span></label>

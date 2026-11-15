@@ -1,0 +1,142 @@
+﻿@model List<SchoolInventoryManagement.BLL.DTOs.SupplyCountLineDTO>
+@using SchoolInventoryManagement.Web.Helpers
+@using SchoolInventoryManagement.Web.ViewModels
+@{
+    ViewData["Title"] = "Count Supplies";
+    var locations = ViewBag.Locations as List<SupplyLocationOption> ?? new();
+    var locationId = ViewBag.LocationId as int?;
+    var chosen = locations.FirstOrDefault(l => l.Id == locationId);
+}
+
+@if (TempData["SuccessMessage"] != null)
+{
+    <div class="alert alert-success">@TempData["SuccessMessage"]</div>
+}
+@if (TempData["ErrorMessage"] != null)
+{
+    <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
+}
+
+<div class="asset-detail-head">
+    <div>
+        <nav class="asset-crumbs" aria-label="Breadcrumb">
+            <a asp-controller="Assets" asp-action="Index">Items</a>
+            <span aria-hidden="true">&rsaquo;</span>
+            <a asp-action="Index">Supplies</a>
+            <span aria-hidden="true">&rsaquo;</span>
+            <span>Count</span>
+        </nav>
+        <h2 class="asset-detail-title">Count supplies</h2>
+        <div class="asset-detail-sub">Check the shelf against the system, one location at a time. Where the two differ, the stock is corrected and the reason is kept.</div>
+    </div>
+</div>
+
+<form method="get" class="rp-filters">
+    <label class="rp-field" style="min-width:280px;">
+        <span>Location</span>
+        <select name="locationId" class="form-select" onchange="this.form.submit()">
+            <option value="">Pick a location</option>
+            @foreach (var g in locations.GroupBy(l => l.BranchName))
+            {
+                <optgroup label="@g.Key">
+                    @foreach (var l in g)
+                    {
+                        <option value="@l.Id" selected="@(l.Id == locationId)">@l.Name</option>
+                    }
+                </optgroup>
+            }
+        </select>
+    </label>
+</form>
+
+@if (chosen is null)
+{
+    <div class="sab-table-card"><div class="sab-empty"><div class="sab-empty-title">Pick a location to count</div><p>The sheet lists every supply kept there.</p></div></div>
+}
+else if (!Model.Any())
+{
+    <div class="sab-table-card"><div class="sab-empty"><div class="sab-empty-title">No supplies are kept in @chosen.Name</div><p>Use Add stock or Move stock to put supplies there first.</p></div></div>
+}
+else
+{
+    <form asp-action="Count" method="post" id="countForm" class="register-form">
+        @Html.AntiForgeryToken()
+        @Html.FormTicket()
+        <input type="hidden" name="LocationID" value="@chosen.Id" />
+
+        <div class="asset-card register-step">
+            <div class="register-step-head">
+                <div class="register-step-title flex-grow-1">Count sheet &middot; @chosen.Name</div>
+                <span class="nr-head-note" id="countSummary"></span>
+            </div>
+            <div class="table-responsive">
+                <table class="table asset-table mb-0 align-middle">
+                    <thead>
+                        <tr><th>Supply</th><th class="text-end">System says</th><th style="width:130px;">You counted</th><th class="text-end">Difference</th><th style="min-width:220px;">Reason</th></tr>
+                    </thead>
+                    <tbody>
+                        @for (var i = 0; i < Model.Count; i++)
+                        {
+                            var line = Model[i];
+                            <tr data-line data-system="@line.SystemQuantity">
+                                <td><strong>@line.SupplyName</strong><div class="asset-muted small">@line.CategoryName</div></td>
+                                <td class="text-end">@line.SystemQuantity @SupplyText.Unit(line.SystemQuantity, line.Unit)</td>
+                                <td>
+                                    <input type="hidden" name="Lines[@i].SupplyID" value="@line.SupplyID" />
+                                    <input type="hidden" name="Lines[@i].SystemQuantity" value="@line.SystemQuantity" />
+                                    <input type="number" name="Lines[@i].Counted" min="0" step="1" inputmode="numeric" class="form-control form-control-sm"
+                                           data-counted aria-label="Counted for @line.SupplyName" />
+                                </td>
+                                <td class="text-end" data-diff>&mdash;</td>
+                                <td>
+                                    <input name="Lines[@i].Reason" maxlength="150" class="form-control form-control-sm" data-reason disabled
+                                           placeholder="Needed when the count differs" aria-label="Reason for @line.SupplyName" />
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <div class="register-step-body">
+                <div class="form-text">Leave a line blank to skip it. A reason is required wherever your count is different from the system.</div>
+            </div>
+        </div>
+
+        <div class="register-footer">
+            <div class="d-flex ms-auto" style="gap:8px;">
+                <a asp-action="Index" class="btn btn-outline-secondary">Cancel</a>
+                <button type="submit" class="btn btn-primary" onclick="return confirm('Save this count? Stock is corrected on every line that differs.');">Finish count and correct stock</button>
+            </div>
+        </div>
+    </form>
+}
+
+@section Scripts {
+    <script>
+        (function () {
+            var form = document.getElementById('countForm');
+            if (!form) return;
+            function sync() {
+                var counted = 0, differ = 0, lines = form.querySelectorAll('[data-line]');
+                lines.forEach(function (row) {
+                    var input = row.querySelector('[data-counted]'), diff = row.querySelector('[data-diff]'),
+                        reason = row.querySelector('[data-reason]');
+                    if (input.value === '') {
+                        diff.textContent = '\u2014'; diff.className = 'text-end';
+                        reason.disabled = true; reason.required = false;
+                        return;
+                    }
+                    counted++;
+                    var d = (parseInt(input.value, 10) || 0) - (parseInt(row.dataset.system, 10) || 0);
+                    diff.textContent = d === 0 ? '0' : (d > 0 ? '+' : '') + d;
+                    diff.className = 'text-end fw-bold ' + (d === 0 ? 'text-muted' : d < 0 ? 'text-danger' : 'text-warning');
+                    reason.disabled = d === 0; reason.required = d !== 0;
+                    if (d !== 0) differ++;
+                });
+                document.getElementById('countSummary').textContent = counted + ' of ' + lines.length + ' counted \u00B7 ' + differ + ' differ';
+            }
+            form.addEventListener('input', sync);
+            sync();
+        })();
+    </script>
+}

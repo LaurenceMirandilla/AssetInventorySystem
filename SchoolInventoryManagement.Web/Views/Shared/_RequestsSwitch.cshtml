@@ -1,0 +1,8 @@
+﻿@model string
+@* My Requests: asset requests (borrow and transfer) or supply requests. *@
+<nav class="sab-seg mb-3" aria-label="Kind of request">
+    <a asp-controller="AssetRequests" asp-action="MyRequests" class="@(Model == "Assets" ? "active" : "")"
+       aria-current="@(Model == "Assets" ? "page" : null)">Borrow and transfer</a>
+    <a asp-controller="SupplyRequests" asp-action="Index" class="@(Model == "Supplies" ? "active" : "")"
+       aria-current="@(Model == "Supplies" ? "page" : null)">Supplies</a>
+</nav>

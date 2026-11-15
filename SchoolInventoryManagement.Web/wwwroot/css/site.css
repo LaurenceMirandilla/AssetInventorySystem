@@ -1429,6 +1429,11 @@ a.dash-kpi:hover { background: rgba(255, 255, 255, 0.14); color: #fff; text-deco
 .st-intransit        { background: #e4f3f5; color: #1f6f7a; }
 .st-undermaintenance { background: #e8edf3; color: #3d4b5c; }
 .st-overdue          { background: var(--sab-red-bg); color: var(--sab-red-text); }
+/* A supply at or below its low-stock level (Items > Supplies). */
+.st-low              { background: #fdf1e3; color: #8a4b12; }
+/* Share bars on Reports > Supplies. */
+.rp-bar { height: 8px; background: #eaf1ec; }
+.rp-bar > div { height: 8px; background: var(--sab-green); }
 .st-disposed         { background: var(--sab-gray-bg); color: var(--sab-gray-text); }
 .st-available::before { background: #43a047; }
 .st-overdue::before   { background: #e53935; }

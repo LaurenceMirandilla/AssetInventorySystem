@@ -1,0 +1,94 @@
+﻿@model List<SchoolInventoryManagement.BLL.DTOs.SupplyRequestResponseDTO>
+@using SchoolInventoryManagement.DAL.Entities.Enums
+@{
+    ViewData["Title"] = "Supply Request History";
+    var status = ViewBag.Status as SupplyRequestStatus?;
+    var pageNo = (int)ViewBag.Page;
+    var lastPage = (int)ViewBag.LastPage;
+    var total = (int)ViewBag.Total;
+    var tabs = new (string Label, SupplyRequestStatus? Value)[]
+    {
+        ("All", null), ("Released", SupplyRequestStatus.Released),
+        ("Rejected", SupplyRequestStatus.Rejected), ("Cancelled", SupplyRequestStatus.Cancelled)
+    };
+    string Pill(SupplyRequestStatus s) => s switch
+    {
+        SupplyRequestStatus.Released => "st-available",
+        SupplyRequestStatus.Rejected => "st-overdue",
+        _ => "st-undermaintenance"
+    };
+}
+
+<div class="asset-detail-head mb-3 pb-0 border-0">
+    <div>
+        <nav class="asset-crumbs" aria-label="Breadcrumb">
+            <a asp-action="Pending">Approvals</a>
+            <span aria-hidden="true">&rsaquo;</span>
+            <span>Supply request history</span>
+        </nav>
+        <h2 class="asset-detail-title">Supply request history</h2>
+        <div class="asset-detail-sub">@total finished supply request@(total == 1 ? "" : "s"): released, rejected or cancelled. Newest first.</div>
+    </div>
+</div>
+
+<nav class="sab-seg mb-3" aria-label="Status">
+    @foreach (var t in tabs)
+    {
+        <a asp-action="History" asp-route-status="@t.Value" class="@(t.Value == status ? "active" : "")">@t.Label</a>
+    }
+</nav>
+
+<div class="sab-table-card asset-list">
+    @if (!Model.Any())
+    {
+        <div class="sab-empty"><div class="sab-empty-title">Nothing here yet</div><p>Finished supply requests appear here.</p></div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table asset-table mb-0">
+                <thead>
+                    <tr><th>Request</th><th>Requested by</th><th>Supplies</th><th>Status</th><th>Finished</th><th>Handled by</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var r in Model)
+                    {
+                        var when = r.ReleasedAt ?? r.DecidedAt ?? r.CancelledAt ?? r.CreatedAt;
+                        <tr>
+                            <td><a asp-action="Details" asp-route-id="@r.SupplyRequestID" class="asset-code-chip">S-@r.SupplyRequestID</a></td>
+                            <td>@r.RequestedByName<div class="asset-muted small">@r.DepartmentName &middot; @r.BranchName</div></td>
+                            <td>@r.ItemsSummary</td>
+                            <td><span class="asset-pill asset-status @Pill(r.Status)">@r.Status</span></td>
+                            <td class="asset-muted text-nowrap">@when.ToString("MMM d, yyyy")</td>
+                            <td class="asset-muted">@(r.ReleasedByName ?? r.DecidedByName ?? (r.Status == SupplyRequestStatus.Cancelled ? "Requester" : "—"))</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <div class="asset-foot">
+            <span class="asset-page-label">Page @pageNo of @lastPage</span>
+            <div class="asset-pager">
+                <nav aria-label="Pages" class="d-flex" style="gap:6px;">
+                    @if (pageNo > 1)
+                    {
+                        <a class="asset-page" asp-action="History" asp-route-status="@status" asp-route-page="@(pageNo - 1)" aria-label="Previous page">&lsaquo;</a>
+                    }
+                    else
+                    {
+                        <span class="asset-page disabled" aria-hidden="true">&lsaquo;</span>
+                    }
+                    <span class="asset-page current" aria-current="page">@pageNo</span>
+                    @if (pageNo < lastPage)
+                    {
+                        <a class="asset-page" asp-action="History" asp-route-status="@status" asp-route-page="@(pageNo + 1)" aria-label="Next page">&rsaquo;</a>
+                    }
+                    else
+                    {
+                        <span class="asset-page disabled" aria-hidden="true">&rsaquo;</span>
+                    }
+                </nav>
+            </div>
+        </div>
+    }
+</div>

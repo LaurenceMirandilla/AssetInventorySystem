@@ -30,12 +30,18 @@ namespace SchoolInventoryManagement.BLL.Services
             if (nameExists)
                 throw new InvalidOperationException("A category with this name already exists.");
 
-            var prefix = NormalizePrefix(dto.CodePrefix);
-            await EnsurePrefixFreeAsync(prefix, exceptCategoryId: null);
+            // Only asset categories carry a code prefix.
+            string? prefix = null;
+            if (dto.Kind == CategoryKind.Asset)
+            {
+                prefix = NormalizePrefix(dto.CodePrefix);
+                await EnsurePrefixFreeAsync(prefix, exceptCategoryId: null);
+            }
 
             var category = new Category
             {
                 CategoryName = dto.CategoryName,
+                Kind = dto.Kind,
                 CodePrefix = prefix,
                 Description = dto.Description
             };
@@ -54,20 +60,23 @@ namespace SchoolInventoryManagement.BLL.Services
 
         // With how many models and assets each category holds, for the
         // Categories list. Counted in the database, not by loading assets.
-        public async Task<List<CategoryDTO>> GetAllCategoriesAsync()
+        public async Task<List<CategoryDTO>> GetAllCategoriesAsync(CategoryKind? kind = null)
         {
             return await _context.Categories
+                .Where(c => kind == null || c.Kind == kind)
                 .OrderBy(c => c.CategoryName)
                 .Select(c => new CategoryDTO
                 {
                     CategoryID = c.CategoryID,
                     CategoryName = c.CategoryName,
+                    Kind = c.Kind,
                     CodePrefix = c.CodePrefix,
                     Description = c.Description,
                     ModelCount = c.Models.Count,
                     AssetCount = c.Models.SelectMany(m => m.Assets).Count(),
                     AvailableCount = c.Models.SelectMany(m => m.Assets)
-                        .Count(a => a.Status == AssetStatus.Available)
+                        .Count(a => a.Status == AssetStatus.Available),
+                    SupplyCount = _context.Supplies.Count(s => s.CategoryID == c.CategoryID)
                 })
                 .ToListAsync();
         }
@@ -85,8 +94,14 @@ namespace SchoolInventoryManagement.BLL.Services
             if (nameTaken)
                 throw new InvalidOperationException("A category with this name already exists.");
 
-            var prefix = NormalizePrefix(dto.CodePrefix);
-            await EnsurePrefixFreeAsync(prefix, exceptCategoryId: categoryId);
+            // The kind never changes; a supply category keeps no prefix
+            // whatever the form posts.
+            string? prefix = null;
+            if (category.Kind == CategoryKind.Asset)
+            {
+                prefix = NormalizePrefix(dto.CodePrefix);
+                await EnsurePrefixFreeAsync(prefix, exceptCategoryId: categoryId);
+            }
 
             // A new code only affects assets registered from now on --
             // existing codes stay exactly as printed on their labels.
@@ -109,6 +124,11 @@ namespace SchoolInventoryManagement.BLL.Services
             if (inUse)
                 throw new InvalidOperationException(
                     "This category cannot be deleted because it has one or more models under it.");
+
+            var hasSupplies = await _context.Supplies.AnyAsync(s => s.CategoryID == categoryId);
+            if (hasSupplies)
+                throw new InvalidOperationException(
+                    "This category cannot be deleted because it has one or more supplies in it.");
 
             _context.Categories.Remove(category);
             await _context.SaveChangesAsync();

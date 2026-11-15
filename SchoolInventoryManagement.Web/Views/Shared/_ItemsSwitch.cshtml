@@ -1,0 +1,9 @@
+﻿@model (string Active, int AssetTotal, int SupplyTotal)
+@* The Assets / Supplies switch at the top of the Items page. Assets are
+   single units with their own codes; supplies are counted by quantity. *@
+<nav class="sab-seg mb-3" aria-label="Kind of item">
+    <a asp-controller="Assets" asp-action="Index" class="@(Model.Active == "Assets" ? "active" : "")"
+       aria-current="@(Model.Active == "Assets" ? "page" : null)">Assets &middot; @Model.AssetTotal</a>
+    <a asp-controller="Supplies" asp-action="Index" class="@(Model.Active == "Supplies" ? "active" : "")"
+       aria-current="@(Model.Active == "Supplies" ? "page" : null)">Supplies &middot; @Model.SupplyTotal</a>
+</nav>

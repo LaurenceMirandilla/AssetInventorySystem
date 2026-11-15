@@ -50,6 +50,8 @@
     var navSection = ViewData["NavSection"] as string;
     var onApprovals = inRequests
         && (approvalActions.Contains(currentAction, StringComparer.OrdinalIgnoreCase) || navSection == "approvals");
+    var onSupplyApprovals = isActive(new[] { "SupplyRequests" })
+        && string.Equals(currentAction, "Pending", StringComparison.OrdinalIgnoreCase);
     var onRequestHistory = inRequests
         && (string.Equals(currentAction, "History", StringComparison.OrdinalIgnoreCase) || navSection == "history");
 
@@ -136,9 +138,9 @@
                         </a>
                     </li>
                     <li class="sab-nav-item">
-                        <a class="sab-nav-link @(isActive(new[]{"Assets"}) && currentAction != "MyAssets" ? "active" : "")"
+                        <a class="sab-nav-link @(isActive(new[]{"Assets", "Supplies"}) && currentAction != "MyAssets" ? "active" : "")"
                            asp-controller="Assets" asp-action="Index">
-                            <span class="sab-nav-label">@Html.Raw(navIcon("assets"))@(isAssetManager ? "Assets" : isRequesterOnly ? "Browse items" : "Browse assets")</span>
+                            <span class="sab-nav-label">@Html.Raw(navIcon("assets"))@(isRequesterOnly ? "Browse items" : "Items")</span>
                         </a>
                     </li>
                     <li class="sab-nav-item">
@@ -148,7 +150,7 @@
                         </a>
                     </li>
                     <li class="sab-nav-item">
-                        <a class="sab-nav-link @(inRequests && !onApprovals && !onRequestHistory ? "active" : "")" asp-controller="AssetRequests" asp-action="MyRequests">
+                        <a class="sab-nav-link @((inRequests && !onApprovals && !onRequestHistory) || (isActive(new[]{"SupplyRequests"}) && !onSupplyApprovals) ? "active" : "")" asp-controller="AssetRequests" asp-action="MyRequests">
                             <span class="sab-nav-label">@Html.Raw(navIcon("requests"))My Requests</span>
                         </a>
                     </li>
@@ -165,7 +167,7 @@
                     @if (isApprover)
                     {
                         <li class="sab-nav-item">
-                            <a class="sab-nav-link @(onApprovals ? "active" : "")" asp-controller="AssetRequests" asp-action="Pending">
+                            <a class="sab-nav-link @(onApprovals || onSupplyApprovals ? "active" : "")" asp-controller="AssetRequests" asp-action="Pending">
                                 <span class="sab-nav-label">@Html.Raw(navIcon("approvals"))Approvals</span>
                                 @await Component.InvokeAsync("ApprovalsBadge")
                             </a>

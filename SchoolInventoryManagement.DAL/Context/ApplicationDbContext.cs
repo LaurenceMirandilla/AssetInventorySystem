@@ -24,6 +24,11 @@ namespace SchoolInventoryManagement.DAL.Context
         public DbSet<Department> Departments { get; set; } = null!;
         public DbSet<Location> Locations { get; set; } = null!;
         public DbSet<Category> Categories { get; set; } = null!;
+        public DbSet<Supply> Supplies { get; set; } = null!;
+        public DbSet<SupplyStock> SupplyStock { get; set; } = null!;
+        public DbSet<SupplyTransaction> SupplyTransactions { get; set; } = null!;
+        public DbSet<SupplyRequest> SupplyRequests { get; set; } = null!;
+        public DbSet<SupplyRequestItem> SupplyRequestItems { get; set; } = null!;
         public DbSet<AssetRequest> AssetRequests { get; set; } = null!;
         public DbSet<AssetRequestItem> AssetRequestItems { get; set; } = null!;
         public DbSet<AssetAssignment> AssetAssignments { get; set; } = null!;
@@ -306,6 +311,83 @@ namespace SchoolInventoryManagement.DAL.Context
             // ENUM → STRING CONVERSIONS
             // Keeps existing VARCHAR columns compatible with C# enums
             // =====================================================
+            modelBuilder.Entity<Category>()
+                .Property(c => c.Kind)
+                .HasConversion<string>()
+                .HasMaxLength(20);
+
+            // =====================================================
+            // SUPPLIES (Scripts/016). Nothing cascades: a supply with
+            // stock or history cannot be deleted from under them.
+            // =====================================================
+            modelBuilder.Entity<Supply>()
+                .HasOne(s => s.Category)
+                .WithMany()
+                .HasForeignKey(s => s.CategoryID)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<SupplyStock>().ToTable("SupplyStock");
+            modelBuilder.Entity<SupplyStock>()
+                .HasOne(s => s.Supply)
+                .WithMany(s => s.Stock)
+                .HasForeignKey(s => s.SupplyID)
+                .OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<SupplyStock>()
+                .HasOne(s => s.Location)
+                .WithMany()
+                .HasForeignKey(s => s.LocationID)
+                .OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<SupplyStock>()
+                .HasIndex(s => new { s.SupplyID, s.LocationID })
+                .IsUnique();
+
+            modelBuilder.Entity<SupplyTransaction>()
+                .HasOne(t => t.Supply)
+                .WithMany(s => s.Transactions)
+                .HasForeignKey(t => t.SupplyID)
+                .OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<SupplyTransaction>()
+                .HasOne(t => t.Location)
+                .WithMany()
+                .HasForeignKey(t => t.LocationID)
+                .OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<SupplyTransaction>()
+                .HasOne(t => t.PerformedBy)
+                .WithMany()
+                .HasForeignKey(t => t.PerformedByUserID)
+                .OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<SupplyTransaction>()
+                .Property(t => t.Type)
+                .HasConversion<string>()
+                .HasMaxLength(20);
+
+            // SUPPLY REQUESTS (Scripts/017)
+            modelBuilder.Entity<SupplyRequest>()
+                .Property(r => r.Status)
+                .HasConversion<string>()
+                .HasMaxLength(20);
+            modelBuilder.Entity<SupplyRequest>()
+                .HasOne(r => r.RequestedBy).WithMany()
+                .HasForeignKey(r => r.RequestedByUserID).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<SupplyRequest>()
+                .HasOne(r => r.Branch).WithMany()
+                .HasForeignKey(r => r.BranchID).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<SupplyRequest>()
+                .HasOne(r => r.DecidedBy).WithMany()
+                .HasForeignKey(r => r.DecidedByUserID).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<SupplyRequest>()
+                .HasOne(r => r.ReleasedBy).WithMany()
+                .HasForeignKey(r => r.ReleasedByUserID).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<SupplyRequest>()
+                .HasOne(r => r.PickupLocation).WithMany()
+                .HasForeignKey(r => r.PickupLocationID).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<SupplyRequestItem>()
+                .HasOne(i => i.Request).WithMany(r => r.Items)
+                .HasForeignKey(i => i.SupplyRequestID).OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<SupplyRequestItem>()
+                .HasOne(i => i.Supply).WithMany()
+                .HasForeignKey(i => i.SupplyID).OnDelete(DeleteBehavior.Restrict);
+
             modelBuilder.Entity<Asset>()
                 .Property(a => a.Condition)
                 .HasConversion<string>()

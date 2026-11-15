@@ -1,0 +1,237 @@
+﻿@model SchoolInventoryManagement.BLL.DTOs.CreateSupplyRequestDTO
+@using SchoolInventoryManagement.BLL.DTOs
+@using SchoolInventoryManagement.Web.Helpers
+@{
+    ViewData["Title"] = "New Request";
+    var choices = ViewBag.Choices as List<SupplyRequestChoiceDTO> ?? new();
+    var branchName = ViewBag.BranchName as string ?? "your branch";
+    var minDate = PhilippineTime.Today.ToString("yyyy-MM-dd");
+}
+
+<div class="asset-detail-head">
+    <div>
+        <nav class="asset-crumbs" aria-label="Breadcrumb">
+            <a asp-controller="AssetRequests" asp-action="MyRequests">My Requests</a>
+            <span aria-hidden="true">&rsaquo;</span>
+            <span>New request</span>
+        </nav>
+        <h2 class="asset-detail-title">New request</h2>
+    </div>
+</div>
+
+<form asp-action="Create" method="post" id="supplyRequestForm" class="register-form">
+    @Html.AntiForgeryToken()
+    @Html.FormTicket()
+    <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+
+    <div class="row g-3">
+        <div class="col-lg-8">
+
+            <div class="asset-card register-step mb-3">
+                <div class="register-step-head"><div class="register-step-title">What kind of request?</div></div>
+                <div class="register-step-body">
+                    <nav class="sab-seg" aria-label="Request type">
+                        <a asp-controller="AssetRequests" asp-action="Create">Borrow or transfer</a>
+                        <a asp-action="Create" class="active" aria-current="page">Supplies</a>
+                    </nav>
+                    <div class="form-text mt-2">Supplies are used up, so they are not returned and the request cannot become overdue.</div>
+                </div>
+            </div>
+
+            @if (!choices.Any())
+            {
+                <div class="alert alert-warning">No supplies are kept at @branchName yet.</div>
+            }
+
+            <div class="asset-card register-step mb-3">
+                <div class="register-step-head">
+                    <div class="register-step-title flex-grow-1">What do you need?</div>
+                    <span class="nr-head-note">supplies kept at @branchName</span>
+                </div>
+                <div class="register-step-body pb-0">
+                    <div id="itemRows">
+                        @for (var i = 0; i < Model.Items.Count; i++)
+                        {
+                            var line = Model.Items[i];
+                            <div class="row g-2 align-items-start py-2 border-bottom" data-line>
+                                <div class="col-12 col-md-5" data-cell>
+                                    <label class="form-label small asset-muted mb-1">Supply</label>
+                                    <select name="Items[@i].SupplyID" class="form-select" data-field="SupplyID" data-combobox aria-label="Supply">
+                                        <option value="">Search a supply...</option>
+                                        @foreach (var g in choices.GroupBy(c => c.CategoryName))
+                                        {
+                                            <optgroup label="@g.Key">
+                                                @foreach (var c in g)
+                                                {
+                                                    @* Out of stock: listed, greyed out, cannot be picked. *@
+                                                    <option value="@c.SupplyID" data-unit="@c.Unit" data-here="@c.HereQuantity" data-low="@c.LowStockLevel"
+                                                            data-sub="@(c.HereQuantity <= 0 ? "Out of stock" : c.HereQuantity + " " + SupplyText.Unit(c.HereQuantity, c.Unit) + " in stock")"
+                                                            disabled="@(c.HereQuantity <= 0)"
+                                                            selected="@(c.SupplyID == line.SupplyID && c.HereQuantity > 0)">@c.SupplyName</option>
+                                                }
+                                            </optgroup>
+                                        }
+                                    </select>
+                                </div>
+                                <div class="col-4 col-md-2">
+                                    <label class="form-label small asset-muted mb-1">How many</label>
+                                    <input name="Items[@i].Quantity" value="@line.Quantity" type="number" min="1" step="1" inputmode="numeric"
+                                           class="form-control" data-field="Quantity" aria-label="How many" />
+                                </div>
+                                <div class="col-6 col-md-4">
+                                    <div class="form-label small asset-muted mb-1">In stock at your branch</div>
+                                    <div data-here>&mdash;</div>
+                                    <div class="asset-muted small" data-note></div>
+                                </div>
+                                <div class="col-2 col-md-1 text-end">
+                                    <div class="form-label small mb-1">&nbsp;</div>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" data-remove aria-label="Remove this row">&times;</button>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+                <div class="register-step-body">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="addItem">+ Add another supply</button>
+                    <div class="form-text mt-2">
+                        Greyed-out supplies are out of stock and cannot be picked. Not on the list? <a asp-controller="NewItemRequests" asp-action="Create">Request it as a new item</a>.
+                    </div>
+                </div>
+            </div>
+
+            <div class="asset-card register-step">
+                <div class="register-step-head"><div class="register-step-title">When and why</div></div>
+                <div class="register-step-body">
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label asp-for="NeededBy" class="form-label">Needed by <span class="register-optional">optional</span></label>
+                            <input asp-for="NeededBy" type="date" min="@minDate" class="form-control"
+                                   value="@(Model.NeededBy?.ToString("yyyy-MM-dd"))" />
+                            <span asp-validation-for="NeededBy" class="text-danger small"></span>
+                        </div>
+                        <div class="col-md-8">
+                            <label asp-for="Reason" class="form-label">Reason <span class="register-optional">optional</span></label>
+                            <textarea asp-for="Reason" class="form-control" rows="2" maxlength="500" placeholder="e.g. Second quarter exams, Grade 8 Science"></textarea>
+                            <span asp-validation-for="Reason" class="text-danger small"></span>
+                        </div>
+                    </div>
+                    <div class="form-text mt-2">Pick-up location: decided when the request is approved. It will be a storage room in @branchName.</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="asset-card register-step lk-side mb-3">
+                <div class="register-step-head"><div class="register-step-title">Your request</div></div>
+                <div class="register-step-body">
+                    <div class="lk-code-box">
+                        <div class="lk-code-label">Supplies</div>
+                        <div class="lk-code-big" id="sumItems">0 items</div>
+                    </div>
+                    <p class="lk-side-note mb-0">Your branch: <strong>@branchName</strong></p>
+                </div>
+            </div>
+            <div class="asset-card register-step lk-side">
+                <div class="register-step-head"><div class="register-step-title">What happens next</div></div>
+                <div class="register-step-body">
+                    <p class="lk-side-note"><strong>1. Submitted.</strong> Approvers are notified.</p>
+                    <p class="lk-side-note"><strong>2. Approved.</strong> The amounts are confirmed and a pick-up room is set.</p>
+                    <p class="lk-side-note mb-0"><strong>3. Released.</strong> The supplies are handed to you. Stock goes down at this point.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="register-footer">
+        <div class="d-flex ms-auto" style="gap:8px;">
+            <a asp-action="Index" class="btn btn-outline-secondary">Cancel</a>
+            <button type="submit" class="btn btn-primary" disabled="@(!choices.Any())">Submit request</button>
+        </div>
+    </div>
+</form>
+
+@section Scripts {
+    @{
+        await Html.RenderPartialAsync("_ValidationScriptsPartial");
+    }
+    <script>
+        (function () {
+            var body = document.getElementById('itemRows');
+            var branch = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(branchName));
+
+            // Same rule as SupplyText.Unit: 1 box, 6 boxes, 42 reams.
+            function plural(u, q) {
+                if (!u || q === 1) return u || '';
+                var l = u.toLowerCase();
+                if (/s$/.test(l) && !/ss$/.test(l)) return u;
+                if (/(x|ch|sh|ss)$/.test(l)) return u + 'es';
+                return u + 's';
+            }
+            function rows() { return Array.prototype.slice.call(body.querySelectorAll('[data-line]')); }
+
+            // The model binder needs Items[0], Items[1]... with no gaps.
+            function renumber() {
+                rows().forEach(function (row, i) {
+                    row.querySelectorAll('[data-field]').forEach(function (el) {
+                        el.name = 'Items[' + i + '].' + el.getAttribute('data-field');
+                    });
+                    row.querySelector('[data-remove]').disabled = rows().length === 1;
+                });
+            }
+
+            function sync() {
+                var picked = 0;
+                rows().forEach(function (row) {
+                    var supply = row.querySelector('[data-field=SupplyID]');
+                    var qty = Math.max(0, parseInt(row.querySelector('[data-field=Quantity]').value, 10) || 0);
+                    var here = row.querySelector('[data-here]'), note = row.querySelector('[data-note]');
+                    var opt = supply.options[supply.selectedIndex];
+                    if (!supply.value) { here.textContent = '\u2014'; note.textContent = ''; return; }
+                    picked++;
+                    var h = parseInt(opt.dataset.here, 10) || 0,
+                        low = parseInt(opt.dataset.low, 10) || 0, u = opt.dataset.unit;
+                    here.innerHTML = '';
+                    var strong = document.createElement('strong');
+                    strong.textContent = h + ' ' + plural(u, h);
+                    here.appendChild(strong);
+                    var parts = [];
+                    if (qty > h) parts.push('More than ' + branch + ' has. The approver may lower the amount.');
+                    else if (low > 0 && h <= low) parts.push('Running low.');
+                    note.textContent = parts.join(' ');
+                });
+                document.getElementById('sumItems').textContent = picked + ' item' + (picked === 1 ? '' : 's');
+            }
+
+            body.addEventListener('change', sync);
+            body.addEventListener('input', sync);
+            body.addEventListener('click', function (e) {
+                var btn = e.target.closest('[data-remove]');
+                if (!btn || rows().length === 1) return;
+                btn.closest('[data-line]').remove();
+                renumber(); sync();
+            });
+            document.getElementById('addItem').addEventListener('click', function () {
+                var first = rows()[0];
+                var copy = first.cloneNode(true);
+                // The copy carries the first row's search box, which is wired
+                // to that row. Put a fresh list in its place and give it its
+                // own search box.
+                var cell = copy.querySelector('[data-cell]');
+                var plain = first.querySelector('select[data-field=SupplyID]').cloneNode(true);
+                plain.classList.remove('combo-native');
+                plain.removeAttribute('aria-hidden');
+                plain.removeAttribute('tabindex');
+                plain.selectedIndex = 0;
+                var old = cell.querySelector('.combo') || cell.querySelector('select');
+                cell.replaceChild(plain, old);
+                if (window.sabCombobox) window.sabCombobox(plain);
+                copy.querySelector('[data-field=Quantity]').value = 1;
+                body.appendChild(copy);
+                renumber(); sync();
+                var box = cell.querySelector('.combo-input') || plain;
+                box.focus();
+            });
+            renumber(); sync();
+        })();
+    </script>
+}

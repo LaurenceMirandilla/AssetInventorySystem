@@ -1,0 +1,22 @@
+﻿@* "+ New item": asks which kind is being added. Shown to Asset Officers
+   and Administrators only (the caller checks). *@
+<div class="dropdown">
+    <button type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+        New item
+    </button>
+    <ul class="dropdown-menu dropdown-menu-end">
+        <li>
+            <a class="dropdown-item" asp-controller="Assets" asp-action="Create">
+                <strong>Asset</strong>
+                <div class="small text-muted">One unit with its own code and barcode</div>
+            </a>
+        </li>
+        <li>
+            <a class="dropdown-item" asp-controller="Supplies" asp-action="Create">
+                <strong>Supply</strong>
+                <div class="small text-muted">Counted by quantity, used up</div>
+            </a>
+        </li>
+    </ul>
+</div>

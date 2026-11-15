@@ -1,0 +1,83 @@
+﻿@model List<SchoolInventoryManagement.BLL.DTOs.SupplyRequestResponseDTO>
+@using SchoolInventoryManagement.DAL.Entities.Enums
+@{
+    ViewData["Title"] = "My Requests";
+}
+
+@functions {
+    public static string StatusLabel(SupplyRequestStatus s) => s switch
+    {
+        SupplyRequestStatus.Pending => "Waiting for approval",
+        SupplyRequestStatus.Approved => "Ready for pick-up",
+        _ => s.ToString()
+    };
+
+    public static string StatusClass(SupplyRequestStatus s) => s switch
+    {
+        SupplyRequestStatus.Pending => "st-low",
+        SupplyRequestStatus.Approved => "st-intransit",
+        SupplyRequestStatus.Released => "st-available",
+        SupplyRequestStatus.Rejected => "st-overdue",
+        _ => "st-undermaintenance"
+    };
+}
+
+@if (TempData["SuccessMessage"] != null)
+{
+    <div class="alert alert-success">@TempData["SuccessMessage"]</div>
+}
+@if (TempData["ErrorMessage"] != null)
+{
+    <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
+}
+
+<div class="asset-detail-head">
+    <div>
+        <h2 class="asset-detail-title">My Requests</h2>
+        <div class="asset-detail-sub">Your supply requests. You can cancel one while it is still waiting for approval.</div>
+    </div>
+    <div class="asset-detail-actions">
+        <a asp-action="Create" class="btn btn-primary">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+            Request supplies
+        </a>
+    </div>
+</div>
+
+<partial name="_RequestsSwitch" model="@("Supplies")" />
+
+<div class="sab-table-card asset-list">
+    @if (!Model.Any())
+    {
+        <div class="sab-empty">
+            <div class="sab-empty-title">No supply requests yet</div>
+            <p>Ask for supplies that are in stock, such as bond paper or markers.</p>
+            <a asp-action="Create" class="btn btn-primary">+ Request supplies</a>
+        </div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table asset-table mb-0">
+                <thead>
+                    <tr><th>Request</th><th>Supplies</th><th>Needed by</th><th>Status</th><th>Pick up at</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var r in Model)
+                    {
+                        <tr>
+                            <td>
+                                <a asp-action="Details" asp-route-id="@r.SupplyRequestID" class="asset-code-chip">S-@r.SupplyRequestID</a>
+                                <div class="asset-muted small">@r.CreatedAt.ToString("MMM d, yyyy")</div>
+                            </td>
+                            <td><a asp-action="Details" asp-route-id="@r.SupplyRequestID" class="asset-name">@r.ItemsSummary</a></td>
+                            <td class="asset-muted">@(r.NeededBy?.ToString("MMM d, yyyy") ?? "—")</td>
+                            <td><span class="asset-pill asset-status @StatusClass(r.Status)">@StatusLabel(r.Status)</span></td>
+                            <td class="asset-muted">@(r.PickupLocationName ?? (r.Status == SupplyRequestStatus.Pending ? "Decided on approval" : "—"))</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>

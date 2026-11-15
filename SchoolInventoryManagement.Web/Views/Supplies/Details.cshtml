@@ -1,0 +1,184 @@
+﻿@model SchoolInventoryManagement.BLL.DTOs.SupplyDetailsDTO
+@using SchoolInventoryManagement.BLL.DTOs
+@using SchoolInventoryManagement.DAL.Constants
+@using SchoolInventoryManagement.Web.Helpers
+@{
+    ViewData["Title"] = Model.SupplyName;
+
+    var canManage = User.IsInRole(RoleNames.AssetOfficer) || User.IsInRole(RoleNames.Administrator);
+    // Teachers and Staff see what there is and where, not what it costs.
+    var seesPrice = !(User.IsInRole(RoleNames.Teacher) || User.IsInRole(RoleNames.Staff));
+
+    var statusLabel = Model.Status switch
+    {
+        SupplyStockStatus.OutOfStock => "Out of stock",
+        SupplyStockStatus.RunningLow => "Running low",
+        _ => "In stock"
+    };
+    var statusClass = Model.Status switch
+    {
+        SupplyStockStatus.OutOfStock => "st-overdue",
+        SupplyStockStatus.RunningLow => "st-low",
+        _ => "st-available"
+    };
+}
+
+@functions {
+    static string HistoryLabel(string type) => type switch
+    {
+        "Opening" => "Opening quantity",
+        "Received" => "Received",
+        "Issued" => "Released",
+        "Adjusted" => "Count corrected",
+        "MovedOut" => "Moved out",
+        "MovedIn" => "Moved in",
+        _ => type
+    };
+}
+
+@if (TempData["SuccessMessage"] != null)
+{
+    <div class="alert alert-success">@TempData["SuccessMessage"]</div>
+}
+@if (TempData["ErrorMessage"] != null)
+{
+    <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
+}
+
+<div class="asset-detail-head">
+    <div>
+        <nav class="asset-crumbs" aria-label="Breadcrumb">
+            <a asp-controller="Assets" asp-action="Index">Items</a>
+            <span aria-hidden="true">&rsaquo;</span>
+            <a asp-action="Index">Supplies</a>
+            <span aria-hidden="true">&rsaquo;</span>
+            <span>@Model.SupplyName</span>
+        </nav>
+        <h2 class="asset-detail-title">@Model.SupplyName <span class="asset-pill asset-status @statusClass">@statusLabel</span></h2>
+        <div class="asset-detail-sub">@Model.CategoryName &middot; counted per @Model.Unit@(string.IsNullOrWhiteSpace(Model.Description) ? "" : " · " + Model.Description)</div>
+    </div>
+    <div class="asset-detail-actions">
+        <a asp-controller="SupplyRequests" asp-action="Create" asp-route-supplyId="@Model.SupplyID" class="btn btn-outline-secondary">Request this</a>
+        @if (canManage)
+        {
+            <a asp-action="Edit" asp-route-id="@Model.SupplyID" class="btn btn-outline-secondary">Edit</a>
+            <a asp-action="Move" asp-route-supplyId="@Model.SupplyID" class="btn btn-outline-secondary">Move stock</a>
+            <a asp-action="AddStock" asp-route-supplyId="@Model.SupplyID" class="btn btn-primary">+ Add stock</a>
+        }
+    </div>
+</div>
+
+<div class="myassets-stats">
+    <div>
+        <span>In stock</span>
+        <strong>@Model.TotalQuantity @SupplyText.Unit(Model.TotalQuantity, Model.Unit)</strong>
+    </div>
+    <div>
+        <span>Low-stock level</span>
+        <strong>@(Model.LowStockLevel > 0 ? Model.LowStockLevel + " " + SupplyText.Unit(Model.LowStockLevel, Model.Unit) : "Not set")</strong>
+    </div>
+    @if (seesPrice)
+    {
+        <div>
+            <span>Price per @Model.Unit</span>
+            <strong>@(Model.UnitPrice.HasValue ? "₱ " + Model.UnitPrice.Value.ToString("N2") : "Not set")</strong>
+        </div>
+        <div>
+            <span>Stock value</span>
+            <strong>@(Model.UnitPrice.HasValue ? "₱ " + (Model.UnitPrice.Value * Model.TotalQuantity).ToString("N2") : "—")</strong>
+        </div>
+    }
+</div>
+
+@if (Model.Status == SupplyStockStatus.RunningLow)
+{
+    <div class="alert alert-warning mt-3 mb-0">At or below the low-stock level of @Model.LowStockLevel @SupplyText.Unit(Model.LowStockLevel, Model.Unit).</div>
+}
+
+<div class="asset-card register-step mt-3">
+    <div class="register-step-head">
+        <div class="register-step-title flex-grow-1">Where it is kept</div>
+        <span class="nr-head-note">@Model.Stock.Count location@(Model.Stock.Count == 1 ? "" : "s")@(ViewBag.ScopedToBranch is true ? " at your branch" : "")</span>
+    </div>
+    @if (Model.Stock.Any())
+    {
+        <div class="table-responsive">
+            <table class="table asset-table mb-0">
+                <thead>
+                    <tr><th>Location</th><th>Branch</th><th class="text-end">In stock</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var k in Model.Stock)
+                    {
+                        <tr>
+                            <td>@k.LocationName</td>
+                            <td class="asset-muted">@k.BranchName</td>
+                            <td class="text-end"><strong>@k.Quantity</strong> @SupplyText.Unit(k.Quantity, Model.Unit)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+    else
+    {
+        <div class="register-step-body asset-muted">Not kept anywhere yet.</div>
+    }
+</div>
+
+<div class="asset-card register-step mt-3">
+    <div class="register-step-head">
+        <div class="register-step-title flex-grow-1">Stock history</div>
+        <span class="nr-head-note">newest first</span>
+    </div>
+    @if (Model.History.Any())
+    {
+        <div class="table-responsive">
+            <table class="table asset-table mb-0">
+                <thead>
+                    <tr><th>When</th><th>What happened</th><th>By</th><th class="text-end">Change</th><th class="text-end">In that location after</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var h in Model.History)
+                    {
+                        <tr>
+                            <td class="asset-muted text-nowrap">@h.CreatedAt.ToString("MMM d, yyyy h:mm tt")</td>
+                            <td>
+                                <strong>@HistoryLabel(h.Type)</strong> &middot; @h.LocationName
+                                @if (!string.IsNullOrWhiteSpace(h.Note) && h.Type != "Opening")
+                                {
+                                    <div class="asset-muted small">@h.Note</div>
+                                }
+                            </td>
+                            <td>@h.PerformedBy</td>
+                            <td class="text-end"><strong class="@(h.QuantityChange < 0 ? "text-danger" : "text-success")">@(h.QuantityChange > 0 ? "+" : "")@h.QuantityChange</strong></td>
+                            <td class="text-end">@h.QuantityAfter</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        @if (Model.HistoryCount > Model.History.Count)
+        {
+            <div class="register-step-body asset-muted small">Showing the latest @Model.History.Count of @Model.HistoryCount entries.</div>
+        }
+    }
+    else
+    {
+        <div class="register-step-body asset-muted">Nothing yet. It was added with an opening quantity of 0.</div>
+    }
+</div>
+
+@if (canManage)
+{
+    <div class="lk-foot mt-3">
+        <form asp-action="Delete" asp-route-id="@Model.SupplyID" method="post" onsubmit="return confirm('Delete @Model.SupplyName? This can\'t be undone.');">
+            @Html.AntiForgeryToken()
+            <button type="submit" class="btn btn-outline-danger" disabled="@(Model.DeleteBlocked is not null)">Delete</button>
+        </form>
+        <span class="lk-why">@(Model.DeleteBlocked ?? "Only its opening quantity is on record, so it can still be deleted.")</span>
+        <div class="lk-foot-actions">
+            <a asp-action="Index" class="btn btn-outline-secondary">Back to supplies</a>
+        </div>
+    </div>
+}

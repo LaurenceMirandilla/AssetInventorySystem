@@ -11,6 +11,7 @@ namespace SchoolInventoryManagement.BLL.Mappings
             {
                 CategoryID = category.CategoryID,
                 CategoryName = category.CategoryName,
+                Kind = category.Kind,
                 CodePrefix = category.CodePrefix,
                 Description = category.Description
             };
