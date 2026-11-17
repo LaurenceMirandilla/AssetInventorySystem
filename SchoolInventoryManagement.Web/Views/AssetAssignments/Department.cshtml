@@ -1,0 +1,316 @@
+﻿@model SchoolInventoryManagement.Web.ViewModels.AssignToDepartmentViewModel
+@using System.Text.Json
+@using SchoolInventoryManagement.BLL.DTOs
+@{
+    // Assign to a department with no person named: a number of units of a
+    // model, or the one unit in ViewBag.Asset. Those units become
+    // Assigned, so they can no longer be borrowed; the ones left
+    // unassigned stay Available and can be.
+    ViewData["Title"] = "Assign to a Department";
+    var asset = ViewBag.Asset as AssetResponseDTO;
+    var lookups = (DepartmentPlacementLookupsDTO)ViewBag.Lookups;
+    var single = asset is not null;
+
+    var json = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+    var modelsJson = JsonSerializer.Serialize(lookups.Models.Select(m => new
+    {
+        id = m.ModelID,
+        name = m.ModelName,
+        total = m.Available,
+        rooms = m.Rooms.Select(r => new { id = r.LocationID, name = r.LocationName, count = r.Count })
+    }), json);
+    var locationsJson = JsonSerializer.Serialize(lookups.Locations.Select(l => new { id = l.LocationID, name = l.LocationName, branch = l.BranchID }), json);
+}
+
+<div class="asset-detail-head">
+    <div>
+        <nav class="asset-crumbs" aria-label="Breadcrumb">
+            <a asp-controller="Assets" asp-action="Index">Assets</a>
+            <span aria-hidden="true">&rsaquo;</span>
+            @if (asset is not null)
+            {
+                <a asp-controller="Assets" asp-action="Details" asp-route-id="@asset.AssetID">@asset.AssetCode</a>
+                <span aria-hidden="true">&rsaquo;</span>
+            }
+            <span>Assign to a department</span>
+        </nav>
+        <h2 class="asset-detail-title">Assign to a department</h2>
+        <div class="asset-detail-sub">Give assets to a department and say which room they are kept in. No person is named.</div>
+    </div>
+</div>
+
+<div class="sab-callout mb-3">
+    <span class="sab-callout-label">What this does</span>
+    Assets assigned to a department belong to it and <strong>cannot be borrowed</strong>.
+    Assets you leave unassigned stay Available, so people can still find and borrow them.
+</div>
+
+@if (asset is not null)
+{
+    <partial name="_AssetStrip" model="asset" />
+}
+
+<form asp-action="Department" method="post" class="register-form" id="placeForm">
+    @Html.AntiForgeryToken()
+    @Html.FormTicket()
+    <input type="hidden" asp-for="AssetID" />
+    <div asp-validation-summary="All" class="text-danger mb-3"></div>
+
+    <div class="row g-3">
+        <div class="col-lg-8">
+            @if (!single)
+            {
+                <div class="asset-card register-step mb-3">
+                    <div class="register-step-head">
+                        <span class="register-step-num">1</span>
+                        <div>
+                            <div class="register-step-title">Which assets</div>
+                            <div class="register-step-sub">Only models with unassigned, available units are listed.</div>
+                        </div>
+                    </div>
+                    <div class="register-step-body">
+                        @if (!lookups.Models.Any())
+                        {
+                            <div class="asset-muted">No asset is available to assign right now.</div>
+                        }
+                        <div class="row g-3">
+                            <div class="col-md-12">
+                                <label asp-for="ModelID" class="form-label">Model</label>
+                                <select asp-for="ModelID" class="form-select" data-combobox>
+                                    <option value="">Search a model...</option>
+                                    @foreach (var m in lookups.Models)
+                                    {
+                                        <option value="@m.ModelID">@m.ModelName · @m.Available available</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-md-7">
+                                <label asp-for="FromLocationID" class="form-label">Take them from</label>
+                                <select asp-for="FromLocationID" class="form-select" data-initial="@Model.FromLocationID">
+                                    <option value="">Pick a model first</option>
+                                </select>
+                                <div class="form-text">Where the units are now.</div>
+                            </div>
+                            <div class="col-md-5">
+                                <label asp-for="Quantity" class="form-label">How many</label>
+                                <input asp-for="Quantity" type="number" min="1" step="1" inputmode="numeric" class="form-control" />
+                                <div class="form-text" id="qtyHint">&nbsp;</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <input type="hidden" asp-for="Quantity" value="1" />
+            }
+
+            <div class="asset-card register-step mb-3">
+                <div class="register-step-head">
+                    <span class="register-step-num">@(single ? 1 : 2)</span>
+                    <div>
+                        <div class="register-step-title">Which department, and where</div>
+                        <div class="register-step-sub">The room has to be in the department's own branch.</div>
+                    </div>
+                </div>
+                <div class="register-step-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label asp-for="DepartmentID" class="form-label">Department</label>
+                            <select asp-for="DepartmentID" class="form-select" data-combobox>
+                                <option value="">Search a department...</option>
+                                @foreach (var branch in lookups.Departments.GroupBy(d => d.BranchName))
+                                {
+                                    <optgroup label="@branch.Key">
+                                        @foreach (var d in branch)
+                                        {
+                                            <option value="@d.DepartmentID" data-branch="@d.BranchID" data-branch-name="@d.BranchName">@d.DepartmentName</option>
+                                        }
+                                    </optgroup>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label asp-for="LocationID" class="form-label">Kept at</label>
+                            <select asp-for="LocationID" class="form-select" data-combobox data-initial="@Model.LocationID">
+                                <option value="">Pick a department first</option>
+                            </select>
+                        </div>
+                        <div class="col-12">
+                            <label asp-for="Remarks" class="form-label">Note <span class="register-optional">optional</span></label>
+                            <input asp-for="Remarks" class="form-control" maxlength="500" placeholder="For example: chairs for the faculty room" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            @if (!single)
+            {
+                <div class="asset-card register-step mb-3">
+                    <div class="register-step-head">
+                        <span class="register-step-num">3</span>
+                        <div>
+                            <div class="register-step-title">The rest of this model</div>
+                            <div class="register-step-sub">Units you do not assign stay unassigned, so they can be borrowed.</div>
+                        </div>
+                    </div>
+                    <div class="register-step-body">
+                        <label asp-for="MoveRestToLocationID" class="form-label">Where the rest are kept</label>
+                        <select asp-for="MoveRestToLocationID" class="form-select" data-initial="@Model.MoveRestToLocationID">
+                            <option value="">Leave them where they are</option>
+                        </select>
+                        <div class="form-text" id="restHint">Pick a storage room to move every other available unit of this model in that branch there.</div>
+                    </div>
+                </div>
+            }
+        </div>
+
+        <div class="col-lg-4">
+            <div class="handover-card">
+                <div class="bulk-summary-label">Summary</div>
+                <dl class="handover-rows">
+                    <div><dt>@(single ? "Unit" : "Model")</dt><dd id="sumWhat">@(asset?.AssetCode ?? "Not picked")</dd></div>
+                    @if (!single)
+                    {
+                        <div><dt>Assigning</dt><dd id="sumQty">0</dd></div>
+                    }
+                    <div><dt>Department</dt><dd id="sumDept">Not picked</dd></div>
+                    <div><dt>Kept at</dt><dd id="sumRoom">Not picked</dd></div>
+                    @if (!single)
+                    {
+                        <div><dt>Left unassigned</dt><dd id="sumRest">0</dd></div>
+                    }
+                    <div><dt>Status after</dt><dd>Assigned · cannot be borrowed</dd></div>
+                </dl>
+            </div>
+        </div>
+    </div>
+
+    <div class="register-footer">
+        <span>@(single ? "Department and room are required." : "Model, how many, department and room are required.")</span>
+        <div class="d-flex" style="gap:8px;">
+            @if (asset is not null)
+            {
+                <a asp-controller="Assets" asp-action="Details" asp-route-id="@asset.AssetID" class="btn btn-outline-secondary">Cancel</a>
+            }
+            else
+            {
+                <a asp-controller="Assets" asp-action="Index" class="btn btn-outline-secondary">Back to assets</a>
+            }
+            <button type="submit" class="btn btn-primary">Assign to department</button>
+        </div>
+    </div>
+</form>
+
+@section Scripts {
+    <script>
+        (function () {
+            var MODELS = @Html.Raw(modelsJson);
+            var LOCATIONS = @Html.Raw(locationsJson);
+
+            var form = document.getElementById('placeForm');
+            var model = form.querySelector('[name=ModelID]');            // not there for one unit
+            var from = form.querySelector('[name=FromLocationID]');
+            var qty = form.querySelector('input[name=Quantity][type=number]');
+            var dept = form.querySelector('[name=DepartmentID]');
+            var room = form.querySelector('[name=LocationID]');
+            var rest = form.querySelector('[name=MoveRestToLocationID]');
+            var qtyHint = document.getElementById('qtyHint');
+
+            function byId(list, id) {
+                for (var i = 0; i < list.length; i++) if (String(list[i].id) === String(id)) return list[i];
+                return null;
+            }
+
+            // Replaces a select's options, keeping the picked one if it is
+            // still offered. The typeable box is told to redraw.
+            function fill(select, first, items, lock) {
+                var keep = select.value || select.dataset.initial || '';
+                select.dataset.initial = '';
+                select.innerHTML = '';
+                var blank = document.createElement('option');
+                blank.value = ''; blank.text = first;
+                select.appendChild(blank);
+                items.forEach(function (x) {
+                    var o = document.createElement('option');
+                    o.value = x.value; o.text = x.text;
+                    select.appendChild(o);
+                });
+                select.value = keep;
+                if (select.value !== keep) select.value = '';
+                select.disabled = !!lock;
+                select.dispatchEvent(new Event('combo-sync'));
+            }
+
+            // How many of the picked model can be taken from the picked room.
+            function availableNow() {
+                var m = model ? byId(MODELS, model.value) : null;
+                if (!m) return 0;
+                if (!from.value) return m.total;
+                var r = byId(m.rooms, from.value);
+                return r ? r.count : 0;
+            }
+
+            function fillFrom() {
+                if (!model) return;
+                var m = byId(MODELS, model.value);
+                if (!m) { fill(from, 'Pick a model first', [], true); return; }
+                fill(from, 'Anywhere (' + m.total + ')', m.rooms.filter(function (r) { return r.id !== null; })
+                    .map(function (r) { return { value: r.id, text: r.name + ' (' + r.count + ')' }; }), false);
+            }
+
+            function fillRooms() {
+                var picked = dept.options[dept.selectedIndex];
+                var branch = picked && picked.dataset.branch;
+                var rooms = branch ? LOCATIONS.filter(function (l) { return String(l.branch) === branch; })
+                    .map(function (l) { return { value: l.id, text: l.name }; }) : [];
+                fill(room, branch ? 'Search a location...' : 'Pick a department first', rooms, !branch);
+                if (rest) fill(rest, 'Leave them where they are', rooms.map(function (l) {
+                    return { value: l.value, text: 'Move them to ' + l.text };
+                }), !branch);
+            }
+
+            function text(id, value) { var el = document.getElementById(id); if (el) el.textContent = value; }
+            function picked(select, none) {
+                var o = select && select.options[select.selectedIndex];
+                return o && o.value ? o.text : none;
+            }
+
+            function summary() {
+                if (model) {
+                    var m = byId(MODELS, model.value);
+                    var can = availableNow();
+                    var n = Math.max(0, parseInt(qty.value, 10) || 0);
+                    qty.max = can > 0 ? can : '';
+                    qtyHint.textContent = m ? can + ' available' + (from.value ? ' there' : '') : ' ';
+                    qtyHint.classList.toggle('text-danger', !!m && n > can);
+                    text('sumWhat', m ? m.name : 'Not picked');
+                    text('sumQty', m ? n + ' of ' + m.total : '0');
+                    text('sumRest', m ? Math.max(0, m.total - n) + ' · can be borrowed' : '0');
+                }
+                var d = dept.options[dept.selectedIndex];
+                text('sumDept', d && d.value ? d.text + ' · ' + (d.dataset.branchName || '') : 'Not picked');
+                text('sumRoom', picked(room, 'Not picked'));
+            }
+
+            if (model) model.addEventListener('change', function () { fillFrom(); summary(); });
+            dept.addEventListener('change', function () { fillRooms(); summary(); });
+            form.addEventListener('input', summary);
+            form.addEventListener('change', summary);
+
+            form.addEventListener('submit', function (e) {
+                if (!model) return;
+                var n = parseInt(qty.value, 10) || 0;
+                if (model.value && n > availableNow()) {
+                    e.preventDefault();
+                    alert('Only ' + availableNow() + ' available' + (from.value ? ' in that location' : '') + '. Lower the number.');
+                    qty.focus();
+                }
+            });
+
+            fillFrom();
+            fillRooms();
+            summary();
+        })();
+    </script>
+}

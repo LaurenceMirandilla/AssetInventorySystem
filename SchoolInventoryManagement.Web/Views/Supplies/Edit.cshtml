@@ -65,19 +65,28 @@
                             <div class="form-text">Changing this renames the unit; it does not convert the quantity.</div>
                             <span asp-validation-for="Unit" class="text-danger small"></span>
                         </div>
-                        <div class="col-md-4">
-                            <label asp-for="UnitPrice" class="form-label">Price per unit <span class="register-optional">optional</span></label>
-                            <div class="input-group">
-                                <span class="input-group-text">&#8369;</span>
-                                <input asp-for="UnitPrice" class="form-control" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0.00" />
-                            </div>
-                            <span asp-validation-for="UnitPrice" class="text-danger small"></span>
-                        </div>
-                        <div class="col-md-4">
-                            <label asp-for="LowStockLevel" class="form-label">Low-stock level</label>
-                            <input asp-for="LowStockLevel" class="form-control" type="number" min="0" step="1" inputmode="numeric" />
-                            <div class="form-text">0 turns the warning off.</div>
+                        <div class="col-md-8">
+                            <label asp-for="LowStockLevel" class="form-label">General low-stock level</label>
+                            <input asp-for="LowStockLevel" class="form-control" type="number" min="0" step="1" inputmode="numeric" style="max-width:220px;" />
+                            <div class="form-text">Used for any branch that has no level of its own below. 0 turns the warning off. The price is not set here: it is the average of what was paid each time stock was added.</div>
                             <span asp-validation-for="LowStockLevel" class="text-danger small"></span>
+                        </div>
+                        <div class="col-12">
+                            <div class="form-label">Low-stock level for each branch <span class="register-optional">optional</span></div>
+                            <div class="row g-2">
+                                @for (var b = 0; b < Model.BranchLevels.Count; b++)
+                                {
+                                    <div class="col-md-4">
+                                        <input type="hidden" asp-for="BranchLevels[b].BranchID" />
+                                        <input type="hidden" asp-for="BranchLevels[b].BranchName" />
+                                        <input type="hidden" asp-for="BranchLevels[b].Quantity" />
+                                        <label asp-for="BranchLevels[b].LowStockLevel" class="form-label small mb-1">@Model.BranchLevels[b].BranchName</label>
+                                        <input asp-for="BranchLevels[b].LowStockLevel" class="form-control" type="number" min="0" step="1" inputmode="numeric" placeholder="Uses the general level" />
+                                        <div class="form-text">Has @Model.BranchLevels[b].Quantity now.</div>
+                                    </div>
+                                }
+                            </div>
+                            <div class="form-text">Leave a branch empty to use the general level. Each branch is warned when its own stock reaches its number.</div>
                         </div>
                         <div class="col-12">
                             <label asp-for="Description" class="form-label">Description <span class="register-optional">optional</span></label>

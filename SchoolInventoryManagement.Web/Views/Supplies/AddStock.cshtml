@@ -8,6 +8,7 @@
     var locations = ViewBag.Locations as List<SupplyLocationOption> ?? new();
     var sources = ViewBag.Sources as string[] ?? Array.Empty<string>();
     var backId = ViewBag.BackToSupplyId as int?;
+    var newSupplyLines = ViewBag.NewSupplyLines as List<string> ?? new();
 }
 
 <form asp-action="AddStock" method="post" class="register-form page-fill" id="addStockForm">
@@ -34,6 +35,15 @@
     @if (!supplies.Any())
     {
         <div class="alert alert-warning">There are no supplies yet. <a asp-action="Create">Add a supply first</a>.</div>
+    }
+
+    @if (newSupplyLines.Any())
+    {
+        <div class="alert alert-warning">
+            <strong>@newSupplyLines.Count suppl@(newSupplyLines.Count == 1 ? "y" : "ies") on this request @(newSupplyLines.Count == 1 ? "is" : "are") new to the school</strong> and not listed below:
+            @string.Join(", ", newSupplyLines).
+            Add each one under <a asp-controller="Supplies" asp-action="Create">New item &rsaquo; Supply</a>, with the amount that arrived as its opening quantity.
+        </div>
     }
 
     <div class="asset-card register-step mb-3">
@@ -72,60 +82,61 @@
             <div class="register-step-title flex-grow-1">What to add</div>
             <span class="nr-head-note" id="lineSummary"></span>
         </div>
-        <div class="table-responsive">
-            <table class="table asset-table mb-0 align-middle">
-                <thead>
-                    <tr>
-                        <th style="min-width:220px;">Supply</th>
-                        <th>In stock now</th>
-                        <th style="width:130px;">Add</th>
-                        <th style="min-width:200px;">Put in</th>
-                        <th>In stock after</th>
-                        <th><span class="visually-hidden">Remove</span></th>
-                    </tr>
-                </thead>
-                <tbody id="lineRows">
-                    @for (var i = 0; i < Model.Lines.Count; i++)
-                    {
-                        var line = Model.Lines[i];
-                        <tr data-line>
-                            <td>
-                                <select name="Lines[@i].SupplyID" class="form-select form-select-sm" data-field="SupplyID" aria-label="Supply">
-                                    <option value="">Pick a supply</option>
-                                    @foreach (var s in supplies)
-                                    {
-                                        <option value="@s.SupplyID" data-unit="@s.Unit" data-total="@s.TotalQuantity" data-location="@s.DefaultLocationID"
-                                                selected="@(s.SupplyID == line.SupplyID)">@s.SupplyName</option>
-                                    }
-                                </select>
-                            </td>
-                            <td class="asset-muted" data-now>&mdash;</td>
-                            <td>
-                                <input name="Lines[@i].Quantity" value="@line.Quantity" type="number" min="1" step="1" inputmode="numeric"
-                                       class="form-control form-control-sm" data-field="Quantity" aria-label="Quantity to add" />
-                            </td>
-                            <td>
-                                <select name="Lines[@i].LocationID" class="form-select form-select-sm" data-field="LocationID" aria-label="Put in">
-                                    <option value="">Pick a location</option>
-                                    @foreach (var g in locations.GroupBy(l => l.BranchName))
-                                    {
-                                        <optgroup label="@g.Key">
-                                            @foreach (var l in g)
-                                            {
-                                                <option value="@l.Id" selected="@(l.Id == line.LocationID)">@l.Name</option>
-                                            }
-                                        </optgroup>
-                                    }
-                                </select>
-                            </td>
-                            <td data-after>&mdash;</td>
-                            <td class="text-end">
-                                <button type="button" class="btn btn-sm btn-outline-secondary" data-remove aria-label="Remove this row">&times;</button>
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
+        <div class="register-step-body pb-0">
+            <div id="lineRows">
+                @for (var i = 0; i < Model.Lines.Count; i++)
+                {
+                    var line = Model.Lines[i];
+                    <div class="row g-2 align-items-start py-2 border-bottom" data-line>
+                        <div class="col-12 col-md-3" data-cell="SupplyID">
+                            <label class="form-label small asset-muted mb-1">Supply</label>
+                            <select name="Lines[@i].SupplyID" class="form-select" data-field="SupplyID" data-combobox aria-label="Supply">
+                                <option value="">Search a supply...</option>
+                                @foreach (var s in supplies)
+                                {
+                                    <option value="@s.SupplyID" data-unit="@s.Unit" data-total="@s.TotalQuantity" data-location="@s.DefaultLocationID"
+                                            data-sub="@(s.TotalQuantity + " " + SupplyText.Unit(s.TotalQuantity, s.Unit) + " in stock")"
+                                            selected="@(s.SupplyID == line.SupplyID)">@s.SupplyName</option>
+                                }
+                            </select>
+                            <div class="asset-muted small mt-1">In stock now: <span data-now-out>&mdash;</span></div>
+                        </div>
+                        <div class="col-4 col-md-2">
+                            <label class="form-label small asset-muted mb-1">Add</label>
+                            <input name="Lines[@i].Quantity" value="@line.Quantity" type="number" min="1" step="1" inputmode="numeric"
+                                   class="form-control" data-field="Quantity" aria-label="Quantity to add" />
+                        </div>
+                        <div class="col-8 col-md-2">
+                            <label class="form-label small asset-muted mb-1">Price each (&#8369;)</label>
+                            <input name="Lines[@i].UnitPrice" value="@(line.UnitPrice?.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture))" type="number" min="0" step="0.01" inputmode="decimal"
+                                   class="form-control" data-field="UnitPrice" placeholder="0.00" aria-label="Price paid for each" />
+                        </div>
+                        <div class="col-12 col-md-3" data-cell="LocationID">
+                            <label class="form-label small asset-muted mb-1">Put in</label>
+                            <select name="Lines[@i].LocationID" class="form-select" data-field="LocationID" data-combobox aria-label="Put in">
+                                <option value="">Search a location...</option>
+                                @foreach (var g in locations.GroupBy(l => l.BranchName))
+                                {
+                                    <optgroup label="@g.Key">
+                                        @foreach (var l in g)
+                                        {
+                                            <option value="@l.Id" selected="@(l.Id == line.LocationID)">@l.Name</option>
+                                        }
+                                    </optgroup>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-9 col-md-1">
+                            <div class="form-label small asset-muted mb-1">After</div>
+                            <div data-after-out>&mdash;</div>
+                        </div>
+                        <div class="col-3 col-md-1 text-end">
+                            <div class="form-label small mb-1">&nbsp;</div>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" data-remove aria-label="Remove this row">&times;</button>
+                        </div>
+                    </div>
+                }
+            </div>
         </div>
         <div class="register-step-body">
             <button type="button" class="btn btn-outline-secondary btn-sm" id="addLine">+ Add another supply</button>
@@ -166,7 +177,8 @@
                 return u + 's';
             }
 
-            function rows() { return Array.prototype.slice.call(body.querySelectorAll('tr[data-line]')); }
+            function rows() { return Array.prototype.slice.call(body.querySelectorAll('[data-line]')); }
+            function field(row, name) { return row.querySelector('select[data-field=' + name + '], input[data-field=' + name + ']'); }
 
             // The model binder needs Lines[0], Lines[1]... with no gaps.
             function renumber() {
@@ -181,11 +193,10 @@
             function sync() {
                 var units = 0, filled = 0;
                 rows().forEach(function (row) {
-                    var supply = row.querySelector('[data-field=SupplyID]');
-                    var qty = row.querySelector('[data-field=Quantity]');
+                    var supply = field(row, 'SupplyID');
                     var opt = supply.options[supply.selectedIndex];
-                    var q = Math.max(0, parseInt(qty.value, 10) || 0);
-                    var now = row.querySelector('[data-now]'), after = row.querySelector('[data-after]');
+                    var q = Math.max(0, parseInt(field(row, 'Quantity').value, 10) || 0);
+                    var now = row.querySelector('[data-now-out]'), after = row.querySelector('[data-after-out]');
                     if (supply.value) {
                         var total = parseInt(opt.dataset.total, 10) || 0, u = opt.dataset.unit;
                         now.textContent = total + ' ' + plural(u, total);
@@ -202,39 +213,56 @@
                 summary.textContent = filled + ' suppl' + (filled === 1 ? 'y' : 'ies') + ' \u00B7 ' + units + ' unit' + (units === 1 ? '' : 's');
             }
 
-            body.addEventListener('change', function (e) {
-                var el = e.target;
-                // Picking a supply offers the room it is already kept in.
-                if (el.matches('[data-field=SupplyID]')) {
-                    var row = el.closest('tr'), loc = row.querySelector('[data-field=LocationID]');
-                    var opt = el.options[el.selectedIndex];
-                    if (!loc.value && opt && opt.dataset.location) loc.value = opt.dataset.location;
+            // Picking a supply offers the room it is already kept in.
+            function offerRoom(row) {
+                var supply = field(row, 'SupplyID'), loc = field(row, 'LocationID');
+                var opt = supply.options[supply.selectedIndex];
+                if (supply.value && !loc.value && opt && opt.dataset.location) {
+                    loc.value = opt.dataset.location;
+                    loc.dispatchEvent(new Event('combo-sync'));
                 }
+            }
+
+            body.addEventListener('change', function (e) {
+                if (e.target.matches && e.target.matches('select[data-field=SupplyID]')) offerRoom(e.target.closest('[data-line]'));
                 sync();
             });
             body.addEventListener('input', sync);
             body.addEventListener('click', function (e) {
                 var btn = e.target.closest('[data-remove]');
                 if (!btn || rows().length === 1) return;
-                btn.closest('tr').remove();
+                btn.closest('[data-line]').remove();
                 renumber(); sync();
             });
+
+            // A new row gets its own search boxes: the copied ones are
+            // wired to the row they came from.
+            function freshSelect(first, copy, name) {
+                var cell = copy.querySelector('[data-cell=' + name + ']');
+                var plain = field(first, name).cloneNode(true);
+                plain.classList.remove('combo-native');
+                plain.removeAttribute('aria-hidden');
+                plain.removeAttribute('tabindex');
+                plain.selectedIndex = 0;
+                var old = cell.querySelector('.combo') || cell.querySelector('select');
+                cell.replaceChild(plain, old);
+                if (window.sabCombobox) window.sabCombobox(plain);
+                return cell;
+            }
 
             document.getElementById('addLine').addEventListener('click', function () {
-                var copy = rows()[0].cloneNode(true);
-                copy.querySelectorAll('select').forEach(function (s) { s.selectedIndex = 0; });
-                copy.querySelector('[data-field=Quantity]').value = 1;
+                var first = rows()[0];
+                var copy = first.cloneNode(true);
+                var cell = freshSelect(first, copy, 'SupplyID');
+                freshSelect(first, copy, 'LocationID');
+                field(copy, 'Quantity').value = 1;
+                field(copy, 'UnitPrice').value = '';
                 body.appendChild(copy);
                 renumber(); sync();
-                copy.querySelector('[data-field=SupplyID]').focus();
+                (cell.querySelector('.combo-input') || field(copy, 'SupplyID')).focus();
             });
 
-            // A row opened for one supply starts with its usual room.
-            rows().forEach(function (row) {
-                var supply = row.querySelector('[data-field=SupplyID]'), loc = row.querySelector('[data-field=LocationID]');
-                var opt = supply.options[supply.selectedIndex];
-                if (supply.value && !loc.value && opt.dataset.location) loc.value = opt.dataset.location;
-            });
+            rows().forEach(offerRoom);
             renumber(); sync();
         })();
     </script>

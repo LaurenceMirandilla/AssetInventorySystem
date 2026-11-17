@@ -6,6 +6,8 @@
 @inject SchoolInventoryManagement.Web.Helpers.AuditText AuditText
 @{
     ViewData["Title"] = $"Request #{Model.RequestID}";
+    // What this page shows, for the live updates (_Layout, site.js).
+    ViewData["LiveScope"] = "assetrequest:" + Model.RequestID;
 
     var isApprover = User.IsInRole(RoleNames.AssetOfficer)
         || User.IsInRole(RoleNames.Administrator)

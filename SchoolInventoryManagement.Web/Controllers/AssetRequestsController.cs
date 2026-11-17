@@ -126,11 +126,12 @@ namespace SchoolInventoryManagement.Web.Controllers
         // GET /AssetRequests/History
         // Every finished request (returned, cancelled after approval, or
         // rejected), newest decision first, with
-        // filters. Asset Officers and Administrators only; the service
-        // checks the same.
-        [Authorize(Roles = AssetManagerRoles)]
+        // filters. Asset Officers and Administrators see everyone's;
+        // every other role sees only their own finished requests (the
+        // service enforces that).
         public async Task<IActionResult> History(RequestHistoryViewModel model)
         {
+            ViewBag.OwnOnly = !(User.IsInRole(RoleNames.AssetOfficer) || User.IsInRole(RoleNames.Administrator));
             var result = await _requestService.GetDecisionHistoryAsync(new RequestHistoryFilterDTO
             {
                 Decision = model.Decision,
@@ -193,10 +194,14 @@ namespace SchoolInventoryManagement.Web.Controllers
         // ?modelId= comes from the Request button on Browse items and fills
         // in the first row. An id that is not on the list just leaves the
         // row empty.
-        public async Task<IActionResult> Create(int? modelId)
+        // ?type=Transfer opens with Transfer chosen (the Supplies form's
+        // Borrow and Transfer cards link here).
+        public async Task<IActionResult> Create(int? modelId, RequestType? type = null)
         {
             await PopulateRequestDropdownsAsync();
             var model = new CreateAssetRequestViewModel();
+            if (type.HasValue)
+                model.RequestType = type.Value;
             model.Items[0].ModelID = modelId;
             return View(model);
         }
@@ -416,7 +421,12 @@ namespace SchoolInventoryManagement.Web.Controllers
             {
                 await _fulfillmentService.MarkAssignedAsync(
                     id, RowVersionHelper.FromBase64(rowVersionBase64), CurrentUserId);
-                TempData["StatusMessage"] = $"Request #{id} marked Assigned.";
+                var done = await _requestService.GetRequestByIdAsync(id);
+                TempData["StatusMessage"] = done is null
+                    ? $"Request #{id} handed over."
+                    : done.RequestType == RequestType.Borrow
+                        ? $"Request #{id} marked picked up by {done.RequestedByUser.FullName}."
+                        : $"Request #{id} marked delivered{(done.RequestedLocationName is null ? "" : " to " + done.RequestedLocationName)}.";
             }
             catch (Exception ex)
             {

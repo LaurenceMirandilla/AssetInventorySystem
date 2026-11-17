@@ -21,19 +21,23 @@ namespace SchoolInventoryManagement.BLL.DTOs
         public string ItemName { get; set; } = null!;
         public int Quantity { get; set; }
 
-        // Price of one: only meaningful on a one-item ticket.
-        public decimal? EstimatedUnitPrice { get; set; }
+        // Assets or supplies.
+        public CategoryKind ItemKind { get; set; }
+
+        // Where the items are brought when they arrive. Null on tickets
+        // made before it was asked for.
+        public int? DeliverToLocationID { get; set; }
+        public string? DeliverToLocationName { get; set; }
+        public string? DeliverToBranchName { get; set; }
 
         // What the ticket asks for, one line per item (at least one on every
         // request once Scripts/014 has run).
         public List<NewItemRequestItemDTO> Items { get; set; } = new();
 
-        // Every priced line added up; null when nothing is priced.
-        public decimal? EstimatedTotal =>
-            Items.Any(i => i.LineTotal != null) ? Items.Sum(i => i.LineTotal ?? 0) : null;
-
-        // How many lines have a price ("2 of 3 items priced").
-        public int PricedCount => Items.Count(i => i.EstimatedUnitPrice != null);
+        // "Science Lab 1 · Main Campus", or null.
+        public string? DeliverToText => DeliverToLocationName is null
+            ? null
+            : DeliverToBranchName is null ? DeliverToLocationName : $"{DeliverToLocationName} · {DeliverToBranchName}";
         public string? Reason { get; set; }
 
         // Null only on requests made before this was asked for.
@@ -71,7 +75,17 @@ namespace SchoolInventoryManagement.BLL.DTOs
     {
         public string ItemName { get; set; } = null!;
         public int Quantity { get; set; }
-        public decimal? EstimatedUnitPrice { get; set; }
-        public decimal? LineTotal => EstimatedUnitPrice * Quantity;
+
+        // Brand, size, model, colour: whatever the requester wrote.
+        public string? Description { get; set; }
+
+        // Supplies only: ream, box, bottle.
+        public string? Unit { get; set; }
+
+        // The existing model or supply this line asks for more of, if one
+        // was picked; otherwise the item is new to the school.
+        public int? ModelID { get; set; }
+        public int? SupplyID { get; set; }
+        public bool IsExisting => ModelID.HasValue || SupplyID.HasValue;
     }
 }

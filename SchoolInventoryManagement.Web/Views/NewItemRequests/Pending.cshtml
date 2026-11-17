@@ -5,6 +5,8 @@
 @using SchoolInventoryManagement.Web.Helpers
 @{
     ViewData["Title"] = "New-Item Approvals";
+    // What this page shows, for the live updates (_Layout, site.js).
+    ViewData["LiveScope"] = "newitems";
 
     // Two lists: tickets waiting on the signed-in user, and the other open
     // tickets they can see (further along, or on an earlier step).
@@ -18,11 +20,12 @@
     var today = PhilippineTime.Today;
     var stages = new[]
     {
-        (Status: NewItemStatus.AwaitingDeptHead, Label: "Department head"),
         (Status: NewItemStatus.AwaitingBudget, Label: "Principal"),
         (Status: NewItemStatus.Procuring, Label: "Procurement"),
-        (Status: NewItemStatus.AwaitingArrival, Label: "Arrival")
+        (Status: NewItemStatus.AwaitingArrival, Label: "Arrival"),
+        (Status: NewItemStatus.Arrived, Label: "Delivery")
     };
+    var canManage = User.IsInRole(RoleNames.AssetOfficer) || User.IsInRole(RoleNames.Administrator);
 
     // Days since it reached the stage it is at.
     int Waiting(NewItemRequestResponseDTO r) =>
@@ -54,6 +57,7 @@
     @if (seesAll)
     {
         <div class="asset-detail-actions">
+            <a asp-action="Requesters" class="btn btn-outline-secondary">Who can request</a>
             <a asp-action="All" class="btn btn-outline-secondary">All New-Item Requests</a>
         </div>
     }
@@ -129,7 +133,7 @@
                             <span class="myassets-item-main">
                                 <span class="myassets-item-title">@r.RequestedByUserName</span>
                                 <span class="myassets-item-sub">@Title(r)</span>
-                                <span class="myassets-item-sub">@Units(r) · @(r.EstimatedTotal is null ? "not priced" : DisplayText.Peso(r.EstimatedTotal))</span>
+                                <span class="myassets-item-sub">@NewItemProgress.Kind(r) · @Units(r)</span>
                                 <span class="md-tags">
                                     <span class="md-tag is-newitem">@(mine ? "New item" : NewItemProgress.Short(r.RequestStatus))</span>
                                     @r.DepartmentName
@@ -152,7 +156,11 @@
                 {
                     var waited = Waiting(r);
                     var current = Array.FindIndex(stages, s => s.Status == r.RequestStatus);
-                    var canReject = r.RequestStatus is NewItemStatus.AwaitingDeptHead or NewItemStatus.AwaitingBudget;
+                    // Whoever holds it can reject it, with a reason.
+                    var canReject = NewItemProgress.Open.Contains(r.RequestStatus);
+                    // The Delivery stage: Delivered, or Not delivered with a reason.
+                    var delivering = r.RequestStatus == NewItemStatus.Arrived;
+                    var problem = NewItemProgress.DeliveryProblem(r);
                     var late = r.NeededBy is not null && r.NeededBy.Value.Date < today;
                     var units = r.Items.Sum(i => i.Quantity);
 
@@ -165,6 +173,7 @@
                                 <div class="min-w-0">
                                     <div class="myassets-panel-meta">
                                         <span class="md-tag is-newitem">New item</span>
+                                        <span class="md-tag">@NewItemProgress.Kind(r)</span>
                                         <span>Request #@r.NewItemRequestID · submitted @r.RequestDate.ToString("MMM d, h:mm tt")</span>
                                     </div>
                                     <h3 class="md-person-name">@r.RequestedByUserName <small>· @(r.RequestedByRoleName ?? "") · @r.DepartmentName</small></h3>
@@ -188,7 +197,7 @@
                             <div><span>Stage</span><strong>@(current >= 0 ? stages[current].Label : NewItemProgress.Short(r.RequestStatus))</strong></div>
                             <div class="@(late ? "is-late" : "")"><span>Needed by</span><strong>@DisplayText.Or(r.NeededBy?.ToString("MMM d, yyyy"), "No date given")</strong></div>
                             <div><span>Items</span><strong>@r.Items.Count · @units unit@(units == 1 ? "" : "s")</strong></div>
-                            <div><span>Estimated total</span><strong class="text-success">@DisplayText.Or(r.EstimatedTotal is null ? null : DisplayText.Peso(r.EstimatedTotal), "Not priced")</strong></div>
+                            <div><span>Deliver to</span><strong>@DisplayText.Or(r.DeliverToText, "Not given")</strong></div>
                         </div>
 
                         <h4 class="md-section-title">What they're asking for</h4>
@@ -197,6 +206,30 @@
                         @if (!string.IsNullOrWhiteSpace(r.Reason))
                         {
                             <div class="req-note"><strong>Reason:</strong> @r.Reason</div>
+                        }
+
+                        @if (delivering && canManage)
+                        {
+                            @* It is at the school: put it on record before it goes out. *@
+                            <div class="req-note">
+                                <strong>Before delivering:</strong>
+                                @if (r.ItemKind == CategoryKind.Supply)
+                                {
+                                    <a asp-controller="Supplies" asp-action="AddStock" asp-route-newItemRequestId="@r.NewItemRequestID">add the supplies to stock</a>
+                                }
+                                else
+                                {
+                                    <a asp-controller="Assets" asp-action="BulkCreate">register the assets</a>
+                                }
+                                <span>if that is not done yet.</span>
+                            </div>
+                        }
+                        @if (problem is not null)
+                        {
+                            <div class="sab-callout sab-callout-warn mt-3">
+                                <span class="sab-callout-label">Not delivered · @problem.ActedAt.ToString("MMM d, h:mm tt")</span>
+                                @problem.Remarks
+                            </div>
                         }
 
                         @if (mine && r.CanAct)
@@ -208,7 +241,7 @@
                                 <input type="hidden" name="rowVersionBase64" value="@RowVersionHelper.ToBase64(r.RowVersion)" />
                                 <div class="ni-decision-title">Your decision</div>
                                 <textarea name="remarks" maxlength="500" rows="2" class="form-control"
-                                          placeholder="Remarks (optional) — shown in the history." aria-label="Remarks"></textarea>
+                                          placeholder="@(delivering ? "Remarks, shown in the history. Required if it was not delivered." : "Remarks, shown in the history. Required if you reject.")" aria-label="Remarks"></textarea>
                                 <div class="ni-decision-row">
                                     <div class="req-action-buttons">
                                         <button type="submit" class="btn btn-primary">&#10003; @DisplayText.AdvanceButton(r.RequestStatus)</button>
@@ -216,7 +249,13 @@
                                         {
                                             <button type="submit" class="btn btn-outline-danger"
                                                     formaction="@Url.Action("Reject", new { id = r.NewItemRequestID })"
-                                                    onclick="return confirm('Reject request #@r.NewItemRequestID and every item on it?');">Reject</button>
+                                                    onclick="var r=this.form.querySelector('[name=remarks]'); if(!r.value.trim()){ r.classList.add('is-invalid'); r.focus(); alert('Give a reason for rejecting, so the requester knows why.'); return false; } return confirm('Reject request #@r.NewItemRequestID and every item on it?');">Reject</button>
+                                        }
+                                        @if (delivering)
+                                        {
+                                            <button type="submit" class="btn btn-outline-danger"
+                                                    formaction="@Url.Action("NotDelivered", new { id = r.NewItemRequestID })"
+                                                    onclick="var r=this.form.querySelector('[name=remarks]'); if(!r.value.trim()){ r.classList.add('is-invalid'); r.focus(); alert('Say why it could not be delivered, so the requester knows.'); return false; } return true;">Not delivered</button>
                                         }
                                     </div>
                                     <span class="req-action-note">@NewItemProgress.NextNote(r.RequestStatus)</span>

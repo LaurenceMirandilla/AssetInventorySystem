@@ -42,6 +42,10 @@ namespace SchoolInventoryManagement.Web.ViewModels
         // Who holds the unit now (Asset.AssignedUserID).
         public int? UserId { get; set; }
 
+        // Who holds it: "person", "department" (assigned to a department,
+        // no person) or "none" (nobody). Empty for all.
+        public string? Holder { get; set; }
+
         // Disposed units are left out unless this is ticked, or Disposed is
         // the status being filtered on. Not counted in HasFilters: it shows
         // more, it does not narrow.
@@ -72,7 +76,8 @@ namespace SchoolInventoryManagement.Web.ViewModels
             LocationId.HasValue ||
             ModelId.HasValue ||
             BranchId.HasValue ||
-            UserId.HasValue;
+            UserId.HasValue ||
+            !string.IsNullOrEmpty(Holder);
 
         public int Page { get; set; } = 1;
         public int PageSize { get; set; } = 20;
@@ -88,6 +93,7 @@ namespace SchoolInventoryManagement.Web.ViewModels
             (LocationId.HasValue ? 1 : 0) +
             (DepartmentId.HasValue ? 1 : 0) +
             (UserId.HasValue ? 1 : 0) +
+            (string.IsNullOrEmpty(Holder) ? 0 : 1) +
             (Status.HasValue ? 1 : 0) +
             (Condition.HasValue ? 1 : 0) +
             (IncludeDisposed ? 1 : 0);

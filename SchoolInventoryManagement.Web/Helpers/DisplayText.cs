@@ -32,14 +32,36 @@ namespace SchoolInventoryManagement.Web.Helpers
                     "<span class=\"is-empty\">" + System.Net.WebUtility.HtmlEncode(whenMissing) + "</span>")
                 : new Microsoft.AspNetCore.Html.HtmlString(System.Net.WebUtility.HtmlEncode(value));
 
+        // A supply request's stage, as the status pill shows it.
+        public static string SupplyStage(SupplyRequestStatus status) => status switch
+        {
+            SupplyRequestStatus.Pending => "Waiting for approval",
+            SupplyRequestStatus.Approved => "Approved, to be released",
+            SupplyRequestStatus.Released => "Out for delivery",
+            SupplyRequestStatus.Delivered => "Delivered",
+            _ => status.ToString()
+        };
+
+        public static string SupplyStagePill(SupplyRequestStatus status) => status switch
+        {
+            SupplyRequestStatus.Pending => "st-low",
+            SupplyRequestStatus.Approved => "st-intransit",
+            SupplyRequestStatus.Released => "st-intransit",
+            SupplyRequestStatus.Delivered => "st-available",
+            SupplyRequestStatus.Rejected => "st-overdue",
+            _ => "st-undermaintenance"
+        };
+
         // A new-item request's stage, as the status pill shows it.
         public static string Stage(NewItemStatus status) => status switch
         {
-            NewItemStatus.AwaitingDeptHead => "Awaiting department head",
+            // No longer a stage of its own: read as waiting for the Principal.
+            NewItemStatus.AwaitingDeptHead => "Awaiting Principal",
             NewItemStatus.AwaitingBudget => "Awaiting Principal",
             NewItemStatus.Procuring => "Item procurement",
             NewItemStatus.AwaitingArrival => "Waiting for item arrival",
-            NewItemStatus.Arrived => "Item arrived",
+            NewItemStatus.Arrived => "Arrived, to be delivered",
+            NewItemStatus.Delivered => "Delivered",
             _ => status.ToString()
         };
 
@@ -48,10 +70,13 @@ namespace SchoolInventoryManagement.Web.Helpers
         public static string StepAction(NewItemStatus status) => status switch
         {
             NewItemStatus.AwaitingDeptHead => "Submitted",
+            // Old tickets only, from when a department head came first.
             NewItemStatus.AwaitingBudget => "Approved by department head",
             NewItemStatus.Procuring => "Approved by Principal, sent for procurement",
             NewItemStatus.AwaitingArrival => "Item procured",
             NewItemStatus.Arrived => "Arrival confirmed",
+            NewItemStatus.Delivered => "Delivered",
+            NewItemStatus.DeliveryFailed => "Could not be delivered",
             NewItemStatus.Rejected => "Rejected",
             _ => status.ToString()
         };
@@ -60,9 +85,10 @@ namespace SchoolInventoryManagement.Web.Helpers
         public static string AdvanceButton(NewItemStatus status) => status switch
         {
             NewItemStatus.AwaitingDeptHead => "Approve",
-            NewItemStatus.AwaitingBudget => "Approve (budget and reason OK)",
+            NewItemStatus.AwaitingBudget => "Approve",
             NewItemStatus.Procuring => "Item procured",
             NewItemStatus.AwaitingArrival => "Confirm arrival",
+            NewItemStatus.Arrived => "Delivered",
             _ => ""
         };
 

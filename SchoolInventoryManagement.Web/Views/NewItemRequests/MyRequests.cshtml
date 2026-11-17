@@ -6,8 +6,10 @@
     // The signed-in user's own new-item requests, with each one's stages
     // and steps beside the list. (Everyone's requests: All.cshtml.)
     ViewData["Title"] = "My New-Item Requests";
+    // What this page shows, for the live updates (_Layout, site.js).
+    ViewData["LiveScope"] = "mine";
 
-    var open = new[] { NewItemStatus.AwaitingDeptHead, NewItemStatus.AwaitingBudget, NewItemStatus.Procuring, NewItemStatus.AwaitingArrival };
+    var open = NewItemProgress.Active;
     var groups = new[]
     {
         (Key: "transit", Label: "In progress", Items: Model.Where(r => open.Contains(r.RequestStatus)).ToList()),
@@ -15,14 +17,19 @@
     };
     var ordered = groups.SelectMany(g => g.Items).ToList();
 
-    // The five stages, and the step status that completes each one.
+    // Only people who have been allowed to can file a request; the rest
+    // are told who in their department to ask.
+    var canRequest = ViewBag.CanRequest is true;
+    var askThese = ViewBag.DepartmentRequesters as List<string> ?? new List<string>();
+    var stageCount = NewItemProgress.StageCount;
+
+    // The four stages, and the step status that completes each one.
     var stages = new[]
     {
-        (Label: "Department head", DoneBy: NewItemStatus.AwaitingBudget),
         (Label: "Principal", DoneBy: NewItemStatus.Procuring),
         (Label: "Procurement", DoneBy: NewItemStatus.AwaitingArrival),
-        (Label: "Waiting for arrival", DoneBy: NewItemStatus.Arrived),
-        (Label: "Arrived", DoneBy: NewItemStatus.Arrived)
+        (Label: "Arrival", DoneBy: NewItemStatus.Arrived),
+        (Label: "Delivery", DoneBy: NewItemStatus.Delivered)
     };
 }
 
@@ -33,18 +40,8 @@
         return initials.Length > 2 ? initials[..2] : initials;
     }
 
-    // How many of the five stages are behind it.
-    static int StagesDone(NewItemRequestResponseDTO r) => r.RequestStatus switch
-    {
-        NewItemStatus.AwaitingDeptHead => 0,
-        NewItemStatus.AwaitingBudget => 1,
-        NewItemStatus.Procuring => 2,
-        NewItemStatus.AwaitingArrival => 3,
-        NewItemStatus.Arrived => 5,
-        // Rejected or cancelled: as far as its steps got before that.
-        _ => r.Steps.Count(s => s.Status is NewItemStatus.AwaitingBudget or NewItemStatus.Procuring
-                                 or NewItemStatus.AwaitingArrival or NewItemStatus.Arrived)
-    };
+    // How many of the four stages are behind it.
+    static int StagesDone(NewItemRequestResponseDTO r) => NewItemProgress.StagesDone(r);
 
     static bool IsStopped(NewItemRequestResponseDTO r) =>
         r.RequestStatus is NewItemStatus.Rejected or NewItemStatus.Cancelled;
@@ -54,9 +51,11 @@
     {
         NewItemStatus.AwaitingDeptHead => "submitted the request",
         NewItemStatus.AwaitingBudget => "approved for the department",
-        NewItemStatus.Procuring => "approved the budget",
+        NewItemStatus.Procuring => "approved the request",
         NewItemStatus.AwaitingArrival => "marked it procured",
         NewItemStatus.Arrived => "confirmed it arrived",
+        NewItemStatus.Delivered => "delivered it",
+        NewItemStatus.DeliveryFailed => "could not deliver it",
         NewItemStatus.Rejected => "rejected the request",
         NewItemStatus.Cancelled => "cancelled the request",
         _ => s.ToString()
@@ -73,21 +72,44 @@
         <h2 class="asset-detail-title">My New-Item Requests</h2>
         <div class="asset-detail-sub">Things you have asked the school to acquire, and where each one has got to.</div>
     </div>
-    <div class="asset-detail-actions">
-        <a asp-action="Create" class="btn btn-primary">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
-            Request an item
-        </a>
-    </div>
+    @if (canRequest)
+    {
+        <div class="asset-detail-actions">
+            <a asp-action="Create" class="btn btn-primary">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+                Request new items
+            </a>
+        </div>
+    }
 </div>
+
+@if (!canRequest)
+{
+    @* Not one of the chosen requesters. *@
+    <div class="alert alert-warning">
+        <strong>You can't request new items yourself.</strong>
+        @if (askThese.Any())
+        {
+            <span>Ask one of your department's requesters: @string.Join(askThese.Count == 2 ? " or " : ", ", askThese).</span>
+        }
+        else
+        {
+            <span>Nobody in your department has been chosen yet. Ask the Administrator, the Principal or an Asset Officer to choose someone.</span>
+        }
+        <span>You can still borrow, transfer and request supplies that are in stock.</span>
+    </div>
+}
 
 @if (!Model.Any())
 {
     <div class="sab-table-card">
         <div class="sab-empty">
             <div class="sab-empty-title">No requests yet</div>
-            <p>Need something the school does not have? Ask for it here.</p>
-            <a asp-action="Create" class="btn btn-primary">+ Request an item</a>
+            <p>@(canRequest ? "Need something the school does not have? Ask for it here." : "Requests you file for new items would be listed here.")</p>
+            @if (canRequest)
+            {
+                <a asp-action="Create" class="btn btn-primary">+ Request new items</a>
+            }
         </div>
     </div>
 }
@@ -109,7 +131,11 @@ else
                         <label class="form-label">Stage</label>
                         <select class="form-select form-select-sm" data-md-filter="stage">
                             <option value="">Any</option>
-                            @foreach (var s in Enum.GetValues<NewItemStatus>())
+                            @* Only real stages, once each: the old department-head
+                               value reads as "Awaiting Principal" too, and
+                               DeliveryFailed is never a request's stage. *@
+                            @foreach (var s in new[] { NewItemStatus.AwaitingBudget, NewItemStatus.Procuring, NewItemStatus.AwaitingArrival,
+                                                       NewItemStatus.Arrived, NewItemStatus.Delivered, NewItemStatus.Rejected, NewItemStatus.Cancelled })
                             {
                                 <option value="@s.ToString().ToLowerInvariant()">@DisplayText.Stage(s)</option>
                             }
@@ -127,7 +153,7 @@ else
                         var done = StagesDone(r);
                         var stopped = IsStopped(r);
                         <button type="button" class="myassets-item @(stopped ? "item-late" : g.Key == "transit" ? "item-transit" : "")"
-                                data-entry="n-@r.NewItemRequestID" data-stage="@r.RequestStatus.ToString().ToLowerInvariant()"
+                                data-entry="n-@r.NewItemRequestID" data-stage="@((r.RequestStatus == NewItemStatus.AwaitingDeptHead ? NewItemStatus.AwaitingBudget : r.RequestStatus).ToString().ToLowerInvariant())"
                                 data-search="@($"#{r.NewItemRequestID} {r.NewItemRequestID} {string.Join(' ', r.Items.Select(i => i.ItemName))} {r.Reason} {DisplayText.Stage(r.RequestStatus)}".ToLowerInvariant())">
                             <span class="myassets-badge">
                                 <strong>#@r.NewItemRequestID</strong>
@@ -136,10 +162,10 @@ else
                             <span class="myassets-item-main">
                                 <span class="myassets-item-title">@r.ItemName</span>
                                 <span class="myassets-item-sub">
-                                    @(r.Items.Count > 1 ? $"{r.Items.Count} items · " : "")@r.Quantity unit@(r.Quantity == 1 ? "" : "s")@(r.EstimatedTotal is not null ? " · " + DisplayText.Peso(r.EstimatedTotal) : "")@(r.NeededBy is not null && !stopped && done < 5 ? " · needed " + r.NeededBy.Value.ToString("MMM d") : "")
+                                    @NewItemProgress.Kind(r) · @(r.Items.Count > 1 ? $"{r.Items.Count} items · " : "")@r.Quantity unit@(r.Quantity == 1 ? "" : "s")@(r.NeededBy is not null && !stopped && done < stageCount ? " · needed " + r.NeededBy.Value.ToString("MMM d") : "")
                                 </span>
                                 <span class="nir-progress @(stopped ? "is-stopped" : "")" aria-hidden="true">
-                                    @for (var i = 0; i < 5; i++)
+                                    @for (var i = 0; i < stageCount; i++)
                                     {
                                         <span class="@(i < done ? "on" : i == done && (open.Contains(r.RequestStatus) || stopped) ? "now" : "")"></span>
                                     }
@@ -177,6 +203,10 @@ else
                         steps.Add(new RequestStep(r.RequestStatus == NewItemStatus.Rejected ? "Rejected" : "Cancelled",
                             lastStep?.ActedAt.ToString("MMM d"), RequestStepState.Stopped));
                     }
+                    else if (i == done && NewItemProgress.DeliveryProblem(r) is not null)
+                    {
+                        steps.Add(new RequestStep(stages[i].Label, "not delivered yet", RequestStepState.Late));
+                    }
                     else if (i == done)
                     {
                         steps.Add(new RequestStep(stages[i].Label, "now", RequestStepState.Current));
@@ -186,7 +216,7 @@ else
                         steps.Add(new RequestStep(stages[i].Label, null, RequestStepState.Todo));
                     }
                 }
-                var pillCss = stopped ? "st-overdue" : r.RequestStatus == NewItemStatus.Arrived ? "st-available" : "st-intransit";
+                var pillCss = stopped ? "st-overdue" : r.RequestStatus == NewItemStatus.Delivered ? "st-available" : "st-intransit";
 
                 <article class="myassets-panel" data-panel="n-@r.NewItemRequestID" hidden>
                     <button type="button" class="myassets-back" data-back>&larr; All my requests</button>
@@ -208,7 +238,7 @@ else
 
                     <div class="myassets-stats">
                         <div><span>Items</span><strong>@r.Items.Count · @r.Quantity unit@(r.Quantity == 1 ? "" : "s")</strong></div>
-                        <div><span>Estimated total</span><strong>@DisplayText.Peso(r.EstimatedTotal)</strong></div>
+                        <div><span>Deliver to</span><strong>@DisplayText.Or(r.DeliverToText, "Not given")</strong></div>
                         <div><span>Needed by</span><strong>@DisplayText.Or(r.NeededBy?.ToString("MMM d, yyyy"), "No date given")</strong></div>
                         <div><span>Last action</span><strong>@((lastStep?.ActedAt ?? r.RequestDate).ToString("MMM d"))</strong></div>
                     </div>

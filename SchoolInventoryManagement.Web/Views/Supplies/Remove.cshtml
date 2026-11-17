@@ -1,0 +1,130 @@
+﻿@model SchoolInventoryManagement.BLL.DTOs.RemoveStockDTO
+@using SchoolInventoryManagement.BLL.DTOs
+@using SchoolInventoryManagement.BLL.Services
+@using SchoolInventoryManagement.Web.Helpers
+@{
+    // Taking stock out because it cannot be used (damaged, expired, lost).
+    // For a count that does not match, use Count stock instead.
+    ViewData["Title"] = "Remove Stock";
+    var supplies = (List<SupplyChoiceDTO>)ViewBag.SupplyChoices;
+    var stock = (List<SupplyStockChoiceDTO>)ViewBag.StockChoices;
+    var stockJson = System.Text.Json.JsonSerializer.Serialize(stock.Select(k => new { s = k.SupplyID, l = k.LocationID, n = k.LocationName + " (" + k.BranchName + ")", q = k.Quantity }));
+}
+
+<div class="asset-detail-head">
+    <div>
+        <nav class="asset-crumbs" aria-label="Breadcrumb">
+            <a asp-controller="Assets" asp-action="Index">Items</a>
+            <span aria-hidden="true">&rsaquo;</span>
+            <a asp-action="Index">Supplies</a>
+            <span aria-hidden="true">&rsaquo;</span>
+            <span>Remove stock</span>
+        </nav>
+        <h2 class="asset-detail-title">Remove stock</h2>
+        <div class="asset-detail-sub">Take out stock that cannot be used: damaged, expired or lost. It is written to the stock history with your name and the reason.</div>
+    </div>
+</div>
+
+<form asp-action="Remove" method="post" class="register-form">
+    @Html.AntiForgeryToken()
+    @Html.FormTicket()
+    <div asp-validation-summary="All" class="text-danger mb-3"></div>
+
+    <div class="asset-card register-step mb-3">
+        <div class="register-step-head"><div class="register-step-title">What is being removed</div></div>
+        <div class="register-step-body">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label asp-for="SupplyID" class="form-label">Supply</label>
+                    <select asp-for="SupplyID" class="form-select" data-combobox id="removeSupply">
+                        <option value="">Search a supply...</option>
+                        @foreach (var s in supplies.Where(s => s.TotalQuantity > 0))
+                        {
+                            <option value="@s.SupplyID" data-unit="@s.Unit">@s.SupplyName</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label asp-for="LocationID" class="form-label">Take it from</label>
+                    <select asp-for="LocationID" class="form-select" id="removeLocation" data-initial="@Model.LocationID">
+                        <option value="">Pick a supply first</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label asp-for="Quantity" class="form-label">How many</label>
+                    <input asp-for="Quantity" type="number" min="1" step="1" inputmode="numeric" class="form-control" id="removeQty" />
+                    <div class="form-text" id="removeHint">&nbsp;</div>
+                </div>
+                <div class="col-md-4">
+                    <label asp-for="Reason" class="form-label">Reason</label>
+                    <select asp-for="Reason" class="form-select">
+                        <option value="">Pick a reason</option>
+                        @foreach (var r in SupplyService.RemoveReasons)
+                        {
+                            <option value="@r">@r</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-5">
+                    <label asp-for="Note" class="form-label">Note <span class="register-optional">optional, needed for "Other"</span></label>
+                    <input asp-for="Note" class="form-control" maxlength="150" placeholder="For example: dried out, box got wet" />
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="register-footer">
+        <span>The count was simply wrong? Use <a asp-action="Count">Count stock</a> instead.</span>
+        <div class="d-flex" style="gap:8px;">
+            @if (Model.SupplyID.HasValue)
+            {
+                <a asp-action="Details" asp-route-id="@Model.SupplyID" class="btn btn-outline-secondary">Cancel</a>
+            }
+            else
+            {
+                <a asp-action="Index" class="btn btn-outline-secondary">Cancel</a>
+            }
+            <button type="submit" class="btn btn-danger">Remove from stock</button>
+        </div>
+    </div>
+</form>
+
+@section Scripts {
+    <script>
+        (function () {
+            var STOCK = @Html.Raw(stockJson);
+            var supply = document.getElementById('removeSupply'), room = document.getElementById('removeLocation');
+            var qty = document.getElementById('removeQty'), hint = document.getElementById('removeHint');
+
+            function fillRooms() {
+                var keep = room.value || room.dataset.initial || '';
+                room.dataset.initial = '';
+                var rows = STOCK.filter(function (k) { return String(k.s) === supply.value; });
+                room.innerHTML = '';
+                var blank = document.createElement('option');
+                blank.value = ''; blank.text = supply.value ? 'Pick a location' : 'Pick a supply first';
+                room.appendChild(blank);
+                rows.forEach(function (k) {
+                    var o = document.createElement('option');
+                    o.value = k.l; o.text = k.n + ' · has ' + k.q; o.dataset.q = k.q;
+                    room.appendChild(o);
+                });
+                room.value = keep;
+                if (room.value !== keep) room.value = rows.length === 1 ? String(rows[0].l) : '';
+                sync();
+            }
+            function sync() {
+                var o = room.options[room.selectedIndex];
+                var has = o && o.value ? parseInt(o.dataset.q, 10) || 0 : 0;
+                qty.max = has > 0 ? has : '';
+                var n = parseInt(qty.value, 10) || 0;
+                hint.textContent = has > 0 ? has + ' there now, ' + Math.max(0, has - n) + ' after' : '\u00a0';
+                hint.classList.toggle('text-danger', has > 0 && n > has);
+            }
+            supply.addEventListener('change', fillRooms);
+            room.addEventListener('change', sync);
+            qty.addEventListener('input', sync);
+            fillRooms();
+        })();
+    </script>
+}

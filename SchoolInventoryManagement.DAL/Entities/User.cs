@@ -38,6 +38,11 @@ namespace SchoolInventoryManagement.DAL.Entities
         // their own (Web MustChangePasswordFilter). Added by script 017.
         public bool MustChangePassword { get; set; }
 
+        // Whether this person may file new-item requests. Off for everyone
+        // until an Administrator, the Principal or an Asset Officer turns
+        // it on (New-Item Approvals > Who can request). Scripts/019.
+        public bool CanRequestNewItems { get; set; }
+
         [Required]
         [MaxLength(20)]
         public string Status { get; set; } = "Active";

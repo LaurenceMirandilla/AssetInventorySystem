@@ -231,12 +231,27 @@ namespace SchoolInventoryManagement.Web.Controllers
                 "Value", "Text", model.Condition?.ToString());
         }
 
+        // The Items list's "Held by" filter: a person, a department (no
+        // person), or nobody. Anything else leaves the list as it is.
+        private static List<AssetResponseDTO> ByHolder(List<AssetResponseDTO> assets, string? holder) => holder switch
+        {
+            "person" => assets.Where(a => a.AssignedUserID != null).ToList(),
+            "department" => assets.Where(a => a.IsWithDepartment).ToList(),
+            "none" => assets.Where(a => a.AssignedUserID == null && !a.IsWithDepartment).ToList(),
+            _ => assets
+        };
+
+        private static string? CleanHolder(string? holder) =>
+            holder is "person" or "department" or "none" ? holder : null;
+
         // GET /Assets
         public async Task<IActionResult> Index(
             string? keyword, int? categoryId, int? departmentId,
             AssetStatus? status, ConditionStatus? condition, int? locationId, int? modelId,
-            int? branchId, int? userId = null, bool includeDisposed = false, int page = 1, int? pageSize = null)
+            int? branchId, int? userId = null, bool includeDisposed = false, int page = 1, int? pageSize = null,
+            string? holder = null)
         {
+            holder = CleanHolder(holder);
             var size = pageSize.HasValue && PageSizeOptions.Contains(pageSize.Value)
                 ? pageSize.Value
                 : PageSize;
@@ -248,8 +263,8 @@ namespace SchoolInventoryManagement.Web.Controllers
             // what makes the tiles mirror the rows: every filter, status
             // included, narrows this set, and the tiles are just its
             // breakdown. With a status selected the others read zero.
-            var matches = await _assetService.SearchAssetsAsync(
-                keyword, categoryId, modelId, branchId, departmentId, status, condition, locationId, userId);
+            var matches = ByHolder(await _assetService.SearchAssetsAsync(
+                keyword, categoryId, modelId, branchId, departmentId, status, condition, locationId, userId), holder);
 
             // Disposed units are hidden unless asked for. Done here, not in
             // SearchAssetsAsync, because the request screens and barcode scan use
@@ -301,6 +316,7 @@ namespace SchoolInventoryManagement.Web.Controllers
                 ModelId = modelId,
                 BranchId = branchId,
                 UserId = userId,
+                Holder = holder,
                 Page = currentPage,
                 PageSize = size,
                 PageSizeOptions = PageSizeOptions,
@@ -316,13 +332,13 @@ namespace SchoolInventoryManagement.Web.Controllers
         public async Task<IActionResult> ExportAssets(
             string? keyword, int? categoryId, int? departmentId,
             AssetStatus? status, ConditionStatus? condition, int? locationId, int? modelId,
-            int? branchId, int? userId = null, bool includeDisposed = false)
+            int? branchId, int? userId = null, bool includeDisposed = false, string? holder = null)
         {
             if (IsRequesterOnly)
                 return Forbid();
 
-            var assets = await _assetService.SearchAssetsAsync(
-                keyword, categoryId, modelId, branchId, departmentId, status, condition, locationId, userId);
+            var assets = ByHolder(await _assetService.SearchAssetsAsync(
+                keyword, categoryId, modelId, branchId, departmentId, status, condition, locationId, userId), CleanHolder(holder));
 
             // Same rule as the list, so the file matches what was on screen.
             if (!includeDisposed && status != AssetStatus.Disposed)
@@ -343,7 +359,7 @@ namespace SchoolInventoryManagement.Web.Controllers
                     a.Status.ToString(),
                     a.Condition.ToString(),
                     a.CurrentLocationName,
-                    a.AssignedUserName,
+                    a.AssignedUserName ?? (a.IsWithDepartment ? a.DepartmentName + " (department)" : null),
                     a.DepartmentName,
                     a.BranchName,
                     a.AcquisitionCost?.ToString("0.00", CultureInfo.InvariantCulture)

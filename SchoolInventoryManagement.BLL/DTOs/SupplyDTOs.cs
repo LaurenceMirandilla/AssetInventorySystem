@@ -31,9 +31,15 @@ namespace SchoolInventoryManagement.BLL.DTOs
         // The rooms it is kept in, by name.
         public List<string> LocationNames { get; set; } = new();
 
+        // The smallest amount any one branch that keeps it has. The
+        // low-stock level is checked against each branch, not the total.
+        public int LowestBranchQuantity { get; set; }
+        // A branch that keeps it is at or under its own low-stock level.
+        public bool AnyBranchLow { get; set; }
+
         public SupplyStockStatus Status =>
             TotalQuantity <= 0 ? SupplyStockStatus.OutOfStock :
-            LowStockLevel > 0 && TotalQuantity <= LowStockLevel ? SupplyStockStatus.RunningLow :
+            AnyBranchLow ? SupplyStockStatus.RunningLow :
             SupplyStockStatus.InStock;
     }
 
@@ -52,6 +58,21 @@ namespace SchoolInventoryManagement.BLL.DTOs
         public int TotalQuantity { get; set; }
         public List<SupplyStockRowDTO> Stock { get; set; } = new();
 
+        // The smallest amount any one branch that keeps it has. The
+        // low-stock level is checked against each branch, not the total.
+        public int LowestBranchQuantity { get; set; }
+        // A branch that keeps it is at or under its own low-stock level.
+        public bool AnyBranchLow { get; set; }
+
+        // Each branch's total, and whether it is at or under the level.
+        public List<SupplyBranchStockDTO> Branches { get; set; } = new();
+
+        // Every branch, with its own level if it has one. For the edit form.
+        public List<SupplyBranchLevelDTO> BranchLevels { get; set; } = new();
+
+        // How many purchases the average price is worked out from.
+        public int PricedPurchases { get; set; }
+
         // Newest first; HistoryCount is how many there are in all.
         public List<SupplyHistoryRowDTO> History { get; set; } = new();
         public int HistoryCount { get; set; }
@@ -61,13 +82,38 @@ namespace SchoolInventoryManagement.BLL.DTOs
 
         public SupplyStockStatus Status =>
             TotalQuantity <= 0 ? SupplyStockStatus.OutOfStock :
-            LowStockLevel > 0 && TotalQuantity <= LowStockLevel ? SupplyStockStatus.RunningLow :
+            AnyBranchLow ? SupplyStockStatus.RunningLow :
             SupplyStockStatus.InStock;
+    }
+
+    public class SupplyBranchStockDTO
+    {
+        public int BranchID { get; set; }
+        public string BranchName { get; set; } = null!;
+        public int Quantity { get; set; }
+        // The level this branch is checked against: its own, or the
+        // supply's general one.
+        public int LowStockLevel { get; set; }
+        public bool HasOwnLevel { get; set; }
+        public bool IsLow { get; set; }
+    }
+
+    // One branch's low-stock level on the edit form. Empty = use the
+    // general level.
+    public class SupplyBranchLevelDTO
+    {
+        public int BranchID { get; set; }
+        public string BranchName { get; set; } = "";
+        [Range(0, 1000000, ErrorMessage = "Enter a level of 0 or more.")]
+        public int? LowStockLevel { get; set; }
+        // What that branch holds now, for the form.
+        public int Quantity { get; set; }
     }
 
     public class SupplyStockRowDTO
     {
         public string LocationName { get; set; } = null!;
+        public int BranchID { get; set; }
         public string BranchName { get; set; } = null!;
         public int Quantity { get; set; }
     }
@@ -82,6 +128,8 @@ namespace SchoolInventoryManagement.BLL.DTOs
         public string PerformedBy { get; set; } = null!;
         public int QuantityChange { get; set; }
         public int QuantityAfter { get; set; }
+        // On stock coming in: what each unit cost.
+        public decimal? UnitPrice { get; set; }
     }
 
     // What can be changed after a supply exists. Quantities are not here:
@@ -102,16 +150,16 @@ namespace SchoolInventoryManagement.BLL.DTOs
         [Display(Name = "Counted per")]
         public string Unit { get; set; } = null!;
 
-        [Range(0, 9999999.99, ErrorMessage = "Enter a price of 0 or more.")]
-        [Display(Name = "Price per unit")]
-        public decimal? UnitPrice { get; set; }
-
         [MaxLength(255)]
         public string? Description { get; set; }
 
         [Range(0, 1000000, ErrorMessage = "Enter a level of 0 or more.")]
         [Display(Name = "Low-stock level")]
         public int LowStockLevel { get; set; }
+
+        // Branches with a level of their own. A branch left empty uses
+        // the general level above.
+        public List<SupplyBranchLevelDTO> BranchLevels { get; set; } = new();
     }
 
     // "Add stock": supplies that arrived without a new-item request
@@ -139,6 +187,11 @@ namespace SchoolInventoryManagement.BLL.DTOs
         public int? SupplyID { get; set; }
         public int Quantity { get; set; }
         public int? LocationID { get; set; }
+
+        // What each unit cost this time. Optional; when given, the
+        // supply's average price is worked out again.
+        [Range(0, 9999999.99, ErrorMessage = "Enter a price of 0 or more.")]
+        public decimal? UnitPrice { get; set; }
     }
 
     // A supply as the Add stock form lists it.

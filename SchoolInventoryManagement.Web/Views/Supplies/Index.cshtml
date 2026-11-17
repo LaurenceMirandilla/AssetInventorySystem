@@ -4,6 +4,8 @@
 @using SchoolInventoryManagement.Web.Helpers
 @{
     ViewData["Title"] = "Items";
+    // What this page shows, for the live updates (_Layout, site.js).
+    ViewData["LiveScope"] = "supplies";
 
     var canManage = User.IsInRole(RoleNames.AssetOfficer) || User.IsInRole(RoleNames.Administrator);
 

@@ -4,6 +4,8 @@
 @using SchoolInventoryManagement.Web.ViewModels
 @{
     ViewData["Title"] = "My Requests";
+    // What this page shows, for the live updates (_Layout, site.js).
+    ViewData["LiveScope"] = "mine";
     // Explicit type: a var from ViewBag would stay dynamic and break the
     // "out var" lookups below.
     Dictionary<int, string> categories = (ViewBag.ModelCategories as Dictionary<int, string>) ?? new Dictionary<int, string>();

@@ -14,6 +14,9 @@
         // Moved to another location: out of this one...
         MovedOut,
         // ...and into that one.
-        MovedIn
+        MovedIn,
+        // Taken out of stock because it cannot be used: damaged, expired,
+        // lost. Always with a reason.
+        Removed
     }
 }

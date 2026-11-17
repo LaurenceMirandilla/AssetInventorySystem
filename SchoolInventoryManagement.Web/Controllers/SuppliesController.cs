@@ -24,11 +24,14 @@ namespace SchoolInventoryManagement.Web.Controllers
         private static readonly int[] PageSizeOptions = { 10, 20, 50, 100 };
 
         private readonly ISupplyService _supplyService;
+        private readonly INewItemRequestService _newItemRequests;
         private readonly ApplicationDbContext _context;
 
-        public SuppliesController(ISupplyService supplyService, ApplicationDbContext context)
+        public SuppliesController(ISupplyService supplyService, INewItemRequestService newItemRequests,
+            ApplicationDbContext context)
         {
             _supplyService = supplyService;
+            _newItemRequests = newItemRequests;
             _context = context;
         }
 
@@ -127,15 +130,37 @@ namespace SchoolInventoryManagement.Web.Controllers
         {
             await PopulateAddStockAsync();
             var dto = new AddStockDTO { Source = "" };
-            // Opened from an arrived new-item request: the source is fixed
-            // and the request number is kept as the reference.
+            // Opened from an arrived new-item request: the source is fixed,
+            // the request number is kept as the reference, and the supplies
+            // on the ticket that are already on the list are filled in.
             if (newItemRequestId.HasValue)
             {
                 dto.Source = SchoolInventoryManagement.BLL.Services.SupplyService.NewItemSource;
                 dto.Reference = "Request #" + newItemRequestId.Value;
+                try
+                {
+                    var ticket = await _newItemRequests.GetRequestAsync(newItemRequestId.Value, CurrentUserId);
+                    if (ticket.ItemKind == CategoryKind.Supply)
+                    {
+                        // One row per supply, even if the ticket named it twice.
+                        dto.Lines = ticket.Items
+                            .Where(i => i.SupplyID.HasValue)
+                            .GroupBy(i => i.SupplyID)
+                            .Select(g => new AddStockLineDTO { SupplyID = g.Key, Quantity = g.Sum(i => i.Quantity) })
+                            .ToList();
+                        // New supplies have to be created first; say which.
+                        ViewBag.NewSupplyLines = ticket.Items
+                            .Where(i => !i.SupplyID.HasValue)
+                            .Select(i => $"{i.ItemName} ×{i.Quantity}{(string.IsNullOrWhiteSpace(i.Unit) ? "" : " " + SupplyText.Unit(i.Quantity, i.Unit))}")
+                            .ToList();
+                    }
+                }
+                catch (KeyNotFoundException) { }
+                catch (UnauthorizedAccessException) { }
             }
             // Opened from a supply's page: that supply is the first row.
-            dto.Lines.Add(new AddStockLineDTO { SupplyID = supplyId, Quantity = 1 });
+            if (dto.Lines.Count == 0)
+                dto.Lines.Add(new AddStockLineDTO { SupplyID = supplyId, Quantity = 1 });
             ViewBag.BackToSupplyId = supplyId;
             return View(dto);
         }
@@ -216,6 +241,42 @@ namespace SchoolInventoryManagement.Web.Controllers
             return View(dto);
         }
 
+        // GET /Supplies/Remove[?supplyId=5] : take unusable stock out
+        [Authorize(Roles = RoleNames.AssetOfficer + "," + RoleNames.Administrator)]
+        public async Task<IActionResult> Remove(int? supplyId)
+        {
+            await PopulateMoveAsync();
+            return View(new RemoveStockDTO { SupplyID = supplyId });
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        [OneTimeSubmit]
+        [Authorize(Roles = RoleNames.AssetOfficer + "," + RoleNames.Administrator)]
+        public async Task<IActionResult> Remove(RemoveStockDTO dto)
+        {
+            if (ModelState.IsValid)
+            {
+                try
+                {
+                    await _supplyService.RemoveStockAsync(dto, CurrentUserId);
+                    TempData["SuccessMessage"] = $"{dto.Quantity} removed from stock ({dto.Reason.ToLowerInvariant()}).";
+                    return RedirectToAction(nameof(Details), new { id = dto.SupplyID });
+                }
+                catch (Exception ex)
+                {
+                    HandleServiceException(ex);
+                }
+            }
+            else if (ModelState[string.Empty] is null)
+            {
+                ModelState.AddModelError(string.Empty, "Pick the supply, the location and a reason, and enter a whole number.");
+            }
+
+            await PopulateMoveAsync();
+            return View(dto);
+        }
+
         private async Task PopulateMoveAsync()
         {
             ViewBag.SupplyChoices = await _supplyService.GetSupplyChoicesAsync();
@@ -284,9 +345,9 @@ namespace SchoolInventoryManagement.Web.Controllers
                 SupplyName = supply.SupplyName,
                 CategoryID = supply.CategoryID,
                 Unit = supply.Unit,
-                UnitPrice = supply.UnitPrice,
                 Description = supply.Description,
-                LowStockLevel = supply.LowStockLevel
+                LowStockLevel = supply.LowStockLevel,
+                BranchLevels = supply.BranchLevels
             });
         }
 

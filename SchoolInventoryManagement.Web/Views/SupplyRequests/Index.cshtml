@@ -2,25 +2,10 @@
 @using SchoolInventoryManagement.DAL.Entities.Enums
 @{
     ViewData["Title"] = "My Requests";
+    // What this page shows, for the live updates (_Layout, site.js).
+    ViewData["LiveScope"] = "mine";
 }
 
-@functions {
-    public static string StatusLabel(SupplyRequestStatus s) => s switch
-    {
-        SupplyRequestStatus.Pending => "Waiting for approval",
-        SupplyRequestStatus.Approved => "Ready for pick-up",
-        _ => s.ToString()
-    };
-
-    public static string StatusClass(SupplyRequestStatus s) => s switch
-    {
-        SupplyRequestStatus.Pending => "st-low",
-        SupplyRequestStatus.Approved => "st-intransit",
-        SupplyRequestStatus.Released => "st-available",
-        SupplyRequestStatus.Rejected => "st-overdue",
-        _ => "st-undermaintenance"
-    };
-}
 
 @if (TempData["SuccessMessage"] != null)
 {
@@ -60,20 +45,26 @@
         <div class="table-responsive">
             <table class="table asset-table mb-0">
                 <thead>
-                    <tr><th>Request</th><th>Supplies</th><th>Needed by</th><th>Status</th><th>Pick up at</th></tr>
+                    <tr><th>Request</th><th>Supplies</th><th>Needed by</th><th>Status</th><th>Deliver to</th><th></th></tr>
                 </thead>
                 <tbody>
                     @foreach (var r in Model)
                     {
-                        <tr>
+                        @* The whole row opens the request. *@
+                        <tr style="cursor:pointer;" onclick="if(!event.target.closest('a')) window.location='@Url.Action("Details", new { id = r.SupplyRequestID })';">
                             <td>
                                 <a asp-action="Details" asp-route-id="@r.SupplyRequestID" class="asset-code-chip">S-@r.SupplyRequestID</a>
                                 <div class="asset-muted small">@r.CreatedAt.ToString("MMM d, yyyy")</div>
                             </td>
                             <td><a asp-action="Details" asp-route-id="@r.SupplyRequestID" class="asset-name">@r.ItemsSummary</a></td>
                             <td class="asset-muted">@(r.NeededBy?.ToString("MMM d, yyyy") ?? "—")</td>
-                            <td><span class="asset-pill asset-status @StatusClass(r.Status)">@StatusLabel(r.Status)</span></td>
-                            <td class="asset-muted">@(r.PickupLocationName ?? (r.Status == SupplyRequestStatus.Pending ? "Decided on approval" : "—"))</td>
+                            <td><span class="asset-pill asset-status @DisplayText.SupplyStagePill(r.Status)">@DisplayText.SupplyStage(r.Status)</span>
+                                @if (r.Status == SupplyRequestStatus.Released && r.DeliveryProblem is not null)
+                                {
+                                    <div class="asset-muted small">Not delivered yet: @r.DeliveryProblem</div>
+                                }</td>
+                            <td class="asset-muted">@(r.WhereName ?? (r.Status == SupplyRequestStatus.Pending ? "Decided on approval" : "—"))</td>
+                            <td class="text-end"><a asp-action="Details" asp-route-id="@r.SupplyRequestID" class="btn btn-sm btn-outline-secondary">View &rarr;</a></td>
                         </tr>
                     }
                 </tbody>

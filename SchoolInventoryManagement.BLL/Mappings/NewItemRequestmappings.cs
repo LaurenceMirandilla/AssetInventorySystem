@@ -6,9 +6,10 @@ namespace SchoolInventoryManagement.BLL.Mappings
 {
     public static class NewItemRequestMappings
     {
-        // Assumes the caller loaded RequestedByUser, Department, Items and
-        // ReviewedByUser -- NewItemRequestService.QueryWithIncludes() is
-        // the only thing that builds these.
+        // Assumes the caller loaded RequestedByUser, Department, Items,
+        // ReviewedByUser and DeliverToLocation with its Branch --
+        // NewItemRequestService.QueryWithIncludes() is the only thing that
+        // builds these.
         public static NewItemRequestResponseDTO ToResponseDTO(this NewItemRequest request)
         {
             return new NewItemRequestResponseDTO
@@ -22,7 +23,10 @@ namespace SchoolInventoryManagement.BLL.Mappings
                 DepartmentName = request.Department.DepartmentName,
                 ItemName = request.ItemName,
                 Quantity = request.Quantity,
-                EstimatedUnitPrice = request.EstimatedUnitPrice,
+                ItemKind = request.ItemKind,
+                DeliverToLocationID = request.DeliverToLocationID,
+                DeliverToLocationName = request.DeliverToLocation?.LocationName,
+                DeliverToBranchName = request.DeliverToLocation?.Branch?.BranchName,
                 // A ticket's lines. Every request has at least one once
                 // Scripts/014 has run (it copies older requests in as one-item
                 // tickets), so nothing is made up here: a query that forgets
@@ -33,7 +37,10 @@ namespace SchoolInventoryManagement.BLL.Mappings
                     {
                         ItemName = i.ItemName,
                         Quantity = i.Quantity,
-                        EstimatedUnitPrice = i.EstimatedUnitPrice
+                        Description = i.Description,
+                        Unit = i.Unit,
+                        ModelID = i.ModelID,
+                        SupplyID = i.SupplyID
                     })
                     .ToList(),
                 Reason = request.Reason,

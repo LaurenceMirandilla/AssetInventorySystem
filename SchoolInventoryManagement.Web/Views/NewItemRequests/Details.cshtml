@@ -6,6 +6,8 @@
 @inject SchoolInventoryManagement.Web.Helpers.AuditText AuditText
 @{
     ViewData["Title"] = $"New Item Request #{Model.NewItemRequestID}";
+    // What this page shows, for the live updates (_Layout, site.js).
+    ViewData["LiveScope"] = "newitem:" + Model.NewItemRequestID;
 
     // Height rules: two fixed cards (summary, step tracker), then lists that
     // are each capped and paginated -- items 10 a page, history 10 a page;
@@ -13,7 +15,13 @@
     var currentUserId = int.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)!.Value);
     var isMine = Model.RequestedByUserID == currentUserId;
     var isStopped = Model.RequestStatus is NewItemStatus.Rejected or NewItemStatus.Cancelled;
-    var canReject = Model.RequestStatus is NewItemStatus.AwaitingDeptHead or NewItemStatus.AwaitingBudget;
+    // Whoever holds the ticket can reject it at any open stage, with a reason.
+    var canReject = NewItemProgress.Open.Contains(Model.RequestStatus);
+    var isSupplies = Model.ItemKind == CategoryKind.Supply;
+    // The Delivery stage: Delivered, or Not delivered with a reason.
+    var delivering = Model.RequestStatus == NewItemStatus.Arrived;
+    var deliveryProblem = NewItemProgress.DeliveryProblem(Model);
+    var isManager = User.IsInRole("Asset Officer") || User.IsInRole("Administrator");
     var units = Model.Items.Sum(i => i.Quantity);
     // The item lines saved with the ticket are already in the table above
     // and summed up in "Submitted the request", so they are not listed
@@ -22,43 +30,39 @@
         .Where(r => r.ActionPerformed != "NewItemRequestItem Created")
         .ToList();
 
-    // Step tracker: Submitted -> Department head -> Principal -> Procurement
-    // -> Arrived. A stage is done once the step that ends it is recorded.
-    var stages = new[]
+    // Step tracker: Submitted -> Principal -> Procurement -> Arrival ->
+    // Delivery. How far it has got comes from the ticket's status, so a
+    // ticket closed without a recorded step still reads as finished.
+    var hints = new[] { "reads the reason", "item bought", "reaches the school", "brought to the location" };
+    var stagesDone = NewItemProgress.StagesDone(Model);
+    var tracker = new List<RequestStep>
     {
-        (Label: "Submitted", DoneBy: (NewItemStatus?)null, Hint: ""),
-        (Label: "Department head", DoneBy: (NewItemStatus?)NewItemStatus.AwaitingBudget, Hint: "approves the need"),
-        (Label: "Principal", DoneBy: (NewItemStatus?)NewItemStatus.Procuring, Hint: "budget & reason"),
-        (Label: "Procurement", DoneBy: (NewItemStatus?)NewItemStatus.AwaitingArrival, Hint: "item bought"),
-        (Label: "Arrived", DoneBy: (NewItemStatus?)NewItemStatus.Arrived, Hint: "ready")
+        new("Submitted", Model.RequestDate.ToString("MMM d"), RequestStepState.Done)
     };
-    var tracker = new List<RequestStep>();
-    var reachedCurrent = false;
-    foreach (var st in stages)
+    for (var i = 0; i < NewItemProgress.Stages.Length; i++)
     {
-        var doneStep = st.DoneBy is null ? null : Model.Steps.LastOrDefault(s => s.Status == st.DoneBy);
-        if (st.DoneBy is null)
-            tracker.Add(new RequestStep(st.Label, Model.RequestDate.ToString("MMM d"), RequestStepState.Done));
-        else if (doneStep is not null)
-            tracker.Add(new RequestStep(st.Label, doneStep.ActedAt.ToString("MMM d"), RequestStepState.Done));
-        else if (!reachedCurrent)
-        {
-            reachedCurrent = true;
-            tracker.Add(isStopped
-                ? new RequestStep(st.Label, Model.RequestStatus == NewItemStatus.Rejected ? "rejected" : "cancelled", RequestStepState.Stopped)
-                : new RequestStep(st.Label, "waiting", RequestStepState.Current));
-        }
+        var st = NewItemProgress.Stages[i];
+        var doneStep = Model.Steps.LastOrDefault(s => s.Status == st.DoneBy);
+        if (i < stagesDone)
+            tracker.Add(new RequestStep(st.Label, doneStep?.ActedAt.ToString("MMM d"), RequestStepState.Done));
+        else if (i == stagesDone && isStopped)
+            tracker.Add(new RequestStep(st.Label, Model.RequestStatus == NewItemStatus.Rejected ? "rejected" : "cancelled", RequestStepState.Stopped));
+        else if (i == stagesDone && deliveryProblem is not null)
+            tracker.Add(new RequestStep(st.Label, "not delivered yet", RequestStepState.Late));
+        else if (i == stagesDone)
+            tracker.Add(new RequestStep(st.Label, "waiting", RequestStepState.Current));
         else
-            tracker.Add(new RequestStep(st.Label, st.Hint, RequestStepState.Todo));
+            tracker.Add(new RequestStep(st.Label, hints[i], RequestStepState.Todo));
     }
 
     // What the dashed "Waiting for ..." entry and its "Next:" hint say.
     var waitingFor = Model.RequestStatus switch
     {
-        NewItemStatus.AwaitingDeptHead => ("Waiting for the department head", "Next: the principal checks the budget and reason"),
-        NewItemStatus.AwaitingBudget => ("Waiting for the principal", "Next: an Asset Officer buys the item"),
+        NewItemStatus.AwaitingDeptHead or NewItemStatus.AwaitingBudget => ("Waiting for the principal", "Next: an Asset Officer buys the item"),
         NewItemStatus.Procuring => ("Waiting for procurement", "Next: it waits for the item to arrive"),
-        NewItemStatus.AwaitingArrival => ("Waiting for the item to arrive", "Next: you're told when it's in"),
+        NewItemStatus.AwaitingArrival => ("Waiting for the item to arrive", "Next: the requester is told and it is brought to the chosen location"),
+        NewItemStatus.Arrived => (deliveryProblem is null ? "Waiting to be delivered" : "Waiting to be delivered again",
+            "Next: an Asset Officer brings it" + (Model.DeliverToLocationName is null ? "" : " to " + Model.DeliverToLocationName) + " and marks it delivered"),
         _ => ((string, string)?)null
     };
 }
@@ -87,9 +91,10 @@
         return s.Groups[1].Value switch
         {
             "AwaitingBudget" => "Approved for the department",
-            "Procuring" => "Approved the budget",
+            "Procuring" => "Approved the request",
             "AwaitingArrival" => "Marked the item procured",
             "Arrived" => "Confirmed the item arrived",
+            "Delivered" => "Delivered the items",
             "Rejected" => "Rejected the request",
             "Cancelled" => "Cancelled the request",
             var other => DisplayText.Humanize(other)
@@ -108,11 +113,20 @@
     <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
 }
 
-@if (Model.RequestStatus == NewItemStatus.Arrived && (User.IsInRole("Asset Officer") || User.IsInRole("Administrator")))
+@* Arrived: the next thing to do with the items, by kind. *@
+@if (Model.RequestStatus == NewItemStatus.Arrived && isManager)
 {
     <div class="alert alert-info d-flex align-items-center flex-wrap" style="gap:10px;">
-        <span class="flex-grow-1">Were these supplies, not assets? Add them to stock so they can be requested. This request's number is kept as the reference.</span>
-        <a asp-controller="Supplies" asp-action="AddStock" asp-route-newItemRequestId="@Model.NewItemRequestID" class="btn btn-sm btn-primary">Add to supplies stock</a>
+        @if (isSupplies)
+        {
+            <span class="flex-grow-1">These supplies have arrived. Add them to stock so they can be requested@(Model.DeliverToText is null ? "" : ", then bring them to " + Model.DeliverToLocationName) and mark this request delivered. The supplies picked from the list are filled in for you.</span>
+            <a asp-controller="Supplies" asp-action="AddStock" asp-route-newItemRequestId="@Model.NewItemRequestID" class="btn btn-sm btn-primary">Add to supplies stock</a>
+        }
+        else
+        {
+            <span class="flex-grow-1">These assets have arrived. Register each unit so it gets its code@(Model.DeliverToText is null ? "" : ", then bring them to " + Model.DeliverToLocationName) and mark this request delivered.</span>
+            <a asp-controller="Assets" asp-action="BulkCreate" class="btn btn-sm btn-primary">Register the assets</a>
+        }
     </div>
 }
 
@@ -139,6 +153,7 @@
     <div class="rq-summary-top">
         <div class="rq-summary-pills">
             <span class="md-tag is-newitem">New item</span>
+            <span class="md-tag">@NewItemProgress.Kind(Model)</span>
             <span class="asset-pill asset-status md-pill @NewItemProgress.Pill(Model.RequestStatus)">@DisplayText.Stage(Model.RequestStatus)</span>
             <span class="rq-status-line is-gray">Submitted @Model.RequestDate.ToString("MMM d, yyyy · h:mm tt")</span>
         </div>
@@ -148,13 +163,20 @@
         </div>
     </div>
     <dl class="rq-grid">
-        <div class="@(Model.NeededBy is not null && Model.NeededBy.Value.Date < PhilippineTime.Today && !isStopped && Model.RequestStatus != NewItemStatus.Arrived ? "is-late" : "")">
+        <div class="@(Model.NeededBy is not null && Model.NeededBy.Value.Date < PhilippineTime.Today && !isStopped && Model.RequestStatus != NewItemStatus.Delivered ? "is-late" : "")">
             <dt>Needed by</dt><dd>@DisplayText.Or(Model.NeededBy?.ToString("MMM d, yyyy"), "No date given")</dd>
         </div>
         <div><dt>Items</dt><dd>@Model.Items.Count · @units unit@(units == 1 ? "" : "s")</dd></div>
-        <div><dt>Estimated total</dt><dd class="text-success">@(Model.EstimatedTotal is null ? "not priced" : DisplayText.Peso(Model.EstimatedTotal))</dd></div>
+        <div><dt>Deliver to</dt><dd>@DisplayText.Or(Model.DeliverToText, "Not given")</dd></div>
         <div><dt>Reason</dt><dd class="@(string.IsNullOrWhiteSpace(Model.Reason) ? "is-empty" : "")">@(string.IsNullOrWhiteSpace(Model.Reason) ? "None given" : Model.Reason)</dd></div>
     </dl>
+    @if (deliveryProblem is not null)
+    {
+        <div class="rq-remarks is-red">
+            <span>Not delivered · @deliveryProblem.ActedAt.ToString("MMM d, h:mm tt")</span>
+            @deliveryProblem.Remarks It will be tried again.
+        </div>
+    }
     @if (isStopped && !string.IsNullOrWhiteSpace(Model.Remarks))
     {
         <div class="rq-remarks is-red">
@@ -209,7 +231,7 @@
             <ol class="ni-timeline">
                 @foreach (var s in Model.Steps)
                 {
-                    var bad = s.Status is NewItemStatus.Rejected or NewItemStatus.Cancelled;
+                    var bad = s.Status is NewItemStatus.Rejected or NewItemStatus.Cancelled or NewItemStatus.DeliveryFailed;
                     <li class="@(bad ? "is-stopped" : "is-done")">
                         <span class="ni-timeline-dot" aria-hidden="true">@(bad ? "!" : "✓")</span>
                         <div class="min-w-0">
@@ -263,7 +285,7 @@
                                     <span class="rq-what-title"><span class="rq-kind is-@kind.ToLowerInvariant()">@kind</span> @Headline(row)</span>
                                     @if (created)
                                     {
-                                        <small>@Model.Items.Count item@(Model.Items.Count == 1 ? "" : "s") · @units unit@(units == 1 ? "" : "s")@(Model.EstimatedTotal is null ? "" : " · " + DisplayText.Peso(Model.EstimatedTotal) + " estimated")@(Model.NeededBy is null ? "" : " · needed " + Model.NeededBy.Value.ToString("MMM d")) · @Model.DepartmentName</small>
+                                        <small>@Model.Items.Count item@(Model.Items.Count == 1 ? "" : "s") · @units unit@(units == 1 ? "" : "s")@(Model.NeededBy is null ? "" : " · needed " + Model.NeededBy.Value.ToString("MMM d")) · @Model.DepartmentName</small>
                                     }
                                     else if (!string.IsNullOrWhiteSpace(row.Description) && row.ActionPerformed != "NewItemRequestItem Created")
                                     {
@@ -306,13 +328,19 @@
         <input type="hidden" name="rowVersionBase64" value="@RowVersionHelper.ToBase64(Model.RowVersion)" />
         <a asp-action="@(isMine ? "MyRequests" : "Pending")" class="btn btn-outline-secondary ni-footer-back" aria-label="Back to @(isMine ? "New-Item Requests" : "New-Item Approvals")">&larr;<span class="d-none d-sm-inline"> @(isMine ? "New-Item Requests" : "New-Item Approvals")</span></a>
         <input type="text" name="remarks" maxlength="500" class="form-control ni-footer-remarks"
-               placeholder="Remarks (optional)@(canReject ? " — sent with a rejection" : "")" aria-label="Remarks" />
+               placeholder="@(delivering ? "Remarks. Required if it was not delivered." : "Remarks. Required if you reject.")" aria-label="Remarks" />
         <div class="d-flex" style="gap:8px;">
             @if (canReject)
             {
                 <button type="submit" class="btn btn-outline-danger"
                         formaction="@Url.Action("Reject", new { id = Model.NewItemRequestID, returnTo = "details" })"
-                        onclick="return confirm('Reject this request and every item on it?');">Reject</button>
+                        onclick="var r=this.form.querySelector('[name=remarks]'); if(!r.value.trim()){ r.classList.add('is-invalid'); r.focus(); alert('Give a reason for rejecting, so the requester knows why.'); return false; } return confirm('Reject this request and every item on it?');">Reject</button>
+            }
+            @if (delivering)
+            {
+                <button type="submit" class="btn btn-outline-danger"
+                        formaction="@Url.Action("NotDelivered", new { id = Model.NewItemRequestID, returnTo = "details" })"
+                        onclick="var r=this.form.querySelector('[name=remarks]'); if(!r.value.trim()){ r.classList.add('is-invalid'); r.focus(); alert('Say why it could not be delivered, so the requester knows.'); return false; } return true;">Not delivered</button>
             }
             <button type="submit" class="btn btn-primary">&#10003; @DisplayText.AdvanceButton(Model.RequestStatus)</button>
         </div>
@@ -322,7 +350,7 @@ else
 {
     <div class="register-footer ni-footer">
         <a asp-action="@(isMine ? "MyRequests" : "Pending")" class="btn btn-outline-secondary">&larr; @(isMine ? "New-Item Requests" : "New-Item Approvals")</a>
-        @if (!isMine && NewItemProgress.Open.Contains(Model.RequestStatus))
+        @if (!isMine && NewItemProgress.Active.Contains(Model.RequestStatus))
         {
             <span class="ms-auto">Waiting on @NewItemProgress.WaitingOn(Model.RequestStatus).</span>
         }

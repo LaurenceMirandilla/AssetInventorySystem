@@ -5,6 +5,8 @@
 @using SchoolInventoryManagement.Web.ViewModels
 @{
     ViewData["Title"] = "Approvals";
+    // What this page shows, for the live updates (_Layout, site.js).
+    ViewData["LiveScope"] = "approvals";
 
     // Approved requests still out: In Transit or Assigned, until returned.
     // Explicit types: ViewBag is dynamic, and a var here would stay dynamic,

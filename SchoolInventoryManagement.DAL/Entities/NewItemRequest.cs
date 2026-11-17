@@ -33,6 +33,14 @@ namespace SchoolInventoryManagement.DAL.Entities
         // on every new request.
         public DateTime? NeededBy { get; set; }
 
+        // Assets or supplies: a ticket is one or the other, never a mix
+        // (Scripts/019). Older tickets are all Asset.
+        public CategoryKind ItemKind { get; set; } = CategoryKind.Asset;
+
+        // Where the items are brought when they arrive, chosen by the
+        // requester. Null only on tickets made before it was asked for.
+        public int? DeliverToLocationID { get; set; }
+
         // Columns the table still has but the form no longer asks for.
         // Kept so the entity matches the table; new rows get the defaults.
         public int? CategoryID { get; set; }
@@ -41,7 +49,8 @@ namespace SchoolInventoryManagement.DAL.Entities
         public int Quantity { get; set; } = 1;
 
         // The requester's estimate of what ONE costs, in pesos (Scripts/013).
-        // The form requires it; null only on rows made before it existed.
+        // No longer asked for: prices were taken off new-item requests, so
+        // this is null on every ticket made since. Kept for the old rows.
         [Column(TypeName = "decimal(12,2)")]
         public decimal? EstimatedUnitPrice { get; set; }
 
@@ -51,7 +60,7 @@ namespace SchoolInventoryManagement.DAL.Entities
         public DateTime RequestDate { get; set; }
 
         [Required]
-        public NewItemStatus RequestStatus { get; set; } = NewItemStatus.AwaitingDeptHead;
+        public NewItemStatus RequestStatus { get; set; } = NewItemStatus.AwaitingBudget;
 
         // Whoever acted last, and their remarks -- the list pages' "Outcome".
         // The full story is in Steps.
@@ -77,6 +86,9 @@ namespace SchoolInventoryManagement.DAL.Entities
 
         [ForeignKey(nameof(ReviewedByUserID))]
         public User? ReviewedByUser { get; set; }
+
+        [ForeignKey(nameof(DeliverToLocationID))]
+        public Location? DeliverToLocation { get; set; }
 
         // Every stage it has been through, oldest first.
         public ICollection<NewItemRequestStep> Steps { get; set; } = new List<NewItemRequestStep>();

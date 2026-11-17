@@ -1,0 +1,213 @@
+﻿@model List<SchoolInventoryManagement.BLL.DTOs.RequesterDepartmentDTO>
+@using SchoolInventoryManagement.BLL.DTOs
+@{
+    // Who can request new items: every department's people, each with a
+    // switch. Administrator, Principal and Asset Officer
+    // (NewItemRequestsController.Requesters).
+    ViewData["Title"] = "Who Can Request New Items";
+    var allowedTotal = Model.Sum(d => d.People.Count(p => p.CanRequest));
+
+    string CountText(RequesterDepartmentDTO d)
+    {
+        var n = d.People.Count(p => p.CanRequest);
+        return n == 0 ? "no requester yet" : n == 1 ? "1 requester" : n + " requesters";
+    }
+}
+
+<div class="asset-detail-head mb-3 pb-0 border-0">
+    <div>
+        <nav class="asset-crumbs" aria-label="Breadcrumb">
+            <a asp-action="Pending">New-Item Approvals</a>
+            <span aria-hidden="true">&rsaquo;</span>
+            <span>Who can request</span>
+        </nav>
+        <h2 class="asset-detail-title">Who can request new items</h2>
+        <div class="asset-detail-sub">
+            <span id="allowedTotal">@allowedTotal</span> people can request. Only they see the "Request new items" button.
+            Everyone can still borrow, transfer and request supplies that are in stock.
+        </div>
+    </div>
+</div>
+
+@* The switches post with this token. *@
+<form id="requesterToken" hidden>@Html.AntiForgeryToken()</form>
+
+@if (!Model.Any())
+{
+    <div class="sab-table-card">
+        <div class="sab-empty">
+            <div class="sab-empty-title">No departments yet</div>
+            <p>Add a department and its people first.</p>
+        </div>
+    </div>
+}
+else
+{
+    <div class="sab-table-card myassets lk" data-md data-page-size="10" data-noun="departments">
+        <aside class="myassets-list" aria-label="Departments">
+            <div class="md-toolbar">
+                <label class="asset-search">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+                    <input type="text" data-md-search autocomplete="off" placeholder="Search a department or a person..." aria-label="Search departments and people" />
+                </label>
+                <div class="dropdown">
+                    <button type="button" class="asset-tool-btn" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18l-7 8.5V19l-4 2v-7.5z" /></svg>
+                        Filters
+                    </button>
+                    <div class="dropdown-menu dropdown-menu-end md-filter-menu">
+                        <label class="form-label">Branch</label>
+                        <select class="form-select form-select-sm mb-2" data-md-filter="branch">
+                            <option value="">Any</option>
+                            @foreach (var b in Model.Select(d => d.BranchName).Distinct().OrderBy(b => b))
+                            {
+                                <option value="@b.ToLowerInvariant()">@b</option>
+                            }
+                        </select>
+                        <label class="form-label">Requesters</label>
+                        <select class="form-select form-select-sm mb-2" data-md-filter="has">
+                            <option value="">Any</option>
+                            <option value="yes">Has at least one</option>
+                            <option value="no">No requester yet</option>
+                        </select>
+                        <label class="form-label">Has people with the role</label>
+                        <select class="form-select form-select-sm" data-md-filter="role">
+                            <option value="">Any</option>
+                            @foreach (var role in Model.SelectMany(d => d.People.Select(p => p.RoleName)).Distinct().OrderBy(r => r))
+                            {
+                                <option value="@role.ToLowerInvariant()">@role</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+            </div>
+            @foreach (var branch in Model.GroupBy(d => d.BranchName))
+            {
+                <div class="myassets-group" data-md-group>
+                    <div class="myassets-group-label">@branch.Key &middot; <span data-md-count>@branch.Count()</span></div>
+                    @foreach (var d in branch)
+                    {
+                        @* data-role holds every role in the department ("|teacher|staff|"),
+                           so the filter matches any of them. *@
+                        <button type="button" class="myassets-item" data-entry="d-@d.DepartmentID"
+                                data-branch="@d.BranchName.ToLowerInvariant()"
+                                data-has="@(d.People.Any(p => p.CanRequest) ? "yes" : "no")"
+                                data-role="@("|" + string.Join("|", d.People.Select(p => p.RoleName.ToLowerInvariant()).Distinct()) + "|")"
+                                data-search="@($"{d.DepartmentName} {d.BranchName} {string.Join(' ', d.People.Select(p => p.Name))}".ToLowerInvariant())">
+                            <span class="myassets-item-main">
+                                <span class="myassets-item-title">@d.DepartmentName</span>
+                                <span class="myassets-item-sub">@d.People.Count @(d.People.Count == 1 ? "person" : "people")</span>
+                            </span>
+                            <span class="lk-count" data-dept-count="@d.DepartmentID">@CountText(d)</span>
+                        </button>
+                    }
+                </div>
+            }
+            <div class="myassets-nomatch" data-md-empty hidden>No department matches your search or filters.</div>
+            <div class="md-foot"><span data-md-range></span><div data-md-pager></div></div>
+        </aside>
+
+        <section class="myassets-detail">
+            @foreach (var d in Model)
+            {
+                var allowed = d.People.Count(p => p.CanRequest);
+                <article class="myassets-panel" data-panel="d-@d.DepartmentID" hidden>
+                    <button type="button" class="myassets-back" data-back>&larr; All departments</button>
+                    <h3 class="myassets-panel-title mt-0">@d.DepartmentName</h3>
+                    <div class="lk-sub">@d.BranchName &middot; @d.People.Count @(d.People.Count == 1 ? "person" : "people")</div>
+
+                    <div class="asset-card register-step mt-3">
+                        <div class="register-step-head">
+                            <div class="register-step-title flex-grow-1">Who can request new items</div>
+                            <span class="nr-head-note" data-panel-count="@d.DepartmentID">@allowed of @d.People.Count</span>
+                        </div>
+                        @if (!d.People.Any())
+                        {
+                            <div class="register-step-body asset-muted">Nobody active is in this department.</div>
+                        }
+                        @foreach (var p in d.People)
+                        {
+                            <label class="rq-person">
+                                <span class="rq-person-main">
+                                    <strong>@p.Name</strong>
+                                    <small>@p.RoleName</small>
+                                </span>
+                                <span class="rq-person-state @(p.CanRequest ? "is-on" : "")" data-state>@(p.CanRequest ? "Can request" : "Cannot request")</span>
+                                <span class="form-check form-switch m-0 p-0">
+                                    <input class="form-check-input" type="checkbox" role="switch" data-user="@p.UserID" data-dept="@d.DepartmentID"
+                                           checked="@p.CanRequest" aria-label="@p.Name can request new items" />
+                                </span>
+                            </label>
+                        }
+                    </div>
+
+                    <p class="lk-sub mt-3 mb-0">A change takes effect straight away and is written to the audit log. The person is told by a notification.</p>
+                </article>
+            }
+        </section>
+    </div>
+}
+
+@section Scripts {
+    <script>
+        // Each switch saves on its own; nothing else on the page reloads.
+        (function () {
+            var tokenInput = document.querySelector('#requesterToken input[name=__RequestVerificationToken]');
+            if (!tokenInput) return;
+            var url = '@Url.Action("SetRequester")';
+
+            function refresh(dept) {
+                var boxes = document.querySelectorAll('input[data-dept="' + dept + '"]');
+                var on = 0;
+                boxes.forEach(function (b) {
+                    if (b.checked) on++;
+                    var state = b.closest('.rq-person').querySelector('[data-state]');
+                    state.textContent = b.checked ? 'Can request' : 'Cannot request';
+                    state.classList.toggle('is-on', b.checked);
+                });
+                var panel = document.querySelector('[data-panel-count="' + dept + '"]');
+                if (panel) panel.textContent = on + ' of ' + boxes.length;
+                var item = document.querySelector('[data-dept-count="' + dept + '"]');
+                if (item) {
+                    item.textContent = on === 0 ? 'no requester yet' : on === 1 ? '1 requester' : on + ' requesters';
+                    // Keeps the Requesters filter right the next time it is used.
+                    var entry = item.closest('[data-entry]');
+                    if (entry) entry.dataset.has = on > 0 ? 'yes' : 'no';
+                }
+                var total = document.getElementById('allowedTotal');
+                if (total) total.textContent = document.querySelectorAll('input[data-user]:checked').length;
+            }
+
+            document.addEventListener('change', function (e) {
+                var box = e.target.closest && e.target.closest('input[data-user]');
+                if (!box) return;
+                var want = box.checked;
+                box.disabled = true;
+
+                var body = new URLSearchParams();
+                body.append('userId', box.dataset.user);
+                body.append('allowed', want ? 'true' : 'false');
+                body.append('__RequestVerificationToken', tokenInput.value);
+
+                fetch(url, { method: 'POST', body: body, credentials: 'same-origin',
+                             headers: { 'Content-Type': 'application/x-www-form-urlencoded' } })
+                    .then(function (r) {
+                        return r.json().then(function (j) {
+                            if (!r.ok) throw new Error(j && j.error ? j.error : 'Could not save.');
+                        });
+                    })
+                    .catch(function (err) {
+                        // Put the switch back: nothing was saved.
+                        box.checked = !want;
+                        alert(err && err.message && err.message.indexOf('JSON') < 0
+                            ? err.message
+                            : 'Could not save. Check your connection, reload the page and try again.');
+                    })
+                    .then(function () {
+                        box.disabled = false;
+                        refresh(box.dataset.dept);
+                    });
+            });
+        })();
+    </script>
+}

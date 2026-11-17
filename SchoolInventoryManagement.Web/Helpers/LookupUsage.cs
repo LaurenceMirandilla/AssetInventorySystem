@@ -123,6 +123,8 @@ namespace SchoolInventoryManagement.Web.Helpers
             var supplyUse = await _context.SupplyStock.Select(k => k.LocationID)
                 .Union(_context.SupplyTransactions.Select(t => t.LocationID))
                 .Union(_context.SupplyRequests.Where(r => r.PickupLocationID != null).Select(r => r.PickupLocationID!.Value))
+                .Union(_context.SupplyRequests.Where(r => r.DeliverToLocationID != null).Select(r => r.DeliverToLocationID!.Value))
+                .Union(_context.NewItemRequests.Where(n => n.DeliverToLocationID != null).Select(n => n.DeliverToLocationID!.Value))
                 .ToListAsync();
 
             var ids = await _context.Locations.Select(l => l.LocationID).ToListAsync();
@@ -133,7 +135,7 @@ namespace SchoolInventoryManagement.Web.Helpers
                 var blocked = units > 0 ? $"Can't delete: {units} asset{(units == 1 ? " is" : "s are")} here."
                     : requested.Contains(id) ? "Can't delete: requests name it."
                     : everMoved.Contains(id) ? "Can't delete: its movement history refers to it."
-                    : supplyUse.Contains(id) ? "Can't delete: supplies or their history refer to it." : null;
+                    : supplyUse.Contains(id) ? "Can't delete: supplies or requests refer to it." : null;
                 return new LocationUsage(units, movesIn.GetValueOrDefault(id) + movesOut.GetValueOrDefault(id), h?.Depts ?? 0, blocked);
             });
         }

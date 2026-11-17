@@ -5,6 +5,7 @@
     ViewData["Title"] = "New Request";
     var choices = ViewBag.Choices as List<SupplyRequestChoiceDTO> ?? new();
     var branchName = ViewBag.BranchName as string ?? "your branch";
+    var deliveryLocations = ViewBag.DeliveryLocations as List<SupplyRoomDTO> ?? new();
     var minDate = PhilippineTime.Today.ToString("yyyy-MM-dd");
 }
 
@@ -27,14 +28,34 @@
     <div class="row g-3">
         <div class="col-lg-8">
 
+            @* The same three cards as the Borrow / Transfer form; the other
+               two open that form. *@
             <div class="asset-card register-step mb-3">
                 <div class="register-step-head"><div class="register-step-title">What kind of request?</div></div>
                 <div class="register-step-body">
-                    <nav class="sab-seg" aria-label="Request type">
-                        <a asp-controller="AssetRequests" asp-action="Create">Borrow or transfer</a>
-                        <a asp-action="Create" class="active" aria-current="page">Supplies</a>
-                    </nav>
-                    <div class="form-text mt-2">Supplies are used up, so they are not returned and the request cannot become overdue.</div>
+                    <div class="nr-kinds nr-kinds-3" aria-label="Request type">
+                        <a class="nr-kind" asp-controller="AssetRequests" asp-action="Create" asp-route-type="Borrow">
+                            <span class="nr-kind-dot" aria-hidden="true"></span>
+                            <span>
+                                <strong>Borrow</strong>
+                                <small>Use items for a while. Staff set them aside and you collect them at a pickup point.</small>
+                            </span>
+                        </a>
+                        <a class="nr-kind" asp-controller="AssetRequests" asp-action="Create" asp-route-type="Transfer">
+                            <span class="nr-kind-dot" aria-hidden="true"></span>
+                            <span>
+                                <strong>Transfer</strong>
+                                <small>Move items to a room. Staff deliver them to the location you choose.</small>
+                            </span>
+                        </a>
+                        <div class="nr-kind is-on" aria-current="page">
+                            <span class="nr-kind-dot" aria-hidden="true"></span>
+                            <span>
+                                <strong>Supplies</strong>
+                                <small>Paper, markers and other things that get used up. Delivered to a location you choose; nothing to return.</small>
+                            </span>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -46,7 +67,7 @@
             <div class="asset-card register-step mb-3">
                 <div class="register-step-head">
                     <div class="register-step-title flex-grow-1">What do you need?</div>
-                    <span class="nr-head-note">supplies kept at @branchName</span>
+                    <span class="nr-head-note" id="itemsNote">supplies kept at @branchName</span>
                 </div>
                 <div class="register-step-body pb-0">
                     <div id="itemRows">
@@ -80,8 +101,8 @@
                                 </div>
                                 <div class="col-6 col-md-4">
                                     <div class="form-label small asset-muted mb-1">In stock at your branch</div>
-                                    <div data-here>&mdash;</div>
-                                    <div class="asset-muted small" data-note></div>
+                                    <div data-stock-out>&mdash;</div>
+                                    <div class="asset-muted small" data-stock-note></div>
                                 </div>
                                 <div class="col-2 col-md-1 text-end">
                                     <div class="form-label small mb-1">&nbsp;</div>
@@ -100,44 +121,49 @@
             </div>
 
             <div class="asset-card register-step">
-                <div class="register-step-head"><div class="register-step-title">When and why</div></div>
+                <div class="register-step-head"><div class="register-step-title">Where, when and why</div></div>
                 <div class="register-step-body">
                     <div class="row g-3">
-                        <div class="col-md-4">
+                        <div class="col-md-6">
+                            <label asp-for="DeliverToLocationID" class="form-label">Deliver to</label>
+                            <select asp-for="DeliverToLocationID" class="form-select" data-combobox>
+                                <option value="">Search a location...</option>
+                                @foreach (var l in deliveryLocations)
+                                {
+                                    <option value="@l.LocationID">@l.LocationName</option>
+                                }
+                            </select>
+                            <div class="form-text">Where the supplies are brought to you. Locations in @branchName.</div>
+                            <span asp-validation-for="DeliverToLocationID" class="text-danger small"></span>
+                        </div>
+                        <div class="col-md-6">
                             <label asp-for="NeededBy" class="form-label">Needed by <span class="register-optional">optional</span></label>
                             <input asp-for="NeededBy" type="date" min="@minDate" class="form-control"
                                    value="@(Model.NeededBy?.ToString("yyyy-MM-dd"))" />
                             <span asp-validation-for="NeededBy" class="text-danger small"></span>
                         </div>
-                        <div class="col-md-8">
+                        <div class="col-12">
                             <label asp-for="Reason" class="form-label">Reason <span class="register-optional">optional</span></label>
                             <textarea asp-for="Reason" class="form-control" rows="2" maxlength="500" placeholder="e.g. Second quarter exams, Grade 8 Science"></textarea>
                             <span asp-validation-for="Reason" class="text-danger small"></span>
                         </div>
                     </div>
-                    <div class="form-text mt-2">Pick-up location: decided when the request is approved. It will be a storage room in @branchName.</div>
                 </div>
             </div>
         </div>
 
+        @* ---- Summary, as on the Borrow / Transfer form ---- *@
         <div class="col-lg-4">
-            <div class="asset-card register-step lk-side mb-3">
-                <div class="register-step-head"><div class="register-step-title">Your request</div></div>
-                <div class="register-step-body">
-                    <div class="lk-code-box">
-                        <div class="lk-code-label">Supplies</div>
-                        <div class="lk-code-big" id="sumItems">0 items</div>
-                    </div>
-                    <p class="lk-side-note mb-0">Your branch: <strong>@branchName</strong></p>
-                </div>
-            </div>
-            <div class="asset-card register-step lk-side">
-                <div class="register-step-head"><div class="register-step-title">What happens next</div></div>
-                <div class="register-step-body">
-                    <p class="lk-side-note"><strong>1. Submitted.</strong> Approvers are notified.</p>
-                    <p class="lk-side-note"><strong>2. Approved.</strong> The amounts are confirmed and a pick-up room is set.</p>
-                    <p class="lk-side-note mb-0"><strong>3. Released.</strong> The supplies are handed to you. Stock goes down at this point.</p>
-                </div>
+            <div class="asset-card nr-summary">
+                <div class="asset-card-title">Your request</div>
+                <dl class="approve-facts nr-summary-body">
+                    <div><dt>Type</dt><dd>Supplies</dd></div>
+                    <div><dt>Items</dt><dd id="sumItems" class="is-empty">None yet</dd></div>
+                    <div><dt>Needed by</dt><dd id="sumNeeded" class="is-empty">Not chosen yet</dd></div>
+                    <div><dt>Taken from</dt><dd>@branchName</dd></div>
+                    <div class="nr-summary-wide"><dt>Deliver to</dt><dd id="sumWhere" class="is-empty">Not chosen yet</dd></div>
+                </dl>
+                <ul class="nr-summary-list" id="sumList" hidden></ul>
             </div>
         </div>
     </div>
@@ -184,7 +210,7 @@
                 rows().forEach(function (row) {
                     var supply = row.querySelector('[data-field=SupplyID]');
                     var qty = Math.max(0, parseInt(row.querySelector('[data-field=Quantity]').value, 10) || 0);
-                    var here = row.querySelector('[data-here]'), note = row.querySelector('[data-note]');
+                    var here = row.querySelector('[data-stock-out]'), note = row.querySelector('[data-stock-note]');
                     var opt = supply.options[supply.selectedIndex];
                     if (!supply.value) { here.textContent = '\u2014'; note.textContent = ''; return; }
                     picked++;
@@ -199,8 +225,59 @@
                     else if (low > 0 && h <= low) parts.push('Running low.');
                     note.textContent = parts.join(' ');
                 });
-                document.getElementById('sumItems').textContent = picked + ' item' + (picked === 1 ? '' : 's');
+                var note = document.getElementById('itemsNote');
+                if (note) note.textContent = picked ? picked + ' item' + (picked === 1 ? '' : 's') + ' \u00B7 kept at ' + branch : 'supplies kept at ' + branch;
+                summary();
             }
+
+            // ---- "Your request" card --------------------------------------
+            var form = document.getElementById('supplyRequestForm');
+            var deliverTo = form.querySelector('[name=DeliverToLocationID]');
+            var neededBy = form.querySelector('[name=NeededBy]');
+
+            // "2026-11-17" -> "Nov 17, 2026", read as a local date.
+            function niceDate(v) {
+                var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v || '');
+                if (!m) return '';
+                var d = new Date(+m[1], +m[2] - 1, +m[3]);
+                return d.toLocaleString('en-US', { month: 'short' }) + ' ' + d.getDate() + ', ' + d.getFullYear();
+            }
+
+            function summary() {
+                var lines = [];
+                rows().forEach(function (row) {
+                    var s = row.querySelector('[data-field=SupplyID]');
+                    if (!s.value) return;
+                    var o = s.options[s.selectedIndex];
+                    var q = Math.max(0, parseInt(row.querySelector('[data-field=Quantity]').value, 10) || 0);
+                    lines.push({ name: o.text, qty: q, unit: o.dataset.unit });
+                });
+                var units = lines.reduce(function (t, l) { return t + l.qty; }, 0);
+                var text = !lines.length ? ''
+                    : lines.length === 1 ? units + ' ' + plural(lines[0].unit, units)
+                    : lines.length + ' supplies \u00B7 ' + units + ' units';
+                sabShow(document.getElementById('sumItems'), text, 'None yet');
+                sabShow(document.getElementById('sumNeeded'), niceDate(neededBy.value), 'Not chosen yet');
+
+                var where = document.getElementById('sumWhere');
+                var o = deliverTo.options[deliverTo.selectedIndex];
+                if (o && o.value) { where.textContent = o.text + ' \u00B7 ' + branch; where.className = 'is-green'; }
+                else { where.textContent = 'Not chosen yet'; where.className = 'is-empty'; }
+
+                // Each supply on its own line under the facts.
+                var list = document.getElementById('sumList');
+                list.innerHTML = '';
+                lines.forEach(function (l) {
+                    var li = document.createElement('li');
+                    var name = document.createElement('span'); name.textContent = l.name;
+                    var qty = document.createElement('strong'); qty.textContent = '\u00D7' + l.qty + ' ' + plural(l.unit, l.qty);
+                    li.appendChild(name); li.appendChild(qty);
+                    list.appendChild(li);
+                });
+                list.hidden = !lines.length;
+            }
+            form.addEventListener('change', summary);
+            form.addEventListener('input', summary);
 
             body.addEventListener('change', sync);
             body.addEventListener('input', sync);

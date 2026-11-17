@@ -5,6 +5,8 @@
 @inject SchoolInventoryManagement.BLL.Interfaces.ISupplyService SupplyCounts
 @{
     ViewData["Title"] = "Items";
+    // What this page shows, for the live updates (_Layout, site.js).
+    ViewData["LiveScope"] = "assets";
     // For the Assets / Supplies switch. Disposed units are never counted,
     // so the number stays the same whichever filters are on.
     var supplyScope = await SupplyCounts.GetBranchScopeAsync(
@@ -33,6 +35,7 @@
     AddRoute("locationId", Model.LocationId);
     AddRoute("departmentId", Model.DepartmentId);
     AddRoute("userId", Model.UserId);
+    AddRoute("holder", Model.Holder);
     AddRoute("status", Model.Status);
     AddRoute("condition", Model.Condition);
     AddRoute("includeDisposed", Model.IncludeDisposed ? "true" : null);
@@ -94,6 +97,7 @@
 
         @if (canManage)
         {
+            <a asp-controller="AssetAssignments" asp-action="Department" class="btn btn-outline-secondary">Assign to department</a>
             <a asp-action="BulkCreate" class="btn btn-outline-secondary">+ Bulk register</a>
             <partial name="_NewItemMenu" />
         }
@@ -245,6 +249,18 @@
                         </select>
                     </div>
 
+                    @* A person, a department (assigned with no person: cannot
+                       be borrowed), or nobody. *@
+                    <div>
+                        <label for="fHolder" class="form-label">Held by</label>
+                        <select name="holder" id="fHolder" class="form-select form-select-sm">
+                            <option value="">Anyone or nobody</option>
+                            <option value="person" selected="@(Model.Holder == "person")">A person</option>
+                            <option value="department" selected="@(Model.Holder == "department")">A department (no person)</option>
+                            <option value="none" selected="@(Model.Holder == "none")">Nobody</option>
+                        </select>
+                    </div>
+
                     <div>
                         <label for="fStatus" class="form-label">Status</label>
                         @Html.DropDownList("status", (IEnumerable<SelectListItem>)ViewBag.StatusFilter,
@@ -328,6 +344,16 @@
                                     <span class="asset-holder">
                                         <span class="asset-holder-avatar">@Initials(asset.AssignedUserName)</span>
                                         @asset.AssignedUserName
+                                    </span>
+                                }
+                                else if (asset.Status == AssetStatus.Assigned && !string.IsNullOrWhiteSpace(asset.DepartmentName))
+                                {
+                                    @* Assigned to a department, with no person. *@
+                                    <span class="asset-holder" title="Assigned to this department. Cannot be borrowed.">
+                                        <span class="asset-holder-avatar is-dept" aria-hidden="true">
+                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 21V8l9-5 9 5v13" /><path d="M9 21v-6h6v6" /></svg>
+                                        </span>
+                                        @asset.DepartmentName
                                     </span>
                                 }
                                 else

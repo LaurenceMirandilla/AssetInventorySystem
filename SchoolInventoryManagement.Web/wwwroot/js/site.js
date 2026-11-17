@@ -784,3 +784,179 @@ window.sabShow = function (el, text, whenEmpty) {
             input.form.addEventListener('submit', function () { setShown(input, button, false); });
     });
 })();
+
+// Live updates. Every 20 seconds, while the tab is in front, the page asks
+// /Live/Status (LiveController) for the sidebar counts, the newest
+// notification and a stamp of the data it shows (body data-live-scope,
+// set by the page). Counts change in place; a new notification pops up in
+// the corner. When the data changed, the page reloads itself where the
+// reader was (same item, same scroll), unless they have typed or picked
+// something or have a menu or dialog open: then a bar offers a Refresh
+// button instead, so nothing typed is lost.
+(function () {
+    var body = document.body;
+    var url = body && body.dataset.liveUrl;
+    if (!url || !window.fetch) return;
+
+    var scope = body.dataset.liveScope || '';
+    var stamp = body.dataset.liveStamp || '';
+    var seen = parseInt(body.dataset.liveSeen || '0', 10) || 0;
+    var notificationsUrl = body.dataset.liveNotifications || '';
+    var EVERY = 20000;
+    var busy = false, stopped = false, typed = false, bar = null;
+    var scrollKey = 'sab-live-scroll:' + location.pathname + location.search;
+
+    // Back to the same place after an automatic reload, with the pop-up
+    // that arrived together with the change.
+    var carried = null;
+    try {
+        var saved = sessionStorage.getItem(scrollKey);
+        if (saved !== null) {
+            sessionStorage.removeItem(scrollKey);
+            window.addEventListener('load', function () { window.scrollTo(0, parseInt(saved, 10) || 0); });
+        }
+        carried = JSON.parse(sessionStorage.getItem('sab-live-toast') || 'null');
+        sessionStorage.removeItem('sab-live-toast');
+    } catch (e) { /* storage blocked: start at the top */ }
+
+    // Anything the person types or picks (search boxes and filters too).
+    function mark(e) {
+        if (!e.isTrusted) return;
+        var t = e.target;
+        if (t && t.closest && t.closest('input, textarea, select, [contenteditable="true"]')) typed = true;
+    }
+    document.addEventListener('input', mark, true);
+    document.addEventListener('change', mark, true);
+
+    function inTheMiddleOfSomething() {
+        if (typed) return true;
+        if (document.querySelector('.modal.show, .dropdown-menu.show')) return true;
+        if (body.classList.contains('sab-sidebar-open')) return true;
+        var a = document.activeElement;
+        return !!(a && a !== body && a.matches && a.matches('input, textarea, select, [contenteditable="true"]'));
+    }
+
+    function reload(toastToKeep) {
+        try {
+            sessionStorage.setItem(scrollKey, String(window.scrollY));
+            if (toastToKeep) sessionStorage.setItem('sab-live-toast', JSON.stringify(toastToKeep));
+        } catch (e) { }
+        location.reload();
+    }
+
+    function offerRefresh() {
+        if (bar) return;
+        bar = document.createElement('div');
+        bar.className = 'sab-live-bar';
+        bar.setAttribute('role', 'status');
+        var text = document.createElement('span');
+        text.textContent = 'This page has new changes.';
+        var go = document.createElement('button');
+        go.type = 'button';
+        go.className = 'btn btn-sm btn-primary';
+        go.textContent = 'Refresh';
+        go.addEventListener('click', function () {
+            if (typed && !confirm('Refresh now? Anything you typed or picked on this page will be lost.')) return;
+            reload();
+        });
+        var close = document.createElement('button');
+        close.type = 'button';
+        close.className = 'sab-live-close';
+        close.setAttribute('aria-label', 'Not now');
+        close.textContent = '×';
+        close.addEventListener('click', function () { bar.remove(); bar = null; });
+        bar.appendChild(text); bar.appendChild(go); bar.appendChild(close);
+        body.appendChild(bar);
+    }
+
+    function setCount(key, n) {
+        document.querySelectorAll('[data-live-badge="' + key + '"]').forEach(function (el) {
+            el.textContent = n > 99 ? '99+' : String(n);
+            el.hidden = !(n > 0);
+        });
+    }
+
+    function setBell(n) {
+        document.querySelectorAll('[data-live-dot]').forEach(function (el) { el.hidden = !(n > 0); });
+        document.querySelectorAll('[data-live-bell]').forEach(function (a) {
+            a.title = n > 0 ? n + ' unread notification' + (n === 1 ? '' : 's') : 'Notifications';
+            a.setAttribute('aria-label', 'Notifications' + (n > 0 ? ', ' + n + ' unread' : ''));
+        });
+    }
+
+    // A small card in the corner for a new notification; gone after 10 s.
+    function popUp(latest) {
+        var box = document.querySelector('.sab-live-toasts');
+        if (!box) {
+            box = document.createElement('div');
+            box.className = 'sab-live-toasts';
+            box.setAttribute('aria-live', 'polite');
+            body.appendChild(box);
+        }
+        box.innerHTML = '';
+        var card = document.createElement('div');
+        card.className = 'sab-live-toast';
+        var title = document.createElement('div');
+        title.className = 'sab-live-toast-title';
+        title.textContent = 'New notification';
+        var msg = document.createElement('div');
+        msg.className = 'sab-live-toast-text';
+        msg.textContent = latest.message;
+        card.appendChild(title); card.appendChild(msg);
+        if (notificationsUrl) {
+            var link = document.createElement('a');
+            link.href = notificationsUrl;
+            link.textContent = 'View notifications →';
+            card.appendChild(link);
+        }
+        var close = document.createElement('button');
+        close.type = 'button';
+        close.className = 'sab-live-close';
+        close.setAttribute('aria-label', 'Close');
+        close.textContent = '×';
+        close.addEventListener('click', function () { card.remove(); });
+        card.appendChild(close);
+        box.appendChild(card);
+        setTimeout(function () { card.remove(); }, 10000);
+    }
+
+    function check() {
+        if (stopped || busy || document.hidden) return;
+        busy = true;
+        fetch(url + '?scope=' + encodeURIComponent(scope), {
+            credentials: 'same-origin',
+            cache: 'no-store',
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+        })
+            .then(function (r) {
+                var type = r.headers.get('content-type') || '';
+                // Signed out, or sent to another page (for example Change
+                // password): stop asking until the next page load.
+                if (r.status === 401 || r.status === 403 || (r.ok && type.indexOf('application/json') < 0)) {
+                    stopped = true;
+                    return null;
+                }
+                return r.ok ? r.json() : null;
+            })
+            .then(function (s) {
+                if (!s) return;
+                setBell(s.unread);
+                setCount('unread', s.unread);
+                if (typeof s.approvals === 'number') setCount('approvals', s.approvals);
+                var fresh = s.latest && s.latest.id > seen ? s.latest : null;
+                if (fresh) seen = fresh.id;
+                if (scope && s.stamp && stamp && s.stamp !== stamp) {
+                    stamp = s.stamp;
+                    if (!inTheMiddleOfSomething()) { reload(fresh); return; }
+                    offerRefresh();
+                }
+                if (fresh) popUp(fresh);
+            })
+            .catch(function () { /* offline for a moment: try again next time */ })
+            .then(function () { busy = false; });
+    }
+
+    if (carried && carried.message) popUp(carried);
+    setInterval(check, EVERY);
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) check(); });
+})();

@@ -4,6 +4,8 @@
 @using SchoolInventoryManagement.Web.Helpers
 @{
     ViewData["Title"] = Model.SupplyName;
+    // What this page shows, for the live updates (_Layout, site.js).
+    ViewData["LiveScope"] = "supply:" + Model.SupplyID;
 
     var canManage = User.IsInRole(RoleNames.AssetOfficer) || User.IsInRole(RoleNames.Administrator);
     // Teachers and Staff see what there is and where, not what it costs.
@@ -32,6 +34,7 @@
         "Adjusted" => "Count corrected",
         "MovedOut" => "Moved out",
         "MovedIn" => "Moved in",
+        "Removed" => "Removed",
         _ => type
     };
 }
@@ -63,6 +66,8 @@
         {
             <a asp-action="Edit" asp-route-id="@Model.SupplyID" class="btn btn-outline-secondary">Edit</a>
             <a asp-action="Move" asp-route-supplyId="@Model.SupplyID" class="btn btn-outline-secondary">Move stock</a>
+            <a asp-action="Count" class="btn btn-outline-secondary">Count stock</a>
+            <a asp-action="Remove" asp-route-supplyId="@Model.SupplyID" class="btn btn-outline-danger">Remove stock</a>
             <a asp-action="AddStock" asp-route-supplyId="@Model.SupplyID" class="btn btn-primary">+ Add stock</a>
         }
     </div>
@@ -74,14 +79,15 @@
         <strong>@Model.TotalQuantity @SupplyText.Unit(Model.TotalQuantity, Model.Unit)</strong>
     </div>
     <div>
-        <span>Low-stock level</span>
+        <span>General low-stock level</span>
         <strong>@(Model.LowStockLevel > 0 ? Model.LowStockLevel + " " + SupplyText.Unit(Model.LowStockLevel, Model.Unit) : "Not set")</strong>
     </div>
     @if (seesPrice)
     {
         <div>
-            <span>Price per @Model.Unit</span>
-            <strong>@(Model.UnitPrice.HasValue ? "₱ " + Model.UnitPrice.Value.ToString("N2") : "Not set")</strong>
+            <span>Average price per @Model.Unit</span>
+            <strong>@(Model.UnitPrice.HasValue ? "₱ " + Model.UnitPrice.Value.ToString("N2") : "No price yet")</strong>
+            <small class="asset-muted d-block">@(Model.PricedPurchases == 0 ? "Enter a price when adding stock" : "from " + Model.PricedPurchases + " priced deliver" + (Model.PricedPurchases == 1 ? "y" : "ies"))</small>
         </div>
         <div>
             <span>Stock value</span>
@@ -92,7 +98,7 @@
 
 @if (Model.Status == SupplyStockStatus.RunningLow)
 {
-    <div class="alert alert-warning mt-3 mb-0">At or below the low-stock level of @Model.LowStockLevel @SupplyText.Unit(Model.LowStockLevel, Model.Unit).</div>
+    <div class="alert alert-warning mt-3 mb-0">At or below the low-stock level at: @string.Join(", ", Model.Branches.Where(b => b.IsLow).Select(b => $"{b.BranchName} ({b.Quantity} left, level {b.LowStockLevel})")).</div>
 }
 
 <div class="asset-card register-step mt-3">
@@ -102,6 +108,19 @@
     </div>
     @if (Model.Stock.Any())
     {
+        @* Each branch's total; pick one to see only its locations. *@
+        @if (Model.Branches.Count > 1)
+        {
+            <div class="register-step-body border-bottom d-flex flex-wrap align-items-center" style="gap:8px;" data-branch-filter>
+                <button type="button" class="btn btn-sm btn-primary" data-branch="">All branches &middot; @Model.TotalQuantity</button>
+                @foreach (var b in Model.Branches)
+                {
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-branch="@b.BranchName">
+                        @b.BranchName &middot; @b.Quantity<span class="asset-muted small ms-1">@(b.LowStockLevel > 0 ? "level " + b.LowStockLevel : "no level")</span>@if (b.IsLow) {<span class="asset-pill asset-status st-low ms-1">Low</span>}
+                    </button>
+                }
+            </div>
+        }
         <div class="table-responsive">
             <table class="table asset-table mb-0">
                 <thead>
@@ -110,7 +129,7 @@
                 <tbody>
                     @foreach (var k in Model.Stock)
                     {
-                        <tr>
+                        <tr data-branch-row="@k.BranchName">
                             <td>@k.LocationName</td>
                             <td class="asset-muted">@k.BranchName</td>
                             <td class="text-end"><strong>@k.Quantity</strong> @SupplyText.Unit(k.Quantity, Model.Unit)</td>
@@ -149,6 +168,10 @@
                                 {
                                     <div class="asset-muted small">@h.Note</div>
                                 }
+                                @if (seesPrice && h.UnitPrice.HasValue)
+                                {
+                                    <div class="asset-muted small">&#8369; @h.UnitPrice.Value.ToString("N2") each</div>
+                                }
                             </td>
                             <td>@h.PerformedBy</td>
                             <td class="text-end"><strong class="@(h.QuantityChange < 0 ? "text-danger" : "text-success")">@(h.QuantityChange > 0 ? "+" : "")@h.QuantityChange</strong></td>
@@ -181,4 +204,27 @@
             <a asp-action="Index" class="btn btn-outline-secondary">Back to supplies</a>
         </div>
     </div>
+}
+
+@section Scripts {
+    <script>
+        // Branch buttons above "Where it is kept": show one branch's locations.
+        (function () {
+            var bar = document.querySelector('[data-branch-filter]');
+            if (!bar) return;
+            bar.addEventListener('click', function (e) {
+                var button = e.target.closest('[data-branch]');
+                if (!button) return;
+                var branch = button.getAttribute('data-branch');
+                bar.querySelectorAll('[data-branch]').forEach(function (b) {
+                    var on = b === button;
+                    b.classList.toggle('btn-primary', on);
+                    b.classList.toggle('btn-outline-secondary', !on);
+                });
+                document.querySelectorAll('[data-branch-row]').forEach(function (row) {
+                    row.hidden = !!branch && row.getAttribute('data-branch-row') !== branch;
+                });
+            });
+        })();
+    </script>
 }

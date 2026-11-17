@@ -278,13 +278,24 @@ namespace SchoolInventoryManagement.BLL.Services
         public async Task<RequestHistoryResultDTO> GetDecisionHistoryAsync(
             RequestHistoryFilterDTO filter, int actingUserId)
         {
-            await PermissionHelper.EnsureIsAssetManagerAsync(_context, actingUserId);
+            // Asset Officers and Administrators see everyone's finished
+            // requests. Everybody else sees only their own, whatever the
+            // filter asks for, including ones they cancelled themselves.
+            var actor = await PermissionHelper.GetUserOrThrowAsync(_context, actingUserId);
+            PermissionHelper.EnsureIsActive(actor);
+            var ownOnly = actor.Role.RoleName != RoleNames.AssetOfficer
+                          && actor.Role.RoleName != RoleNames.Administrator;
 
             var query = RequestQueryWithIncludes().Where(r =>
                 r.RequestStatus == RequestStatus.Rejected ||
                 r.RequestStatus == RequestStatus.Fulfilled ||
                 r.RequestStatus == RequestStatus.Returned ||
-                (r.RequestStatus == RequestStatus.Cancelled && r.ApprovedByUserID != null));
+                (r.RequestStatus == RequestStatus.Cancelled && (ownOnly || r.ApprovedByUserID != null)));
+            if (ownOnly)
+            {
+                query = query.Where(r => r.RequestedByUserID == actingUserId);
+                filter.RequestedByUserId = null;
+            }
 
             // Everyone who has decided anything, before the filters narrow
             // the list, so the dropdown does not empty itself out.
@@ -443,7 +454,7 @@ namespace SchoolInventoryManagement.BLL.Services
                 NotificationHelper.Queue(
                     _context,
                     request.RequestedByUserID,
-                    $"Your {request.RequestType} request was approved.",
+                    $"Your {request.RequestType} request #{request.RequestID} was approved.",
                     $"/AssetRequests/Details/{request.RequestID}");
             }
 
@@ -476,7 +487,7 @@ namespace SchoolInventoryManagement.BLL.Services
             NotificationHelper.Queue(
                 _context,
                 request.RequestedByUserID,
-                $"Your {request.RequestType} request was rejected. {reason}",
+                $"Your {request.RequestType} request #{request.RequestID} was rejected. Reason: {reason}",
                 $"/AssetRequests/Details/{request.RequestID}");
 
             try
@@ -543,7 +554,7 @@ namespace SchoolInventoryManagement.BLL.Services
                 NotificationHelper.Queue(
                     _context,
                     request.RequestedByUserID,
-                    $"Your {request.RequestType} request has been fulfilled.",
+                    $"Your {request.RequestType} request #{request.RequestID} has been completed.",
                     $"/AssetRequests/Details/{request.RequestID}");
             }
 

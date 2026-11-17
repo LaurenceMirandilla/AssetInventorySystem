@@ -3452,6 +3452,12 @@ a.dash-kpi:hover { background: rgba(255, 255, 255, 0.14); color: #fff; text-deco
 .nr-summary { position: sticky; top: 16px; }
 .nr-summary-body { padding: 16px 18px; margin: 0; }
 .nr-summary-wide { grid-column: 1 / -1; padding-bottom: 12px; border-bottom: 1px solid var(--sab-border); }
+/* The supplies form lists what was picked under the facts. */
+.nr-summary-list { list-style: none; margin: 0; padding: 0 18px 16px; }
+.nr-summary-list li { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; border-bottom: 1px dashed var(--sab-border); font-size: 0.88rem; }
+.nr-summary-list li:last-child { border-bottom: 0; }
+.nr-summary-list li span { min-width: 0; overflow-wrap: anywhere; }
+.nr-summary-list li strong { white-space: nowrap; }
 .nr-summary dd.is-green { color: var(--sab-green-dark); }
 .nr-summary dd.is-empty { color: var(--sab-text-faint); font-style: italic; font-weight: 600; }
 
@@ -3538,6 +3544,8 @@ a.dash-kpi:hover { background: rgba(255, 255, 255, 0.14); color: #fff; text-deco
 
 /* ---- New-item tickets (Views/Shared/_NewItemTicketItems, New-Item Approvals) ---- */
 .md-tag.is-newitem { background: var(--sab-amber-bg); color: var(--sab-amber-text); }
+.md-tag.is-supply { background: #efe9f7; color: #5b3f8c; }
+.asset-holder-avatar.is-dept { background: var(--sab-gray-bg); color: var(--sab-gray-text); }
 .md-section-title small { color: var(--sab-text-muted); font-weight: 400; font-size: 0.82rem; }
 
 .ni-stagechips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; list-style: none; margin: 14px 0 0; padding: 0; }
@@ -3849,3 +3857,101 @@ a.dash-kpi:hover { background: rgba(255, 255, 255, 0.14); color: #fff; text-deco
 }
 .pw-reveal-btn:hover { color: var(--sab-text); }
 .pw-reveal-btn:focus-visible { outline: 2px solid var(--sab-green-border); outline-offset: 1px; }
+
+/* ---- Request new items: rows with a search box, a unit (supplies) and a
+   description; no prices (NewItemRequests/Create) ---- */
+.ni2-grid {
+  display: grid; grid-template-columns: 22px minmax(0, 1.15fr) 116px minmax(0, 1.25fr) 28px; gap: 10px; align-items: start;
+}
+.ni2-box.is-supplies .ni2-grid { grid-template-columns: 22px minmax(0, 1.15fr) 116px 110px minmax(0, 1.25fr) 28px; }
+.ni2-box:not(.is-supplies) .ni-unit,
+.ni2-box:not(.is-supplies) .ni2-unit-head { display: none; }
+.ni2-head {
+  padding-bottom: 8px; border-bottom: 1px solid var(--sab-border); margin-bottom: 4px;
+  color: var(--sab-text-muted); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+}
+.ni2-head small { font-size: inherit; font-weight: 400; letter-spacing: 0; text-transform: none; }
+.ni2-row { padding: 10px 0; border-bottom: 1px solid #f0f2f4; }
+.ni2-row .nr-row-num { padding-top: 9px; }
+.ni2-row .nr-remove { margin-top: 4px; }
+.ni2-name { min-width: 0; }
+.ni-picked { margin-top: 4px; min-height: 1em; }
+.ni-picked.is-existing { color: var(--sab-green-dark); font-weight: 600; }
+.ni-desc { resize: vertical; min-height: 38px; }
+.ni-unit[readonly] { background: var(--sab-sidebar-bg); color: var(--sab-text-muted); }
+.ni-suggest-list { margin-top: 2px; }
+.ni-suggest-list .dropdown-item.active,
+.ni-suggest-list .dropdown-item:active { background: var(--sab-green-light); color: var(--sab-text); }
+.ni-suggest-list .combo-sub { display: block; color: var(--sab-text-muted); font-size: 0.76rem; }
+.ni-suggest-new { border-top: 1px solid var(--sab-border); color: var(--sab-green-dark); font-weight: 600; }
+.ni2-note {
+  padding: 10px 14px; background: var(--sab-green-light); color: var(--sab-green-dark); font-size: 0.86rem; font-weight: 600;
+}
+@media (max-width: 767.98px) {
+  .ni2-head { display: none; }
+  .ni2-grid,
+  .ni2-box.is-supplies .ni2-grid { grid-template-columns: 18px minmax(0, 1fr) minmax(0, 1fr) 28px; row-gap: 8px; }
+  .ni2-row .nr-row-num { grid-column: 1; grid-row: 1; }
+  .ni2-row .ni2-name { grid-column: 2 / 4; grid-row: 1; }
+  .ni2-row .remove-row { grid-column: 4; grid-row: 1; }
+  .ni2-row .ni-qty { grid-column: 2; grid-row: 2; }
+  .ni2-row .ni-unit { grid-column: 3; grid-row: 2; }
+  .ni2-row .ni-desc { grid-column: 2 / 4; grid-row: 3; }
+}
+
+/* The ticket's lines: item, quantity, description. */
+.ni-ticket-kind { display: block; color: var(--sab-text-muted); font-size: 0.76rem; font-weight: 400; }
+.ni-ticket-desc { overflow-wrap: anywhere; white-space: pre-line; }
+@container (max-width: 600px) {
+  .ni-ticket-table tr { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name qty" "desc desc"; }
+  .ni-ticket-qty { text-align: right !important; }
+  .ni-ticket-desc { grid-area: desc; font-size: 0.86rem; }
+}
+
+/* ---- Who can request new items (NewItemRequests/Requesters) ---- */
+.rq-person {
+  display: flex; align-items: center; gap: 14px; margin: 0; padding: 12px 20px;
+  border-bottom: 1px solid #f0f2f4; cursor: pointer;
+}
+.rq-person:last-child { border-bottom: 0; }
+.rq-person-main { flex: 1 1 auto; min-width: 0; }
+.rq-person-main strong { display: block; overflow-wrap: anywhere; }
+.rq-person-main small { display: block; color: var(--sab-text-muted); font-size: 0.8rem; }
+.rq-person-state { color: var(--sab-text-faint); font-size: 0.8rem; font-weight: 600; white-space: nowrap; }
+.rq-person-state.is-on { color: var(--sab-green-dark); }
+.rq-person .form-check-input { width: 2.6em; height: 1.4em; margin: 0; cursor: pointer; }
+.rq-person .form-check-input:checked { background-color: var(--sab-green-dark); border-color: var(--sab-green-dark); }
+.rq-person .form-check-input:focus { border-color: var(--sab-green-border); box-shadow: 0 0 0 3px rgba(46, 125, 50, 0.15); }
+
+/* ---- New request: Borrow, Transfer and Supplies side by side ---- */
+.nr-kinds.nr-kinds-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+a.nr-kind, a.nr-kind:hover { color: inherit; text-decoration: none; }
+a.nr-kind:hover { border-color: var(--sab-green-border); }
+@media (max-width: 767.98px) {
+  .nr-kinds.nr-kinds-3 { grid-template-columns: 1fr; }
+}
+
+/* ---- Live updates (site.js): "page has changed" bar and new-notification pop-up ---- */
+.sab-live-bar {
+  position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 1080;
+  display: flex; align-items: center; gap: 12px; max-width: calc(100vw - 32px);
+  padding: 10px 12px 10px 16px; background: var(--sab-surface); color: var(--sab-text);
+  border: 1px solid var(--sab-green-border); border-left: 4px solid var(--sab-green-dark);
+  box-shadow: 0 8px 24px rgba(16, 24, 40, 0.16); font-weight: 600; font-size: 0.9rem;
+}
+.sab-live-toasts { position: fixed; right: 20px; bottom: 20px; z-index: 1085; width: 340px; max-width: calc(100vw - 32px); }
+.sab-live-toast {
+  position: relative; padding: 12px 36px 12px 14px; background: var(--sab-surface);
+  border: 1px solid var(--sab-border); border-left: 4px solid var(--sab-green); box-shadow: 0 8px 24px rgba(16, 24, 40, 0.16);
+  animation: sab-live-in 0.2s ease-out;
+}
+.sab-live-toast-title { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--sab-green-dark); margin-bottom: 4px; }
+.sab-live-toast-text { font-size: 0.9rem; color: var(--sab-text); overflow-wrap: anywhere; }
+.sab-live-toast a { display: inline-block; margin-top: 6px; font-size: 0.84rem; font-weight: 600; color: var(--sab-green-dark); }
+.sab-live-close { border: 0; background: none; color: var(--sab-text-muted); font-size: 1.2rem; line-height: 1; padding: 2px 6px; cursor: pointer; }
+.sab-live-toast .sab-live-close { position: absolute; top: 6px; right: 6px; }
+@keyframes sab-live-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@media (max-width: 575.98px) {
+  .sab-live-bar { bottom: 12px; }
+  .sab-live-toasts { right: 16px; bottom: 72px; }
+}

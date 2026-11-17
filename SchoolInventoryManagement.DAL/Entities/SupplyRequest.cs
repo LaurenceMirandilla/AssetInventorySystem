@@ -39,15 +39,32 @@ namespace SchoolInventoryManagement.DAL.Entities
         [MaxLength(500)]
         public string? DecisionNote { get; set; }
 
-        // Where the requester collects the supplies; set on approval.
+        // Where the supplies are brought, chosen by the requester on the
+        // form (Scripts/019). A location in their own branch.
+        public int? DeliverToLocationID { get; set; }
+
+        // Older requests only: where the requester collected the supplies,
+        // set by the approver. Requests now carry DeliverToLocationID.
         public int? PickupLocationID { get; set; }
 
-        // Filled in when the supplies are handed over.
+        // Filled in when the supplies are taken off the shelf to be
+        // delivered.
         public int? ReleasedByUserID { get; set; }
         public DateTime? ReleasedAt { get; set; }
 
+        // Filled in when they are delivered (Scripts/020): who brought
+        // them, when, and who received them.
+        public int? DeliveredByUserID { get; set; }
+        public DateTime? DeliveredAt { get; set; }
+
         [MaxLength(100)]
         public string? ReceivedByName { get; set; }
+
+        // The last delivery that could not be made: why, and when. Cleared
+        // once the supplies are delivered.
+        [MaxLength(500)]
+        public string? DeliveryProblem { get; set; }
+        public DateTime? DeliveryProblemAt { get; set; }
 
         public DateTime? CancelledAt { get; set; }
 
@@ -68,8 +85,14 @@ namespace SchoolInventoryManagement.DAL.Entities
         [ForeignKey("PickupLocationID")]
         public Location? PickupLocation { get; set; }
 
+        [ForeignKey("DeliverToLocationID")]
+        public Location? DeliverToLocation { get; set; }
+
         [ForeignKey("ReleasedByUserID")]
         public User? ReleasedBy { get; set; }
+
+        [ForeignKey("DeliveredByUserID")]
+        public User? DeliveredBy { get; set; }
 
         public ICollection<SupplyRequestItem> Items { get; set; } = new List<SupplyRequestItem>();
     }

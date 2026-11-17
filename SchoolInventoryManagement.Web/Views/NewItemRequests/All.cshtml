@@ -7,21 +7,24 @@
     // read-only overview: decisions happen on New-Item Approvals. Every
     // request is on the page; the search box and the Filters menu narrow it.
     ViewData["Title"] = "All New-Item Requests";
+    // What this page shows, for the live updates (_Layout, site.js).
+    ViewData["LiveScope"] = "newitems";
     NewItemStatus? status = ViewBag.Status as NewItemStatus?;
     string search = ViewBag.Search as string ?? "";
     string sort = ViewBag.Sort as string ?? "newest";
     Dictionary<int, string> deptBranches = (ViewBag.DepartmentBranches as Dictionary<int, string>) ?? new Dictionary<int, string>();
     string BranchOf(NewItemRequestResponseDTO r) => deptBranches.TryGetValue(r.DepartmentID, out var b) ? b : "";
-    var stages = new[] { NewItemStatus.AwaitingDeptHead, NewItemStatus.AwaitingBudget, NewItemStatus.Procuring,
-                         NewItemStatus.AwaitingArrival, NewItemStatus.Arrived, NewItemStatus.Rejected,
-                         NewItemStatus.Cancelled };
+    var stages = new[] { NewItemStatus.AwaitingBudget, NewItemStatus.Procuring,
+                         NewItemStatus.AwaitingArrival, NewItemStatus.Arrived, NewItemStatus.Delivered,
+                         NewItemStatus.Rejected, NewItemStatus.Cancelled };
     var chipLabel = new Dictionary<NewItemStatus, string>
     {
-        [NewItemStatus.AwaitingDeptHead] = "Department head",
+        [NewItemStatus.AwaitingDeptHead] = "Principal",
         [NewItemStatus.AwaitingBudget] = "Principal",
         [NewItemStatus.Procuring] = "Procuring",
         [NewItemStatus.AwaitingArrival] = "Waiting arrival",
-        [NewItemStatus.Arrived] = "Arrived",
+        [NewItemStatus.Arrived] = "To deliver",
+        [NewItemStatus.Delivered] = "Delivered",
         [NewItemStatus.Rejected] = "Rejected",
         [NewItemStatus.Cancelled] = "Cancelled"
     };
@@ -35,6 +38,9 @@
     <div>
         <h2 class="asset-detail-title">All New-Item Requests</h2>
         <div class="asset-detail-sub">@Model.Count request@(Model.Count == 1 ? "" : "s") from everyone, @sort first, wherever they have got to.</div>
+    </div>
+    <div class="asset-detail-actions">
+        <a asp-action="Requesters" class="btn btn-outline-secondary">Who can request</a>
     </div>
 </div>
 
@@ -110,7 +116,7 @@ else
                             <span class="myassets-item-main">
                                 <span class="myassets-item-title">@r.ItemName@(r.Items.Count == 1 && r.Quantity > 1 ? $" ×{r.Quantity}" : "")</span>
                                 <span class="myassets-item-sub">@r.RequestedByUserName · @r.DepartmentName</span>
-                                <span class="myassets-item-sub">@DisplayText.Peso(r.EstimatedTotal) · @r.RequestDate.ToString("MMM d")</span>
+                                <span class="myassets-item-sub">@NewItemProgress.Kind(r) · @r.RequestDate.ToString("MMM d")</span>
                             </span>
                             <span class="asset-pill asset-status md-pill @NewItemProgress.Pill(r.RequestStatus)">@NewItemProgress.Short(r.RequestStatus)</span>
                         </button>
@@ -129,7 +135,7 @@ else
                 {
                     var last = r.Steps.LastOrDefault();
                     var lastText = last == null ? "Submitted · " + r.RequestDate.ToString("MMM d")
-                        : (last.Status == NewItemStatus.AwaitingDeptHead ? "Submitted" : DisplayText.Humanize(last.Status.ToString())) + " · " + last.ActedAt.ToString("MMM d");
+                        : DisplayText.StepAction(last.Status) + " · " + last.ActedAt.ToString("MMM d");
                     var steps = NewItemProgress.Steps(r, "waiting");
 
                     <article class="myassets-panel" data-panel="n-@r.NewItemRequestID" hidden>
@@ -154,7 +160,7 @@ else
 
                         <div class="myassets-stats">
                             <div><span>Items</span><strong>@r.Items.Count · @r.Quantity unit@(r.Quantity == 1 ? "" : "s")</strong></div>
-                            <div><span>Est. total</span><strong>@DisplayText.Peso(r.EstimatedTotal)</strong></div>
+                            <div><span>Deliver to</span><strong>@DisplayText.Or(r.DeliverToText, "Not given")</strong></div>
                             <div><span>Needed by</span><strong>@DisplayText.Or(r.NeededBy?.ToString("MMM d, yyyy"), "No date given")</strong></div>
                             <div><span>Last action</span><strong>@lastText</strong></div>
                         </div>
@@ -167,7 +173,7 @@ else
                             <div class="req-note"><strong>Reason:</strong> @r.Reason</div>
                         }
 
-                        @if (NewItemProgress.Open.Contains(r.RequestStatus))
+                        @if (NewItemProgress.Active.Contains(r.RequestStatus))
                         {
                             <div class="req-waiting">
                                 <span>Waiting on</span>

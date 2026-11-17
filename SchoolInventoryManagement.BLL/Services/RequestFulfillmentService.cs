@@ -424,7 +424,7 @@ namespace SchoolInventoryManagement.BLL.Services
                 _context,
                 request.RequestedByUserID,
                 allBack
-                    ? $"All items on request #{requestId} were returned, recorded as '{conditionOnReturn}'."
+                    ? $"All items on request #{requestId} were returned, in {conditionOnReturn} condition."
                     : $"{returning.Count} item{(returning.Count == 1 ? "" : "s")} on request #{requestId} " +
                       $"returned; {stillOut} still out.",
                 $"/AssetRequests/Details/{requestId}");

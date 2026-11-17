@@ -25,17 +25,26 @@
     // Stages of a new-item request (NewItemRequest), separate from
     // RequestStatus because the two flows have nothing in common past
     // "Rejected":
-    //   AwaitingDeptHead -> AwaitingBudget -> Procuring -> AwaitingArrival -> Arrived
-    // AwaitingDeptHead: submitted, waiting for the requester's department
-    //                   head (or an Administrator) to approve.
-    // AwaitingBudget:   department head approved; the Principal (or an
-    //                   Administrator) checks the budget and the reason.
+    //   AwaitingBudget -> Procuring -> AwaitingArrival -> Arrived -> Delivered
+    // AwaitingDeptHead: no longer a stage. Tickets used to wait here for
+    //                   the department head; they now go straight to the
+    //                   Principal. Still written as the first step of
+    //                   every ticket, where it means "submitted".
+    // AwaitingBudget:   submitted; the Principal (or an Administrator)
+    //                   reads the reason and approves or rejects.
     // Procuring:        Principal approved; an Asset Officer is buying it.
     // AwaitingArrival:  bought or obtained; waiting for it to be delivered,
     //                   which an Asset Officer confirms.
-    // Arrived:          delivered; the requester has been told.
-    // Rejected at either of the first two stages. Cancelled is kept for
-    // older rows. Names fit the 20-character status column.
+    // Arrived:          it is at the school and still has to be brought to
+    //                   the requester's location (the Delivery stage). An
+    //                   Asset Officer marks it Delivered, or records that a
+    //                   delivery could not be made and tries again.
+    // Delivered:        brought to the location; the request is finished.
+    // DeliveryFailed:   never a ticket's status. Only written as a step,
+    //                   for a delivery that could not be made.
+    // Rejected by whoever holds it at any open stage, with a reason.
+    // Cancelled is kept for older rows. Names fit the 20-character
+    // status column.
     public enum NewItemStatus
     {
         AwaitingDeptHead,
@@ -44,6 +53,8 @@
         AwaitingArrival,
         Arrived,
         Rejected,
-        Cancelled
+        Cancelled,
+        Delivered,
+        DeliveryFailed
     }
 }

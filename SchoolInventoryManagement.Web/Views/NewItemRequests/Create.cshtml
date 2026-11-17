@@ -1,30 +1,28 @@
 ﻿@model SchoolInventoryManagement.Web.ViewModels.CreateNewItemRequestViewModel
+@using SchoolInventoryManagement.BLL.DTOs
+@using SchoolInventoryManagement.DAL.Entities.Enums
 @{
-    ViewData["Title"] = "Request a New Item";
+    ViewData["Title"] = "Request New Items";
+
+    var lookups = ViewBag.Lookups as NewItemFormLookupsDTO
+        ?? new NewItemFormLookupsDTO { DepartmentName = "", BranchName = "" };
+    var isSupplies = Model.Kind == CategoryKind.Supply;
 
     // Always at least one row, even after a post that removed them all.
-    // Each row is a name, a quantity and an estimated price; a missing
-    // quantity shows as 1, a missing price as blank.
+    // Each row is a name, a quantity, a unit (supplies), a description and
+    // the model or supply it was picked from. The lists line up by position.
     var names = Model.ItemNames.Count > 0 ? Model.ItemNames : new List<string?> { "" };
-    var rows = names.Select((name, i) => (Name: name,
+    var rows = names.Select((name, i) => (
+        Name: name,
         Quantity: i < Model.Quantities.Count && Model.Quantities[i] is int q ? q : 1,
-        Price: i < Model.EstimatedPrices.Count ? Model.EstimatedPrices[i] : null)).ToList();
+        Unit: i < Model.Units.Count ? Model.Units[i] : null,
+        Description: i < Model.Descriptions.Count ? Model.Descriptions[i] : null,
+        ModelId: i < Model.ModelIds.Count ? Model.ModelIds[i] : null,
+        SupplyId: i < Model.SupplyIds.Count ? Model.SupplyIds[i] : null)).ToList();
 
-    var myDepartment = ViewBag.MyDepartment as string;
-    var skipsDeptHead = ViewBag.SkipsDeptHead is bool skip && skip;
-
-    // What happens after submitting, in order. A department head's or an
-    // Administrator's own request starts at the Principal
-    // (NewItemRequestService).
-    var steps = new List<(string Title, string Sub)>();
-    if (!skipsDeptHead) steps.Add(("Department head", "approves the need"));
-    steps.Add(("Principal", "checks budget and reason"));
-    steps.Add(("Procurement", "an Asset Officer buys it"));
-    steps.Add(("Arrival", "you're told when it's in"));
-}
-
-@functions {
-    static string Price(decimal? p) => p?.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) ?? "";
+    var commonUnits = new[] { "piece", "box", "ream", "bottle", "pack", "roll", "set", "gallon" };
+    var units = lookups.Supplies.Select(s => s.Unit).Concat(commonUnits)
+        .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 }
 
 <div class="asset-detail-head">
@@ -32,10 +30,13 @@
         <nav class="asset-crumbs" aria-label="Breadcrumb">
             <a asp-action="MyRequests">New-Item Requests</a>
             <span aria-hidden="true">&rsaquo;</span>
-            <span>Request a new item</span>
+            <span>New request</span>
         </nav>
-        <h2 class="asset-detail-title">Request a new item</h2>
-        <div class="asset-detail-sub">For something the school doesn't have yet.</div>
+        <h2 class="asset-detail-title">Request new items</h2>
+        <div class="asset-detail-sub">For things the school doesn't have yet, or needs more of.</div>
+    </div>
+    <div class="asset-detail-actions">
+        <span class="asset-pill asset-status st-available">Authorised requester &middot; @lookups.DepartmentName</span>
     </div>
 </div>
 
@@ -47,61 +48,92 @@
     <div class="row g-3">
         <div class="col-lg-8">
 
+            @* ---- Assets or supplies ---- *@
+            <div class="asset-card register-step mb-3">
+                <div class="register-step-head"><div class="register-step-title">What are you asking for?</div></div>
+                <div class="register-step-body">
+                    <div class="nr-kinds" role="radiogroup" aria-label="Kind of item">
+                        <label class="nr-kind @(isSupplies ? "" : "is-on")">
+                            <input type="radio" name="Kind" value="Asset" checked="@(!isSupplies)" />
+                            <span class="nr-kind-dot" aria-hidden="true"></span>
+                            <span>
+                                <strong>Assets</strong>
+                                <small>Kept and tracked one by one, each with its own code: chairs, laptops, projectors.</small>
+                            </span>
+                        </label>
+                        <label class="nr-kind @(isSupplies ? "is-on" : "")">
+                            <input type="radio" name="Kind" value="Supply" checked="@isSupplies" />
+                            <span class="nr-kind-dot" aria-hidden="true"></span>
+                            <span>
+                                <strong>Supplies</strong>
+                                <small>Counted by quantity and used up: paper, markers, alcohol.</small>
+                            </span>
+                        </label>
+                    </div>
+                    <div class="nr-hint mt-2">One request is either assets or supplies, not both.</div>
+                </div>
+            </div>
+
             @* ---- Items ---- *@
             <div class="asset-card register-step mb-3">
                 <div class="register-step-head">
-                    <div class="register-step-title flex-grow-1">Items to be added</div>
+                    <div class="register-step-title flex-grow-1" id="itemsTitle">@(isSupplies ? "Supplies to be bought" : "Assets to be bought")</div>
                     <span class="nr-head-note" id="itemsNote"></span>
                 </div>
-                <div class="register-step-body">
-                    <div class="ni-grid ni-grid-head" aria-hidden="true">
+                <div class="register-step-body ni2-box @(isSupplies ? "is-supplies" : "")" id="itemsBox">
+                    <div class="ni2-grid ni2-head" aria-hidden="true">
                         <span></span>
-                        <span>Item</span>
+                        <span>Item <small>type to search</small></span>
                         <span>Quantity</span>
-                        <span>Est. price (each)</span>
-                        <span class="text-end">Line total</span>
+                        <span class="ni2-unit-head">Unit</span>
+                        <span>Description <small>optional</small></span>
                         <span></span>
                     </div>
 
                     <div id="itemRows">
                         @foreach (var row in rows)
                         {
-                            <div class="ni-grid ni-row item-row">
+                            <div class="ni2-grid ni2-row item-row">
                                 <span class="nr-row-num"></span>
-                                <input type="text" name="ItemNames" value="@row.Name" maxlength="150"
-                                       class="form-control ni-name" placeholder="e.g. Document camera" aria-label="Item" />
+                                <div class="ni2-name">
+                                    <div class="position-relative">
+                                        <input type="text" name="ItemNames" value="@row.Name" maxlength="150" autocomplete="off"
+                                               class="form-control ni-name" placeholder="Type to search, or type a new item" aria-label="Item"
+                                               role="combobox" aria-autocomplete="list" aria-expanded="false" />
+                                        <ul class="dropdown-menu w-100 combo-list ni-suggest-list" role="listbox"></ul>
+                                    </div>
+                                    <input type="hidden" name="ModelIds" class="ni-model-id" value="@row.ModelId" />
+                                    <input type="hidden" name="SupplyIds" class="ni-supply-id" value="@row.SupplyId" />
+                                    <div class="nr-hint ni-picked" aria-live="polite"></div>
+                                </div>
                                 <div class="qty-stepper ni-qty">
                                     <button type="button" class="qty-btn" data-step="-1" aria-label="Fewer">&minus;</button>
                                     <input type="number" name="Quantities" value="@row.Quantity" min="1" max="1000" step="1"
                                            class="form-control qty-input" aria-label="Quantity" required />
                                     <button type="button" class="qty-btn" data-step="1" aria-label="More">+</button>
                                 </div>
-                                <div class="input-group ni-price">
-                                    <span class="input-group-text">₱</span>
-                                    <input type="number" name="EstimatedPrices" value="@Price(row.Price)"
-                                           min="0.01" max="9999999999.99" step="0.01" placeholder="0.00"
-                                           class="form-control price-input" aria-label="Estimated price for one" required />
-                                </div>
-                                <span class="ni-line" aria-live="polite"></span>
+                                <input type="text" name="Units" value="@row.Unit" maxlength="30" list="unitList" autocomplete="off"
+                                       class="form-control ni-unit" placeholder="e.g. box" aria-label="Unit" />
+                                <textarea name="Descriptions" rows="1" maxlength="500" class="form-control ni-desc"
+                                          placeholder="Brand, size, colour..." aria-label="Description">@row.Description</textarea>
                                 <button type="button" class="nr-remove remove-row" title="Remove this item" aria-label="Remove this item">&times;</button>
                             </div>
                         }
                     </div>
+                    <datalist id="unitList">
+                        @foreach (var u in units)
+                        {
+                            <option value="@u"></option>
+                        }
+                    </datalist>
 
                     <div class="ni-add-row">
                         <button type="button" id="addItemRow" class="nr-add my-0">+ Add another item</button>
-                        <span class="nr-hint">
-                            Already in the catalogue? <a asp-controller="AssetRequests" asp-action="Create" class="nr-link">Borrow it instead &rarr;</a>
-                        </span>
+                        <span class="nr-hint" id="searchHint"></span>
                     </div>
                     <span asp-validation-for="ItemNames" class="text-danger d-block"></span>
 
-                    @* Quantity x estimated price, added up over every row.
-                       Display only: each request stores its own price. *@
-                    <div class="ni-total">
-                        <span>Estimated total <small id="pricedNote"></small></span>
-                        <strong id="estimatedTotal">₱0.00</strong>
-                    </div>
+                    <div class="ni2-note">No prices to fill in. Describe what you need; procurement works out the cost.</div>
                 </div>
             </div>
 
@@ -115,7 +147,33 @@
                     <textarea asp-for="Reason" class="form-control" rows="3" maxlength="500" aria-label="Reason"
                               placeholder="What it is for and who will use it."></textarea>
                     <span asp-validation-for="Reason" class="text-danger d-block"></span>
-                    <div class="nr-hint mt-1">The department head and the principal read this when they decide.</div>
+                    <div class="nr-hint mt-1">The Principal reads this when deciding.</div>
+                </div>
+            </div>
+
+            @* ---- Deliver to ---- *@
+            <div class="asset-card register-step mb-3">
+                <div class="register-step-head">
+                    <div class="register-step-title flex-grow-1">Deliver to</div>
+                    <span class="nr-head-note is-required">required</span>
+                </div>
+                <div class="register-step-body">
+                    <div class="ni-date">
+                        <select asp-for="DeliverToLocationID" class="form-select" id="deliverTo" data-combobox aria-label="Deliver to">
+                            <option value="">Search a location...</option>
+                            @foreach (var g in lookups.Locations.GroupBy(l => l.BranchName))
+                            {
+                                <optgroup label="@g.Key">
+                                    @foreach (var l in g)
+                                    {
+                                        <option value="@l.Id">@l.Name</option>
+                                    }
+                                </optgroup>
+                            }
+                        </select>
+                    </div>
+                    <span asp-validation-for="DeliverToLocationID" class="text-danger d-block"></span>
+                    <div class="nr-hint mt-1">Where the items are brought when they arrive, and where you receive them.</div>
                 </div>
             </div>
 
@@ -141,21 +199,27 @@
             <div class="asset-card nr-summary">
                 <div class="asset-card-title">Your request</div>
                 <dl class="approve-facts nr-summary-body">
+                    <div><dt>Kind</dt><dd id="sumKind">@(isSupplies ? "Supplies" : "Assets")</dd></div>
                     <div><dt>Items</dt><dd id="sumItems" class="is-empty">None yet</dd></div>
-                    <div><dt>Estimated</dt><dd id="sumTotal" class="is-empty">Not priced</dd></div>
                     <div><dt>Needed by</dt><dd id="sumNeeded" class="is-empty">Not chosen yet</dd></div>
-                    <div><dt>Department</dt><dd>@DisplayText.Or(myDepartment, "None")</dd></div>
+                    <div><dt>For</dt><dd>@DisplayText.Or(lookups.DepartmentName, "None")</dd></div>
+                    <div class="nr-summary-wide border-0 pb-0"><dt>Deliver to</dt><dd id="sumDeliver" class="is-empty">Not chosen yet</dd></div>
                 </dl>
                 <div class="ni-next">
                     <div class="register-side-label mb-2">What happens next</div>
                     <ol class="ni-steps">
-                        @for (var i = 0; i < steps.Count; i++)
-                        {
-                            <li class="@(i == 0 ? "is-first" : "")">
-                                <span class="ni-step-num">@(i + 1)</span>
-                                <span><strong>@steps[i].Title</strong><small>@steps[i].Sub</small></span>
-                            </li>
-                        }
+                        <li class="is-first">
+                            <span class="ni-step-num">1</span>
+                            <span><strong>Principal</strong><small>reads the reason and approves</small></span>
+                        </li>
+                        <li>
+                            <span class="ni-step-num">2</span>
+                            <span><strong>Procurement</strong><small>an Asset Officer buys it</small></span>
+                        </li>
+                        <li>
+                            <span class="ni-step-num">3</span>
+                            <span><strong>Arrived</strong><small>checked against your description, then brought to the location you chose</small></span>
+                        </li>
                     </ol>
                 </div>
             </div>
@@ -177,42 +241,216 @@
     }
     <script>
         (function () {
-            // "+ Add another item": copy the first row, emptied, quantity 1.
-            // Every row posts as ItemNames + Quantities + EstimatedPrices,
-            // which bind to the three lists in order. The x removes a row;
-            // the last one is only cleared.
+            // What the Item box searches: the school's models for an asset
+            // request, its supplies for a supply request.
+            var MODELS = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(lookups.Models));
+            var SUPPLIES = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(lookups.Supplies));
+
+            var box = document.getElementById('itemsBox');
             var rowsBox = document.getElementById('itemRows');
             var addButton = document.getElementById('addItemRow');
             var neededBy = document.getElementById('neededBy');
+            var deliverTo = document.getElementById('deliverTo');
+            var kinds = Array.from(document.querySelectorAll('input[name=Kind]'));
             var maxRows = 20; // the service refuses more than this anyway
 
+            function isSupplies() { return kinds.some(function (k) { return k.checked && k.value === 'Supply'; }); }
+            function source() { return isSupplies() ? SUPPLIES : MODELS; }
             function allRows() { return Array.from(rowsBox.querySelectorAll('.item-row')); }
-
-            function peso(n, cents) {
-                return '₱' + n.toLocaleString('en-US', { minimumFractionDigits: cents ? 2 : 0, maximumFractionDigits: cents ? 2 : 0 });
+            function idInput(row) { return row.querySelector(isSupplies() ? '.ni-supply-id' : '.ni-model-id'); }
+            function byId(id) { return source().filter(function (o) { return String(o.Id) === String(id); })[0]; }
+            function byName(name) {
+                var n = name.trim().toLowerCase();
+                return n ? source().filter(function (o) { return o.Name.toLowerCase() === n; })[0] : null;
             }
 
+            // Same rule as SupplyText.Unit: 1 box, 6 boxes, 42 reams.
+            function plural(u, q) {
+                if (!u || q === 1) return u || '';
+                var l = u.toLowerCase();
+                if (/s$/.test(l) && !/ss$/.test(l)) return u;
+                if (/(x|ch|sh|ss)$/.test(l)) return u + 'es';
+                return u + 's';
+            }
+            function sub(o) {
+                return isSupplies()
+                    ? o.Category + ' · ' + o.Quantity + ' ' + plural(o.Unit, o.Quantity) + ' at your branch'
+                    : o.Category + ' · ' + o.Units + ' in school';
+            }
+
+            // ---- A row's link to an existing model or supply ----
+            function link(row, o) {
+                row.querySelector('.ni-model-id').value = '';
+                row.querySelector('.ni-supply-id').value = '';
+                var unit = row.querySelector('.ni-unit');
+                if (o) {
+                    idInput(row).value = o.Id;
+                    if (isSupplies()) { unit.value = o.Unit; unit.readOnly = true; }
+                } else {
+                    unit.readOnly = false;
+                }
+                hint(row);
+            }
+            function hint(row) {
+                var el = row.querySelector('.ni-picked');
+                var name = row.querySelector('.ni-name').value.trim();
+                var o = idInput(row).value ? byId(idInput(row).value) : null;
+                el.classList.toggle('is-existing', !!o);
+                if (o) el.textContent = (isSupplies() ? 'More of a supply the school has · ' : 'More of a model the school has · ') + sub(o);
+                else el.textContent = name ? 'New item, typed in' : '';
+            }
+
+            // ---- The list under the Item box ----
+            function list(row) { return row.querySelector('.ni-suggest-list'); }
+            function hide(row) {
+                list(row).classList.remove('show');
+                row.querySelector('.ni-name').setAttribute('aria-expanded', 'false');
+            }
+            function option(mainText, subText, cls) {
+                var li = document.createElement('li');
+                var b = document.createElement('button');
+                b.type = 'button';
+                b.className = 'dropdown-item' + (cls ? ' ' + cls : '');
+                var main = document.createElement('span');
+                main.className = 'combo-main';
+                main.textContent = mainText;
+                b.appendChild(main);
+                if (subText) {
+                    var small = document.createElement('small');
+                    small.className = 'combo-sub';
+                    small.textContent = subText;
+                    b.appendChild(small);
+                }
+                li.appendChild(b);
+                return li;
+            }
+            function suggest(row) {
+                var input = row.querySelector('.ni-name');
+                var q = input.value.trim().toLowerCase();
+                var ul = list(row);
+                ul.innerHTML = '';
+                if (!q) { hide(row); return; }
+
+                var matches = source().filter(function (o) {
+                    return o.Name.toLowerCase().indexOf(q) >= 0 || o.Category.toLowerCase().indexOf(q) >= 0;
+                }).slice(0, 8);
+
+                if (matches.length) {
+                    var head = document.createElement('li');
+                    head.className = 'dropdown-header combo-group';
+                    head.textContent = isSupplies() ? 'Supplies the school already has' : 'Models the school already has';
+                    ul.appendChild(head);
+                }
+                matches.forEach(function (o) {
+                    var li = option(o.Name, sub(o));
+                    li.firstChild.addEventListener('mousedown', function (e) {
+                        e.preventDefault();
+                        input.value = o.Name;
+                        link(row, o);
+                        hide(row);
+                        update();
+                    });
+                    ul.appendChild(li);
+                });
+                if (!byName(input.value)) {
+                    var typed = option('+ Use "' + input.value.trim() + '" as a new item', 'not in the school yet', 'ni-suggest-new');
+                    typed.firstChild.addEventListener('mousedown', function (e) {
+                        e.preventDefault();
+                        link(row, null);
+                        hide(row);
+                        update();
+                    });
+                    ul.appendChild(typed);
+                }
+                ul.classList.add('show');
+                input.setAttribute('aria-expanded', 'true');
+            }
+            function move(row, step) {
+                var items = Array.from(list(row).querySelectorAll('.dropdown-item'));
+                if (!items.length) return;
+                var at = items.findIndex(function (b) { return b.classList.contains('active'); });
+                if (at >= 0) items[at].classList.remove('active');
+                at = (at + step + items.length) % items.length;
+                items[at].classList.add('active');
+                items[at].scrollIntoView({ block: 'nearest' });
+            }
+
+            rowsBox.addEventListener('input', function (e) {
+                var name = e.target.closest('.ni-name');
+                if (name) {
+                    // Editing the name breaks the link, unless it still names
+                    // the same model or supply exactly.
+                    var row = name.closest('.item-row');
+                    link(row, byName(name.value) || null);
+                    suggest(row);
+                }
+                var desc = e.target.closest('.ni-desc');
+                if (desc) { desc.style.height = 'auto'; desc.style.height = desc.scrollHeight + 2 + 'px'; }
+                update();
+            });
+            rowsBox.addEventListener('focusin', function (e) {
+                var name = e.target.closest('.ni-name');
+                if (name && name.value.trim() && !idInput(name.closest('.item-row')).value) suggest(name.closest('.item-row'));
+            });
+            rowsBox.addEventListener('focusout', function (e) {
+                var name = e.target.closest('.ni-name');
+                if (!name) return;
+                var row = name.closest('.item-row');
+                hide(row);
+                // A name typed in full is written the way the school has it.
+                var o = idInput(row).value ? byId(idInput(row).value) : null;
+                if (o) name.value = o.Name;
+                hint(row);
+            });
+            rowsBox.addEventListener('keydown', function (e) {
+                var name = e.target.closest('.ni-name');
+                if (!name) return;
+                var row = name.closest('.item-row');
+                var open = list(row).classList.contains('show');
+                if (e.key === 'ArrowDown') { e.preventDefault(); if (!open) suggest(row); move(row, 1); }
+                else if (e.key === 'ArrowUp') { e.preventDefault(); move(row, -1); }
+                else if (e.key === 'Escape') { hide(row); }
+                else if (e.key === 'Enter') {
+                    // Enter picks from the list; it never submits the form
+                    // from the Item box.
+                    e.preventDefault();
+                    var active = list(row).querySelector('.dropdown-item.active');
+                    if (open && active) active.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+                    else hide(row);
+                }
+            });
+
+            // ---- Assets / Supplies ----
+            function applyKind() {
+                var supplies = isSupplies();
+                kinds.forEach(function (k) { k.closest('.nr-kind').classList.toggle('is-on', k.checked); });
+                box.classList.toggle('is-supplies', supplies);
+                document.getElementById('itemsTitle').textContent = supplies ? 'Supplies to be bought' : 'Assets to be bought';
+                document.getElementById('sumKind').textContent = supplies ? 'Supplies' : 'Assets';
+                document.getElementById('searchHint').textContent = supplies
+                    ? 'Start typing in the Item box: matching supplies appear, or keep what you typed as a new item.'
+                    : 'Start typing in the Item box: matching models appear, or keep what you typed as a new item.';
+            }
+            kinds.forEach(function (k) {
+                k.addEventListener('change', function () {
+                    applyKind();
+                    // A link to a model means nothing on a supply request,
+                    // and the other way round: match each name again.
+                    allRows().forEach(function (row) { link(row, byName(row.querySelector('.ni-name').value) || null); });
+                    update();
+                });
+            });
+
+            // ---- Counts, numbering and the side card ----
             function update() {
                 var rows = allRows();
-                var named = 0, units = 0, priced = 0, total = 0;
+                var named = 0, units = 0;
                 rows.forEach(function (row, i) {
                     row.querySelector('.nr-row-num').textContent = i + 1;
                     row.querySelector('.remove-row').style.visibility = rows.length === 1 ? 'hidden' : 'visible';
-                    var name = row.querySelector('.ni-name').value.trim();
-                    var qty = parseInt(row.querySelector('.qty-input').value, 10) || 0;
-                    var price = parseFloat(row.querySelector('.price-input').value) || 0;
-                    var line = row.querySelector('.ni-line');
-                    if (qty > 0 && price > 0) {
-                        line.textContent = peso(qty * price, (qty * price) % 1 !== 0);
-                        line.classList.remove('is-empty');
-                    } else {
-                        line.textContent = 'Not priced';
-                        line.classList.add('is-empty');
-                    }
-                    if (name) {
+                    if (row.querySelector('.ni-name').value.trim()) {
                         named++;
-                        units += qty;
-                        if (price > 0) { priced++; total += qty * price; }
+                        units += parseInt(row.querySelector('.qty-input').value, 10) || 0;
                     }
                 });
                 addButton.disabled = rows.length >= maxRows;
@@ -220,10 +458,12 @@
                 document.getElementById('itemsNote').textContent = named
                     ? named + ' item' + (named === 1 ? '' : 's') + (named > 1 ? ' · one request, decided together' : '')
                     : '';
-                document.getElementById('estimatedTotal').textContent = peso(total, true);
-                document.getElementById('pricedNote').textContent = named && priced < named ? '· ' + priced + ' of ' + named + ' items priced' : '';
                 sabShow(document.getElementById('sumItems'), named ? named + ' · ' + units + ' unit' + (units === 1 ? '' : 's') : '', 'None yet');
-                sabShow(document.getElementById('sumTotal'), total > 0 ? peso(total, false) : '', 'Not priced');
+
+                var where = deliverTo.options[deliverTo.selectedIndex];
+                sabShow(document.getElementById('sumDeliver'),
+                    deliverTo.value ? where.textContent.trim() + (where.parentNode.label ? ' · ' + where.parentNode.label : '') : '',
+                    'Not chosen yet');
 
                 // Needed by: the date, and "in 4 weeks" beside the heading.
                 var badge = document.getElementById('neededBadge');
@@ -233,6 +473,7 @@
                     var today = new Date(); today.setHours(0, 0, 0, 0);
                     var days = Math.round((d - today) / 86400000);
                     sum.textContent = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                    sum.classList.remove('is-empty');
                     badge.textContent = days <= 0 ? 'today' : days === 1 ? 'tomorrow' : days < 14 ? 'in ' + days + ' days'
                         : days < 60 ? 'in ' + Math.round(days / 7) + ' weeks' : 'in ' + Math.round(days / 30) + ' months';
                     badge.hidden = days < 0;
@@ -242,16 +483,25 @@
                 }
             }
 
-            rowsBox.addEventListener('input', update);
             neededBy.addEventListener('change', update);
             neededBy.addEventListener('input', update);
+            deliverTo.addEventListener('change', update);
+
+            function clearRow(row) {
+                row.querySelector('.ni-name').value = '';
+                row.querySelector('.qty-input').value = 1;
+                row.querySelector('.ni-unit').value = '';
+                row.querySelector('.ni-desc').value = '';
+                row.querySelector('.ni-desc').style.height = '';
+                list(row).innerHTML = '';
+                hide(row);
+                link(row, null);
+            }
 
             addButton.addEventListener('click', function () {
                 var copy = rowsBox.querySelector('.item-row').cloneNode(true);
-                copy.querySelector('.ni-name').value = '';
-                copy.querySelector('.qty-input').value = 1;
-                copy.querySelector('.price-input').value = '';
                 rowsBox.appendChild(copy);
+                clearRow(copy);
                 update();
                 copy.querySelector('.ni-name').focus();
             });
@@ -268,16 +518,18 @@
                 var button = e.target.closest('.remove-row');
                 if (!button) return;
                 var row = button.closest('.item-row');
-                if (allRows().length > 1) {
-                    row.remove();
-                } else {
-                    row.querySelector('.ni-name').value = '';
-                    row.querySelector('.qty-input').value = 1;
-                    row.querySelector('.price-input').value = '';
-                }
+                if (allRows().length > 1) row.remove(); else clearRow(row);
                 update();
             });
 
+            // Rows that came back from the server keep their links.
+            applyKind();
+            allRows().forEach(function (row) {
+                var o = idInput(row).value ? byId(idInput(row).value) : null;
+                if (o && isSupplies()) row.querySelector('.ni-unit').readOnly = true;
+                if (!o) { row.querySelector('.ni-model-id').value = ''; row.querySelector('.ni-supply-id').value = ''; }
+                hint(row);
+            });
             update();
         })();
     </script>

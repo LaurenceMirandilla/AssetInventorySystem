@@ -1,4 +1,29 @@
 ﻿@using System.Security.Claims
+@inject SchoolInventoryManagement.BLL.Interfaces.ILiveStatusService Live
+@{
+    // Live updates (wwwroot/js/site.js): a page says what it shows with
+    // ViewData["LiveScope"]; its stamp now, and the newest notification
+    // the person already has, start the checks off.
+    string? liveScope = ViewData["LiveScope"] as string;
+    string? liveStamp = null;
+    var liveSeen = 0;
+    var liveOn = false;
+    if (User.Identity?.IsAuthenticated == true
+        && int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var liveUserId))
+    {
+        liveOn = true;
+        try
+        {
+            liveStamp = await Live.GetStampAsync(liveUserId, liveScope);
+            liveSeen = await Live.GetLatestNotificationIdAsync(liveUserId);
+        }
+        catch
+        {
+            // The page still works without live updates.
+            liveOn = false;
+        }
+    }
+}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -18,7 +43,8 @@
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" />
     <link rel="stylesheet" href="~/css/theme.css" asp-append-version="true" />
 </head>
-<body>
+<body data-live-url="@(liveOn ? Url.Action("Status", "Live") : null)" data-live-scope="@liveScope" data-live-stamp="@liveStamp"
+      data-live-seen="@liveSeen" data-live-notifications="@(liveOn ? Url.Action("Index", "Notifications") : null)">
 @{
     var isAuthed = User.Identity?.IsAuthenticated == true;
     var isApprover = User.IsInRole("Asset Officer") || User.IsInRole("Administrator") || User.IsInRole("Principal");
@@ -27,7 +53,7 @@
     // Teachers and Staff browse models, not units (AssetsController.IsRequesterOnly).
     var isRequesterOnly = User.IsInRole("Teacher") || User.IsInRole("Staff");
     // Who has new-item requests to act on (NewItemRequestsController.Pending).
-    var actsOnNewItems = isAssetManager || User.IsInRole("Department Head") || User.IsInRole("Principal");
+    var actsOnNewItems = isAssetManager || User.IsInRole("Principal");
     var roleName = User.FindFirst(ClaimTypes.Role)?.Value;
     var displayName = User.Identity?.Name ?? "";
     var initials = string.Concat(displayName.Split(' ', StringSplitOptions.RemoveEmptyEntries)
@@ -57,7 +83,7 @@
 
     // NewItemRequestsController splits the same way: Pending/Approve/Reject
     // are the reviewer's screens, MyRequests/Create the requester's.
-    var newItemApprovalActions = new[] { "Pending", "Advance", "Reject" };
+    var newItemApprovalActions = new[] { "Pending", "Advance", "Reject", "Requesters" };
     var inNewItemRequests = isActive(new[] { "NewItemRequests" });
     var onNewItemApprovals = inNewItemRequests
         && (newItemApprovalActions.Contains(currentAction, StringComparer.OrdinalIgnoreCase) || navSection == "newitem-approvals");
@@ -173,7 +199,9 @@
                             </a>
                         </li>
                     }
-                    @if (isAssetManager)
+                    @* Everyone has a history: managers see all finished requests,
+                       everyone else their own. *@
+                    @if (true)
                     {
                         <li class="sab-nav-item">
                             <a class="sab-nav-link @(onRequestHistory ? "active" : "")" asp-controller="AssetRequests" asp-action="History">

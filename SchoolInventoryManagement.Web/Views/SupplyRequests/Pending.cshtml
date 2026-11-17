@@ -1,9 +1,62 @@
 ﻿@model List<SchoolInventoryManagement.BLL.DTOs.SupplyRequestResponseDTO>
+@using SchoolInventoryManagement.BLL.DTOs
 @using SchoolInventoryManagement.DAL.Entities.Enums
+@using SchoolInventoryManagement.Web.ViewModels
 @{
     ViewData["Title"] = "Approvals";
+    // What this page shows, for the live updates (_Layout, site.js).
+    ViewData["LiveScope"] = "approvals";
+
+    // The Supplies side of Approvals, laid out like the Borrow and transfer
+    // side (AssetRequests/Pending): tabs, a list on the left, the picked
+    // request on the right.
     var waiting = Model.Where(r => r.Status == SupplyRequestStatus.Pending).ToList();
     var ready = Model.Where(r => r.Status == SupplyRequestStatus.Approved).ToList();
+    var outNow = Model.Where(r => r.Status == SupplyRequestStatus.Released)
+        .OrderByDescending(r => r.DeliveryProblem is not null).ThenBy(r => r.ReleasedAt).ToList();
+
+    // Releasing and delivering is Asset Officers' and Administrators' work;
+    // a Principal approves and can watch the rest.
+    var canManage = ViewBag.CanManage is true;
+    var currentUserId = int.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)!.Value);
+    var today = PhilippineTime.Today;
+
+    var openTab = (ViewBag.Tab as string) switch
+    {
+        "release" => "supRelease",
+        "delivery" => "supDelivery",
+        _ => "supAwaiting"
+    };
+}
+
+@functions {
+    static string Days(int n) => n <= 0 ? "today" : n == 1 ? "1 day" : $"{n} days";
+
+    static string Search(SupplyRequestResponseDTO r) =>
+        $"s-{r.SupplyRequestID} {r.SupplyRequestID} {r.RequestedByName} {r.DepartmentName} {r.BranchName} {r.WhereName} {string.Join(' ', r.Items.Select(i => i.SupplyName))}".ToLowerInvariant();
+
+    // "3 items · 25 units", or just the units when it is one supply.
+    static string Units(SupplyRequestResponseDTO r, int units) =>
+        r.Items.Count == 1
+            ? $"{units} {SupplyText.Unit(units, r.Items[0].Unit)}"
+            : $"{r.Items.Count} items · {units} units";
+
+    // Submitted -> Approved -> Released -> Delivered.
+    static List<RequestStep> Steps(SupplyRequestResponseDTO r)
+    {
+        var s = r.Status;
+        var problem = r.DeliveryProblem is not null;
+        return new List<RequestStep>
+        {
+            new("Submitted", r.CreatedAt.ToString("MMM d"), RequestStepState.Done),
+            new("Approved", s == SupplyRequestStatus.Pending ? "waiting" : r.DecidedAt?.ToString("MMM d"),
+                s == SupplyRequestStatus.Pending ? RequestStepState.Current : RequestStepState.Done),
+            new("Released", s == SupplyRequestStatus.Approved ? "waiting" : s == SupplyRequestStatus.Released ? r.ReleasedAt?.ToString("MMM d") : null,
+                s == SupplyRequestStatus.Approved ? RequestStepState.Current : s == SupplyRequestStatus.Released ? RequestStepState.Done : RequestStepState.Todo),
+            new("Delivered", s == SupplyRequestStatus.Released ? (problem ? "not delivered yet" : "on its way") : null,
+                s == SupplyRequestStatus.Released ? (problem ? RequestStepState.Late : RequestStepState.Current) : RequestStepState.Todo)
+        };
+    }
 }
 
 @if (TempData["SuccessMessage"] != null)
@@ -18,7 +71,7 @@
 <div class="asset-detail-head mb-3 pb-0 border-0">
     <div>
         <h2 class="asset-detail-title">Approvals</h2>
-        <div class="asset-detail-sub">@waiting.Count supply request@(waiting.Count == 1 ? "" : "s") waiting for a decision &middot; @ready.Count approved and waiting to be released.</div>
+        <div class="asset-detail-sub">@waiting.Count supply request@(waiting.Count == 1 ? "" : "s") awaiting a decision &middot; @ready.Count to release &middot; @outNow.Count out for delivery.</div>
     </div>
     <div class="asset-detail-actions">
         <a asp-action="History" class="btn btn-outline-secondary">Request History</a>
@@ -27,39 +80,370 @@
 
 <partial name="_ApprovalsSwitch" model="@("Supplies")" />
 
-@foreach (var group in new[] { (Title: "Waiting for approval", Rows: waiting, Empty: "Nothing is waiting for a decision."), (Title: "Approved, waiting for pick-up", Rows: ready, Empty: "Nothing is waiting to be released.") })
-{
-    <div class="asset-card register-step mb-3">
-        <div class="register-step-head">
-            <div class="register-step-title flex-grow-1">@group.Title</div>
-            <span class="nr-head-note">@group.Rows.Count</span>
-        </div>
-        @if (!group.Rows.Any())
-        {
-            <div class="register-step-body asset-muted">@group.Empty</div>
-        }
-        else
-        {
-            <div class="table-responsive">
-                <table class="table asset-table mb-0">
-                    <thead>
-                        <tr><th>Request</th><th>Requested by</th><th>Supplies</th><th>Needed by</th><th>@(group.Rows == ready ? "Pick up at" : "Sent")</th><th></th></tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var r in group.Rows)
+<div class="page-tabs" role="tablist">
+    <button type="button" class="@(openTab == "supAwaiting" ? "active" : "")" role="tab" aria-selected="@(openTab == "supAwaiting" ? "true" : "false")" data-md-tab="supAwaiting">
+        Waiting for approval <span class="history-tab-count">@waiting.Count</span>
+    </button>
+    <button type="button" class="@(openTab == "supRelease" ? "active" : "")" role="tab" aria-selected="@(openTab == "supRelease" ? "true" : "false")" data-md-tab="supRelease">
+        To release <span class="history-tab-count">@ready.Count</span>
+    </button>
+    <button type="button" class="@(openTab == "supDelivery" ? "active" : "")" role="tab" aria-selected="@(openTab == "supDelivery" ? "true" : "false")" data-md-tab="supDelivery">
+        Out for delivery <span class="history-tab-count">@outNow.Count</span>
+    </button>
+</div>
+
+@{
+    // One list and its panels, shared by the three tabs. Async because the
+    // tag helpers inside (forms, links, the steps partial) render with await.
+    async Task SupplyList(List<SupplyRequestResponseDTO> list, string prefix, string aria, string groupLabel)
+    {
+        <div class="sab-table-card myassets" data-md data-page-size="6">
+            <aside class="myassets-list" aria-label="@aria">
+                <div class="md-toolbar">
+                    <label class="asset-search">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+                        <input type="text" data-md-search autocomplete="off" placeholder="Request #, name or supply..." aria-label="Search supply requests" />
+                    </label>
+                    <div class="dropdown">
+                        <button type="button" class="asset-tool-btn" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18l-7 8.5V19l-4 2v-7.5z" /></svg>
+                            Filters
+                        </button>
+                        <div class="dropdown-menu dropdown-menu-end md-filter-menu">
+                            <label class="form-label">Branch</label>
+                            <div class="mb-2">
+                                <select class="form-select form-select-sm" data-md-filter="branch" data-combobox>
+                                    <option value="">Any</option>
+                                    @foreach (var b in list.Select(r => r.BranchName).Where(b => !string.IsNullOrEmpty(b)).Distinct().OrderBy(b => b))
+                                    {
+                                        <option value="@b.ToLowerInvariant()">@b</option>
+                                    }
+                                </select>
+                            </div>
+                            <label class="form-label">Department</label>
+                            <select class="form-select form-select-sm" data-md-filter="dept" data-combobox>
+                                <option value="">Any</option>
+                                @foreach (var d in list.Select(r => r.DepartmentName).Where(d => !string.IsNullOrEmpty(d)).Distinct().OrderBy(d => d))
+                                {
+                                    <option value="@d.ToLowerInvariant()">@d</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="myassets-group" data-md-group>
+                    <div class="myassets-group-label group-late">@groupLabel · <span data-md-count>@list.Count</span></div>
+                    @foreach (var r in list)
+                    {
+                        var since = r.Status == SupplyRequestStatus.Released ? r.ReleasedAt ?? r.CreatedAt
+                            : r.Status == SupplyRequestStatus.Approved ? r.DecidedAt ?? r.CreatedAt : r.CreatedAt;
+                        var waited = (today - since.Date).Days;
+                        var problem = r.Status == SupplyRequestStatus.Released && r.DeliveryProblem is not null;
+                        <button type="button" class="myassets-item" data-entry="@prefix-@r.SupplyRequestID" data-search="@Search(r)"
+                                data-dept="@(r.DepartmentName?.ToLowerInvariant() ?? "")" data-branch="@(r.BranchName?.ToLowerInvariant() ?? "")">
+                            <span class="md-avatar @(problem ? "is-dark" : "")">@NewItemProgress.Initials(r.RequestedByName)</span>
+                            <span class="myassets-item-main">
+                                <span class="myassets-item-title">@r.RequestedByName</span>
+                                <span class="myassets-item-sub">@r.ItemsSummary</span>
+                                <span class="md-tags">
+                                    <span class="md-tag is-supply">Supplies</span>
+                                    @(r.WhereName is null ? r.DepartmentName : "to " + r.WhereName)
+                                </span>
+                            </span>
+                            <span class="md-age @(problem || waited >= 2 ? "is-late" : r.Status == SupplyRequestStatus.Released ? "is-transit" : "")">@(problem ? "not delivered" : Days(waited))</span>
+                        </button>
+                    }
+                </div>
+                <div class="myassets-nomatch" data-md-empty hidden>Nothing matches your search.</div>
+
+                <div class="md-foot">
+                    <span data-md-range></span>
+                    <div data-md-pager></div>
+                </div>
+            </aside>
+
+            <section class="myassets-detail">
+                @foreach (var r in list)
+                {
+                    var s = r.Status;
+                    var waited = (today - r.CreatedAt.Date).Days;
+                    var late = r.NeededBy is not null && r.NeededBy.Value.Date < today;
+                    var units = s == SupplyRequestStatus.Pending ? r.TotalRequested : r.TotalApproved;
+                    // Nobody decides their own request, or one from their own role
+                    // (the service refuses too).
+                    var notMine = r.RequestedByUserID == currentUserId || User.IsInRole(r.RequestedByRoleName);
+                    var shortLines = r.Items.Count(i => i.AvailableQuantity is int free && free < i.QuantityRequested);
+                    var problem = s == SupplyRequestStatus.Released && r.DeliveryProblem is not null;
+
+                    <article class="myassets-panel" data-panel="@prefix-@r.SupplyRequestID" hidden>
+                        <button type="button" class="myassets-back" data-back>&larr; All requests</button>
+
+                        <div class="myassets-panel-head">
+                            <div class="md-person">
+                                <span class="md-avatar md-avatar-lg @(problem ? "is-dark" : "")">@NewItemProgress.Initials(r.RequestedByName)</span>
+                                <div class="min-w-0">
+                                    <div class="myassets-panel-meta">
+                                        <span class="md-tag is-supply">Supplies</span>
+                                        <span>Request S-@r.SupplyRequestID · submitted @r.CreatedAt.ToString("MMM d, h:mm tt")</span>
+                                    </div>
+                                    <h3 class="md-person-name">@r.RequestedByName <small>· @r.RequestedByRoleName · @r.DepartmentName</small></h3>
+                                </div>
+                            </div>
+                            <div class="myassets-panel-actions">
+                                @if (s == SupplyRequestStatus.Pending)
+                                {
+                                    <span class="md-wait @(waited >= 2 ? "" : "is-calm")">Waiting @(waited == 0 ? "since today" : Days(waited))</span>
+                                }
+                                else
+                                {
+                                    <span class="asset-pill asset-status @(problem ? "st-overdue" : DisplayText.SupplyStagePill(s))">@(problem ? "Not delivered yet" : DisplayText.SupplyStage(s))</span>
+                                }
+                                <a asp-action="Details" asp-route-id="@r.SupplyRequestID" class="btn btn-outline-secondary">View &rarr;</a>
+                            </div>
+                        </div>
+
+                        <partial name="_RequestSteps" model="Steps(r)" />
+
+                        <div class="myassets-stats">
+                            <div><span>@(r.IsDelivery || r.WhereName is null ? "Deliver to" : "Pick up at")</span><strong>@DisplayText.Or(r.WhereName, "Not given")</strong></div>
+                            <div class="@(late ? "is-late" : "")"><span>Needed by</span><strong>@DisplayText.Or(r.NeededBy?.ToString("MMM d, yyyy"), "No date given")</strong></div>
+                            <div><span>@(s == SupplyRequestStatus.Pending ? "Asked for" : "Approved")</span><strong>@Units(r, units)</strong></div>
+                            @if (s == SupplyRequestStatus.Pending)
+                            {
+                                <div><span>Available now</span><strong class="@(shortLines == 0 ? "text-success" : "text-danger")">@(shortLines == 0 ? "Enough in stock" : shortLines == 1 ? "1 supply is short" : shortLines + " supplies are short")</strong></div>
+                            }
+                            else if (s == SupplyRequestStatus.Approved)
+                            {
+                                <div><span>Approved by</span><strong>@DisplayText.Or(r.DecidedByName, "Not recorded")</strong></div>
+                            }
+                            else
+                            {
+                                <div><span>Released</span><strong>@DisplayText.Or(r.ReleasedAt?.ToString("MMM d"), "Not recorded")@(r.ReleasedByName is null ? "" : " · " + r.ReleasedByName)</strong></div>
+                            }
+                        </div>
+
+                        <h4 class="md-section-title">@(s == SupplyRequestStatus.Pending ? "What they're asking for" : "What is going out")</h4>
+                        <div class="req-items">
+                            @foreach (var item in r.Items)
+                            {
+                                var amount = s == SupplyRequestStatus.Pending ? item.QuantityRequested : item.QuantityApproved ?? 0;
+                                var isShort = item.AvailableQuantity is int free && free < item.QuantityRequested;
+                                <div class="req-item">
+                                    <span class="req-item-icon" aria-hidden="true">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 2 3 7v10l9 5 9-5V7z" /><path d="m3 7 9 5 9-5M12 12v10" /></svg>
+                                    </span>
+                                    <div class="min-w-0">
+                                        <div class="req-item-name">@item.SupplyName</div>
+                                        <div class="req-item-meta @(isShort ? "is-short" : "")">
+                                            @if (s == SupplyRequestStatus.Pending)
+                                            {
+                                                @($"{item.AvailableQuantity ?? 0} available in {r.BranchName}")
+                                            }
+                                            else if (amount < item.QuantityRequested)
+                                            {
+                                                @($"{item.QuantityRequested} asked for, lowered to {amount}")
+                                            }
+                                            else
+                                            {
+                                                @("as asked")
+                                            }
+                                        </div>
+                                    </div>
+                                    <span class="req-item-qty">×@amount @SupplyText.Unit(amount, item.Unit)</span>
+                                </div>
+                            }
+                        </div>
+
+                        @if (!string.IsNullOrWhiteSpace(r.Reason))
                         {
-                            <tr>
-                                <td><a asp-action="Details" asp-route-id="@r.SupplyRequestID" class="asset-code-chip">S-@r.SupplyRequestID</a></td>
-                                <td>@r.RequestedByName<div class="asset-muted small">@r.DepartmentName &middot; @r.BranchName</div></td>
-                                <td>@r.ItemsSummary</td>
-                                <td class="asset-muted">@(r.NeededBy?.ToString("MMM d, yyyy") ?? "—")</td>
-                                <td class="asset-muted">@(group.Rows == ready ? (r.PickupLocationName ?? "—") : r.CreatedAt.ToString("MMM d, yyyy"))</td>
-                                <td class="text-end"><a asp-action="Details" asp-route-id="@r.SupplyRequestID" class="btn btn-sm btn-outline-secondary">@(group.Rows == ready ? "Release" : "Review")</a></td>
-                            </tr>
+                            <div class="req-note"><strong>Reason:</strong> @r.Reason</div>
                         }
-                    </tbody>
-                </table>
+                        @if (s != SupplyRequestStatus.Pending && !string.IsNullOrWhiteSpace(r.DecisionNote))
+                        {
+                            <div class="req-note"><strong>Note from @(r.DecidedByName ?? "the approver"):</strong> @r.DecisionNote</div>
+                        }
+
+                        @* ---- Waiting for approval: approve as asked, change amounts, or reject ---- *@
+                        @if (s == SupplyRequestStatus.Pending && notMine)
+                        {
+                            <div class="sab-callout sab-callout-warn mt-3">
+                                <span class="sab-callout-label">Not yours to decide</span>
+                                @(r.RequestedByUserID == currentUserId
+                                    ? "This is your own request, so someone else has to approve it."
+                                    : "This request is from someone with your own role, so it has to go to an approver of a different role.")
+                            </div>
+                        }
+                        else if (s == SupplyRequestStatus.Pending)
+                        {
+                            // An older request with no deliver-to location needs a
+                            // pick-up location, which is chosen on its own page.
+                            var quick = shortLines == 0 && r.IsDelivery;
+                            <form asp-action="Approve" asp-route-id="@r.SupplyRequestID" asp-route-returnTo="approvals" method="post" class="ni-decision">
+                                @Html.AntiForgeryToken()
+                                @for (var n = 0; n < r.Items.Count; n++)
+                                {
+                                    <input type="hidden" name="Items[@n].SupplyID" value="@r.Items[n].SupplyID" />
+                                    <input type="hidden" name="Items[@n].Quantity" value="@r.Items[n].QuantityRequested" />
+                                }
+                                <div class="ni-decision-title">Your decision</div>
+                                <textarea name="Note" maxlength="500" rows="2" class="form-control"
+                                          placeholder="Note to the requester. Say why if you reject." aria-label="Note to the requester"></textarea>
+                                <div class="ni-decision-row">
+                                    <div class="req-action-buttons">
+                                        @if (quick)
+                                        {
+                                            <button type="submit" class="btn btn-primary">&#10003; Approve as asked</button>
+                                            <a asp-action="Details" asp-route-id="@r.SupplyRequestID" class="btn btn-outline-secondary">Change amounts &rarr;</a>
+                                        }
+                                        else
+                                        {
+                                            <a asp-action="Details" asp-route-id="@r.SupplyRequestID" class="btn btn-primary">Review amounts &rarr;</a>
+                                        }
+                                        <button type="submit" class="btn btn-outline-danger"
+                                                formaction="@Url.Action("Reject", new { id = r.SupplyRequestID, returnTo = "approvals" })"
+                                                onclick="return confirm('Reject supply request S-@r.SupplyRequestID?');">Reject</button>
+                                    </div>
+                                    <span class="req-action-note">@(quick ? "Next, the supplies are released and delivered." : shortLines > 0 ? "Not enough in stock for every line: lower the amounts." : "Pick where it is collected on the request's page.")</span>
+                                </div>
+                            </form>
+                        }
+
+                        @* ---- Approved: release takes the supplies off the shelf ---- *@
+                        @if (s == SupplyRequestStatus.Approved)
+                        {
+                            <div class="req-action">
+                                <div>
+                                    <div class="req-action-title">Approved, waiting to be released</div>
+                                    <div class="req-action-note">@(canManage ? "Releasing takes you to choose which rooms the supplies come from. Stock goes down then." : "An Asset Officer releases the supplies and brings them over.")</div>
+                                </div>
+                                @if (canManage)
+                                {
+                                    <div class="req-action-buttons">
+                                        <a asp-action="Details" asp-route-id="@r.SupplyRequestID" class="btn btn-primary">Release for delivery &rarr;</a>
+                                    </div>
+                                }
+                            </div>
+                        }
+
+                        @* ---- Out for delivery: delivered, or not delivered with a reason ---- *@
+                        @if (s == SupplyRequestStatus.Released)
+                        {
+                            @if (problem)
+                            {
+                                <div class="sab-callout sab-callout-warn mt-3">
+                                    <span class="sab-callout-label">Not delivered@(r.DeliveryProblemAt.HasValue ? " · " + r.DeliveryProblemAt.Value.ToString("MMM d, h:mm tt") : "")</span>
+                                    @r.DeliveryProblem
+                                </div>
+                            }
+                            @if (canManage)
+                            {
+                                <form asp-action="Delivered" asp-route-id="@r.SupplyRequestID" asp-route-returnTo="delivery" method="post" class="ni-decision" data-delivery-form>
+                                    @Html.AntiForgeryToken()
+                                    @Html.FormTicket()
+                                    <div class="ni-decision-title">Delivery@(r.WhereName is null ? "" : " to " + r.WhereName)</div>
+                                    <div class="row g-2">
+                                        <div class="col-md-5">
+                                            <label class="form-label mb-1" for="rcv-@r.SupplyRequestID">Received by</label>
+                                            <input name="receivedByName" id="rcv-@r.SupplyRequestID" class="form-control" maxlength="100" value="@r.RequestedByName" />
+                                        </div>
+                                        <div class="col-md-7">
+                                            <label class="form-label mb-1" for="why-@r.SupplyRequestID">If not delivered, why</label>
+                                            <input name="reason" id="why-@r.SupplyRequestID" class="form-control" maxlength="500" placeholder="For example: the room was locked" />
+                                        </div>
+                                    </div>
+                                    <div class="ni-decision-row">
+                                        <div class="req-action-buttons">
+                                            <button type="submit" class="btn btn-primary" data-delivered>&#10003; Delivered</button>
+                                            <button type="submit" class="btn btn-outline-danger" data-not-delivered
+                                                    formaction="@Url.Action("NotDelivered", new { id = r.SupplyRequestID, returnTo = "delivery" })">Not delivered</button>
+                                        </div>
+                                        <span class="req-action-note">Not delivered keeps it here to try again, and tells the requester why.</span>
+                                    </div>
+                                </form>
+                            }
+                            else
+                            {
+                                <div class="ni-waiting">
+                                    <strong>Out for delivery</strong>
+                                    <span>An Asset Officer marks it delivered.</span>
+                                </div>
+                            }
+                        }
+                    </article>
+                }
+            </section>
+        </div>
+    }
+}
+
+@* ---- Waiting for approval ---- *@
+<section id="supAwaiting" role="tabpanel" hidden="@(openTab != "supAwaiting")">
+    @if (!waiting.Any())
+    {
+        <div class="sab-table-card">
+            <div class="sab-empty">
+                <div class="sab-empty-title">Nothing is waiting on you</div>
+                <p>Supply requests appear here as soon as somebody sends one.</p>
             </div>
-        }
-    </div>
+        </div>
+    }
+    else
+    {
+        await SupplyList(waiting, "w", "Supply requests awaiting a decision", "Oldest first");
+    }
+</section>
+
+@* ---- To release ---- *@
+<section id="supRelease" role="tabpanel" hidden="@(openTab != "supRelease")">
+    @if (!ready.Any())
+    {
+        <div class="sab-table-card">
+            <div class="sab-empty">
+                <div class="sab-empty-title">Nothing to release</div>
+                <p>Approved requests wait here until the supplies are taken off the shelf.</p>
+            </div>
+        </div>
+    }
+    else
+    {
+        await SupplyList(ready, "a", "Approved supply requests to release", "Approved, oldest first");
+    }
+</section>
+
+@* ---- Out for delivery ---- *@
+<section id="supDelivery" role="tabpanel" hidden="@(openTab != "supDelivery")">
+    @if (!outNow.Any())
+    {
+        <div class="sab-table-card">
+            <div class="sab-empty">
+                <div class="sab-empty-title">Nothing out for delivery</div>
+                <p>Released requests wait here until they are marked delivered.</p>
+            </div>
+        </div>
+    }
+    else
+    {
+        await SupplyList(outNow, "d", "Supply requests out for delivery", "Out for delivery");
+    }
+</section>
+
+@section Scripts {
+    <script>
+        // "Delivered" needs who received the supplies; "Not delivered"
+        // needs the reason. The server checks both again.
+        document.addEventListener('click', function (e) {
+            var button = e.target.closest && e.target.closest('[data-delivered], [data-not-delivered]');
+            if (!button) return;
+            var form = button.closest('[data-delivery-form]');
+            if (!form) return;
+            var delivered = button.hasAttribute('data-delivered');
+            var input = form.querySelector(delivered ? '[name=receivedByName]' : '[name=reason]');
+            if (input.value.trim()) { input.classList.remove('is-invalid'); return; }
+            e.preventDefault();
+            input.classList.add('is-invalid');
+            input.focus();
+            alert(delivered ? 'Enter who received the supplies.' : 'Say why it could not be delivered, so the requester knows.');
+        });
+    </script>
 }

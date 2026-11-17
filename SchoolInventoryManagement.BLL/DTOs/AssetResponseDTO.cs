@@ -33,6 +33,12 @@ namespace SchoolInventoryManagement.BLL.DTOs
         public string BranchName { get; set; } = null!;
         public int? ActiveAssignmentID { get; set; }
 
+        // Assigned to a department with no person holding it
+        // (AssetAssignmentService.AssignToDepartmentAsync): it belongs to
+        // that department and cannot be borrowed.
+        public bool IsWithDepartment =>
+            Status == AssetStatus.Assigned && AssignedUserID == null && ActiveAssignmentID == null;
+
         public byte[] RowVersion { get; set; } = null!;
     }
 }

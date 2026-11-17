@@ -158,10 +158,11 @@ namespace SchoolInventoryManagement.BLL.Services
             // collected here all point at the location too.
             var usedBySupplies = await _context.SupplyStock.AnyAsync(k => k.LocationID == locationId)
                 || await _context.SupplyTransactions.AnyAsync(t => t.LocationID == locationId)
-                || await _context.SupplyRequests.AnyAsync(r => r.PickupLocationID == locationId);
+                || await _context.SupplyRequests.AnyAsync(r => r.PickupLocationID == locationId || r.DeliverToLocationID == locationId)
+                || await _context.NewItemRequests.AnyAsync(n => n.DeliverToLocationID == locationId);
             if (usedBySupplies)
                 throw new InvalidOperationException(
-                    "This location cannot be deleted because supplies, their stock history, or supply requests still reference it.");
+                    "This location cannot be deleted because supplies, their stock history, or supply or new-item requests still reference it.");
 
             _context.Locations.Remove(location);
             await _context.SaveChangesAsync();

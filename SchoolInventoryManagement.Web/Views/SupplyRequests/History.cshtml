@@ -2,18 +2,20 @@
 @using SchoolInventoryManagement.DAL.Entities.Enums
 @{
     ViewData["Title"] = "Supply Request History";
+    // What this page shows, for the live updates (_Layout, site.js).
+    ViewData["LiveScope"] = "approvals";
     var status = ViewBag.Status as SupplyRequestStatus?;
     var pageNo = (int)ViewBag.Page;
     var lastPage = (int)ViewBag.LastPage;
     var total = (int)ViewBag.Total;
     var tabs = new (string Label, SupplyRequestStatus? Value)[]
     {
-        ("All", null), ("Released", SupplyRequestStatus.Released),
+        ("All", null), ("Delivered", SupplyRequestStatus.Delivered),
         ("Rejected", SupplyRequestStatus.Rejected), ("Cancelled", SupplyRequestStatus.Cancelled)
     };
     string Pill(SupplyRequestStatus s) => s switch
     {
-        SupplyRequestStatus.Released => "st-available",
+        SupplyRequestStatus.Delivered => "st-available",
         SupplyRequestStatus.Rejected => "st-overdue",
         _ => "st-undermaintenance"
     };
@@ -27,7 +29,7 @@
             <span>Supply request history</span>
         </nav>
         <h2 class="asset-detail-title">Supply request history</h2>
-        <div class="asset-detail-sub">@total finished supply request@(total == 1 ? "" : "s"): released, rejected or cancelled. Newest first.</div>
+        <div class="asset-detail-sub">@total finished supply request@(total == 1 ? "" : "s"): delivered, rejected or cancelled. Newest first.</div>
     </div>
 </div>
 
@@ -53,14 +55,14 @@
                 <tbody>
                     @foreach (var r in Model)
                     {
-                        var when = r.ReleasedAt ?? r.DecidedAt ?? r.CancelledAt ?? r.CreatedAt;
+                        var when = r.DeliveredAt ?? r.ReleasedAt ?? r.DecidedAt ?? r.CancelledAt ?? r.CreatedAt;
                         <tr>
                             <td><a asp-action="Details" asp-route-id="@r.SupplyRequestID" class="asset-code-chip">S-@r.SupplyRequestID</a></td>
                             <td>@r.RequestedByName<div class="asset-muted small">@r.DepartmentName &middot; @r.BranchName</div></td>
                             <td>@r.ItemsSummary</td>
                             <td><span class="asset-pill asset-status @Pill(r.Status)">@r.Status</span></td>
                             <td class="asset-muted text-nowrap">@when.ToString("MMM d, yyyy")</td>
-                            <td class="asset-muted">@(r.ReleasedByName ?? r.DecidedByName ?? (r.Status == SupplyRequestStatus.Cancelled ? "Requester" : "—"))</td>
+                            <td class="asset-muted">@(r.DeliveredByName ?? r.ReleasedByName ?? r.DecidedByName ?? (r.Status == SupplyRequestStatus.Cancelled ? "Requester" : "—"))</td>
                         </tr>
                     }
                 </tbody>

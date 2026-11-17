@@ -27,6 +27,23 @@ namespace SchoolInventoryManagement.BLL.Interfaces
             int assignmentId, ConditionStatus conditionOnReturn, int returnLocationId,
             byte[] rowVersion, int actingUserId);
 
+        // ---- Assigned to a department, with no person ----
+        //
+        // The units become Assigned with no holder: they belong to the
+        // department, sit in one of its rooms, and cannot be borrowed.
+        // Units left unassigned stay Available and can be.
+
+        Task<DepartmentPlacementLookupsDTO> GetDepartmentPlacementLookupsAsync();
+
+        // One unit (dto.AssetID), or dto.Quantity units of dto.ModelID.
+        // Optionally moves the model's other available units in that
+        // branch to a storage room, still unassigned.
+        Task<DepartmentPlacementResultDTO> AssignToDepartmentAsync(AssignToDepartmentDTO dto, int actingUserId);
+
+        // Back to Available, where it is. Only for a unit assigned to a
+        // department with no person holding it.
+        Task ReleaseFromDepartmentAsync(int assetId, byte[] rowVersion, int actingUserId);
+
         Task<AssetAssignmentResponseDTO?> GetAssignmentByIdAsync(int assignmentId);
         Task<List<AssetAssignmentResponseDTO>> GetAssignmentHistoryForAssetAsync(int assetId);
         Task<List<AssetAssignmentResponseDTO>> GetActiveAssignmentsForUserAsync(int userId);

@@ -6,6 +6,8 @@
     var supplyTotal = await SupplyCounts.CountSuppliesAsync(supplyScope);
     var assetTotal = ViewBag.AssetTotal is int total ? total : 0;
     ViewData["Title"] = "Browse items";
+    // What this page shows, for the live updates (_Layout, site.js).
+    ViewData["LiveScope"] = "assets";
 
     // The current search as route values, so the pager carries it along.
     var searchRoute = new Dictionary<string, string>();

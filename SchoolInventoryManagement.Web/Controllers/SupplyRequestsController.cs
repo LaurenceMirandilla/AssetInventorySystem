@@ -50,7 +50,7 @@ namespace SchoolInventoryManagement.Web.Controllers
                 try
                 {
                     var id = await _requests.CreateAsync(dto, CurrentUserId);
-                    TempData["SuccessMessage"] = "Request sent. You will be notified when it is approved.";
+                    TempData["SuccessMessage"] = "Request sent. You will be told when it is approved.";
                     return RedirectToAction(nameof(Details), new { id });
                 }
                 catch (Exception ex)
@@ -60,7 +60,7 @@ namespace SchoolInventoryManagement.Web.Controllers
             }
 
             if (!ModelState.IsValid && ModelState[string.Empty] is null)
-                ModelState.AddModelError(string.Empty, "Enter a whole number for every quantity, and check the date.");
+                ModelState.AddModelError(string.Empty, "Pick where to deliver, enter a whole number for every quantity, and check the date.");
             await PopulateAsync();
             if (dto.Items.Count == 0)
                 dto.Items.Add(new SupplyRequestLineDTO { Quantity = 1 });
@@ -113,12 +113,22 @@ namespace SchoolInventoryManagement.Web.Controllers
             RoleNames.AssetOfficer + "," + RoleNames.Administrator + "," + RoleNames.Principal;
         private const string ManagerRoles = RoleNames.AssetOfficer + "," + RoleNames.Administrator;
 
-        // GET /SupplyRequests/Pending : the Supplies side of Approvals
+        // GET /SupplyRequests/Pending[?tab=release|delivery] : the Supplies
+        // side of Approvals. tab opens that list instead of the first.
         [Authorize(Roles = ApproverRoles)]
-        public async Task<IActionResult> Pending()
+        public async Task<IActionResult> Pending(string? tab)
         {
+            ViewBag.Tab = tab;
+            ViewBag.CanManage = IsAssetManager;
             return View(await _requests.GetOpenAsync(CurrentUserId));
         }
+
+        // After an action: back to the request's own page, or to the
+        // Approvals list it was done from (returnTo = the tab to open).
+        private IActionResult BackTo(int id, string? returnTo) =>
+            string.IsNullOrEmpty(returnTo)
+                ? RedirectToAction(nameof(Details), new { id })
+                : RedirectToAction(nameof(Pending), new { tab = returnTo == "approvals" ? null : returnTo });
 
         // GET /SupplyRequests/History : finished supply requests
         [Authorize(Roles = ApproverRoles)]
@@ -136,37 +146,39 @@ namespace SchoolInventoryManagement.Web.Controllers
         [HttpPost]
         [ValidateAntiForgeryToken]
         [Authorize(Roles = ApproverRoles)]
-        public async Task<IActionResult> Approve(int id, ApproveSupplyRequestDTO dto)
+        public async Task<IActionResult> Approve(int id, ApproveSupplyRequestDTO dto, string? returnTo)
         {
             try
             {
                 if (!ModelState.IsValid)
-                    throw new ArgumentException("Pick where the supplies are collected, and check the amounts.");
+                    throw new ArgumentException("Check the amounts: each must be a whole number.");
                 await _requests.ApproveAsync(id, dto, CurrentUserId);
-                TempData["SuccessMessage"] = "Approved. The requester was told where to pick up.";
+                TempData["SuccessMessage"] = $"Request S-{id} approved. The requester has been told.";
             }
             catch (Exception ex)
             {
                 TempData["ErrorMessage"] = UserMessageFor(ex);
             }
-            return RedirectToAction(nameof(Details), new { id });
+            return BackTo(id, returnTo);
         }
 
         [HttpPost]
         [ValidateAntiForgeryToken]
         [Authorize(Roles = ApproverRoles)]
-        public async Task<IActionResult> Reject(int id, string? reason)
+        public async Task<IActionResult> Reject(int id, string? reason, string? note, string? returnTo)
         {
             try
             {
-                await _requests.RejectAsync(id, reason, CurrentUserId);
-                TempData["SuccessMessage"] = "Request rejected.";
+                // The Approvals list shares one note box between Approve and
+                // Reject, so the reason can arrive under either name.
+                await _requests.RejectAsync(id, string.IsNullOrWhiteSpace(reason) ? note : reason, CurrentUserId);
+                TempData["SuccessMessage"] = $"Request S-{id} rejected.";
             }
             catch (Exception ex)
             {
                 TempData["ErrorMessage"] = UserMessageFor(ex);
             }
-            return RedirectToAction(nameof(Details), new { id });
+            return BackTo(id, returnTo);
         }
 
         [HttpPost]
@@ -178,15 +190,53 @@ namespace SchoolInventoryManagement.Web.Controllers
             try
             {
                 if (!ModelState.IsValid)
-                    throw new ArgumentException("Enter who received the supplies, and check the amounts.");
+                    throw new ArgumentException("Check the amounts: each must be a whole number.");
                 await _requests.ReleaseAsync(id, dto, CurrentUserId);
-                TempData["SuccessMessage"] = "Released. Stock was deducted.";
+                TempData["SuccessMessage"] = "Released and out for delivery. Stock was deducted.";
             }
             catch (Exception ex)
             {
                 TempData["ErrorMessage"] = UserMessageFor(ex);
             }
             return RedirectToAction(nameof(Details), new { id });
+        }
+
+        // The supplies reached the requester's location.
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        [OneTimeSubmit]
+        [Authorize(Roles = ManagerRoles)]
+        public async Task<IActionResult> Delivered(int id, string? receivedByName, string? returnTo)
+        {
+            try
+            {
+                await _requests.MarkDeliveredAsync(id, receivedByName, CurrentUserId);
+                TempData["SuccessMessage"] = $"Request S-{id} delivered. The requester has been told.";
+            }
+            catch (Exception ex)
+            {
+                TempData["ErrorMessage"] = UserMessageFor(ex);
+            }
+            return BackTo(id, returnTo);
+        }
+
+        // A delivery that could not be made: stays out for delivery.
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        [OneTimeSubmit]
+        [Authorize(Roles = ManagerRoles)]
+        public async Task<IActionResult> NotDelivered(int id, string? reason, string? returnTo)
+        {
+            try
+            {
+                await _requests.MarkNotDeliveredAsync(id, reason, CurrentUserId);
+                TempData["SuccessMessage"] = $"Request S-{id}: recorded as not delivered. It stays out for delivery, and the requester has been told why.";
+            }
+            catch (Exception ex)
+            {
+                TempData["ErrorMessage"] = UserMessageFor(ex);
+            }
+            return BackTo(id, returnTo);
         }
 
         [HttpPost]
@@ -210,6 +260,7 @@ namespace SchoolInventoryManagement.Web.Controllers
         {
             ViewBag.Choices = await _requests.GetChoicesAsync(CurrentUserId);
             ViewBag.BranchName = await _requests.GetBranchNameAsync(CurrentUserId);
+            ViewBag.DeliveryLocations = await _requests.GetDeliveryLocationsAsync(CurrentUserId);
         }
     }
 }

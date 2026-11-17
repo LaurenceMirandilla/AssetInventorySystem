@@ -45,6 +45,10 @@ namespace SchoolInventoryManagement.BLL.Interfaces
         // in any branch. Asset Officer and Administrator only.
         Task MoveStockAsync(MoveStockDTO dto, int actingUserId);
 
+        // Takes unusable stock out (damaged, expired, lost...), with a
+        // reason, and writes a "Removed" history line.
+        Task RemoveStockAsync(RemoveStockDTO dto, int actingUserId);
+
         // The supplies kept in one location, with what the system says.
         Task<List<SupplyCountLineDTO>> GetCountSheetAsync(int locationId);
 

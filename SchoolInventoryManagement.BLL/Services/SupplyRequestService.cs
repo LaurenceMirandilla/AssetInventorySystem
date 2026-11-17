@@ -62,9 +62,25 @@ namespace SchoolInventoryManagement.BLL.Services
             return user.Branch.BranchName;
         }
 
+        public async Task<List<SupplyRoomDTO>> GetDeliveryLocationsAsync(int actingUserId)
+        {
+            var user = await GetActiveUserAsync(actingUserId);
+            return await _context.Locations.AsNoTracking()
+                .Where(l => l.BranchID == user.BranchID)
+                .OrderBy(l => l.LocationName)
+                .Select(l => new SupplyRoomDTO { LocationID = l.LocationID, LocationName = l.LocationName })
+                .ToListAsync();
+        }
+
         public async Task<int> CreateAsync(CreateSupplyRequestDTO dto, int actingUserId)
         {
             var user = await GetActiveUserAsync(actingUserId);
+
+            var deliverTo = await _context.Locations.FirstOrDefaultAsync(l => l.LocationID == dto.DeliverToLocationID);
+            if (deliverTo is null)
+                throw new ArgumentException("Pick where the supplies should be delivered.");
+            if (deliverTo.BranchID != user.BranchID)
+                throw new ArgumentException("The delivery location must be in your own branch.");
 
             // Rows left empty are ignored.
             var lines = (dto.Items ?? new List<SupplyRequestLineDTO>())
@@ -108,6 +124,7 @@ namespace SchoolInventoryManagement.BLL.Services
                 BranchID = user.BranchID,
                 Status = SupplyRequestStatus.Pending,
                 NeededBy = dto.NeededBy?.Date,
+                DeliverToLocationID = deliverTo.LocationID,
                 Reason = string.IsNullOrWhiteSpace(dto.Reason) ? null : dto.Reason.Trim(),
                 CreatedAt = PhilippineTime.Now,
                 Items = lines.Select(l => new SupplyRequestItem
@@ -138,7 +155,9 @@ namespace SchoolInventoryManagement.BLL.Services
                 Status = r.Status,
                 RequestedByUserID = r.RequestedByUserID,
                 RequestedByName = r.RequestedBy.FirstName + " " + r.RequestedBy.LastName,
+                RequestedByRoleName = r.RequestedBy.Role.RoleName,
                 DepartmentName = r.RequestedBy.Department.DepartmentName,
+                BranchID = r.BranchID,
                 BranchName = r.Branch.BranchName,
                 NeededBy = r.NeededBy,
                 Reason = r.Reason,
@@ -147,9 +166,14 @@ namespace SchoolInventoryManagement.BLL.Services
                 DecidedAt = r.DecidedAt,
                 DecisionNote = r.DecisionNote,
                 PickupLocationName = r.PickupLocation == null ? null : r.PickupLocation.LocationName,
+                DeliverToLocationName = r.DeliverToLocation == null ? null : r.DeliverToLocation.LocationName,
                 ReleasedByName = r.ReleasedBy == null ? null : r.ReleasedBy.FirstName + " " + r.ReleasedBy.LastName,
                 ReleasedAt = r.ReleasedAt,
+                DeliveredByName = r.DeliveredBy == null ? null : r.DeliveredBy.FirstName + " " + r.DeliveredBy.LastName,
+                DeliveredAt = r.DeliveredAt,
                 ReceivedByName = r.ReceivedByName,
+                DeliveryProblem = r.DeliveryProblem,
+                DeliveryProblemAt = r.DeliveryProblemAt,
                 CancelledAt = r.CancelledAt,
                 Items = r.Items
                     .OrderBy(i => i.SupplyRequestItemID)
@@ -212,10 +236,42 @@ namespace SchoolInventoryManagement.BLL.Services
         {
             await PermissionHelper.EnsureIsApproverAsync(_context, actingUserId);
 
-            return await Project(_context.SupplyRequests.AsNoTracking()
-                    .Where(r => r.Status == SupplyRequestStatus.Pending || r.Status == SupplyRequestStatus.Approved)
+            var rows = await Project(_context.SupplyRequests.AsNoTracking()
+                    .Where(r => r.Status == SupplyRequestStatus.Pending
+                             || r.Status == SupplyRequestStatus.Approved
+                             || r.Status == SupplyRequestStatus.Released)
                     .OrderBy(r => r.CreatedAt))
                 .ToListAsync();
+
+            // For the ones still to be decided: what the requester's branch
+            // has free of each supply (its stock, less what other approved
+            // requests are holding).
+            var pending = rows.Where(r => r.Status == SupplyRequestStatus.Pending).ToList();
+            if (pending.Count > 0)
+            {
+                var supplyIds = pending.SelectMany(r => r.Items.Select(i => i.SupplyID)).Distinct().ToList();
+
+                var stock = await _context.SupplyStock.AsNoTracking()
+                    .Where(k => supplyIds.Contains(k.SupplyID))
+                    .Select(k => new { k.SupplyID, k.Location.BranchID, k.Quantity })
+                    .ToListAsync();
+                var held = await _context.SupplyRequestItems.AsNoTracking()
+                    .Where(i => i.Request.Status == SupplyRequestStatus.Approved && supplyIds.Contains(i.SupplyID))
+                    .Select(i => new { i.SupplyID, i.Request.BranchID, Held = i.QuantityApproved ?? 0 })
+                    .ToListAsync();
+
+                foreach (var request in pending)
+                {
+                    foreach (var item in request.Items)
+                    {
+                        var have = stock.Where(s => s.SupplyID == item.SupplyID && s.BranchID == request.BranchID).Sum(s => s.Quantity);
+                        var kept = held.Where(h => h.SupplyID == item.SupplyID && h.BranchID == request.BranchID).Sum(h => h.Held);
+                        item.AvailableQuantity = Math.Max(0, have - kept);
+                    }
+                }
+            }
+
+            return rows;
         }
 
         public async Task<(List<SupplyRequestResponseDTO> Rows, int Total)> GetHistoryAsync(
@@ -224,7 +280,7 @@ namespace SchoolInventoryManagement.BLL.Services
             await PermissionHelper.EnsureIsApproverAsync(_context, actingUserId);
 
             var query = _context.SupplyRequests.AsNoTracking()
-                .Where(r => r.Status == SupplyRequestStatus.Released
+                .Where(r => r.Status == SupplyRequestStatus.Delivered
                          || r.Status == SupplyRequestStatus.Rejected
                          || r.Status == SupplyRequestStatus.Cancelled);
             if (status.HasValue)
@@ -232,7 +288,7 @@ namespace SchoolInventoryManagement.BLL.Services
 
             var total = await query.CountAsync();
             var rows = await Project(query
-                    .OrderByDescending(r => r.ReleasedAt ?? r.DecidedAt ?? r.CancelledAt ?? r.CreatedAt)
+                    .OrderByDescending(r => r.DeliveredAt ?? r.ReleasedAt ?? r.DecidedAt ?? r.CancelledAt ?? r.CreatedAt)
                     .Skip((Math.Max(1, page) - 1) * pageSize)
                     .Take(pageSize))
                 .ToListAsync();
@@ -251,9 +307,13 @@ namespace SchoolInventoryManagement.BLL.Services
                 && r.RequestedBy.RoleID != roleId);
         }
 
+        // Everything on the Approvals page: to decide, to release, and out
+        // for delivery.
         public Task<int> CountOpenAsync() =>
             _context.SupplyRequests.CountAsync(r =>
-                r.Status == SupplyRequestStatus.Pending || r.Status == SupplyRequestStatus.Approved);
+                r.Status == SupplyRequestStatus.Pending
+                || r.Status == SupplyRequestStatus.Approved
+                || r.Status == SupplyRequestStatus.Released);
 
         // What other approved, not-yet-released requests of the same
         // branch are holding, per supply.
@@ -337,11 +397,18 @@ namespace SchoolInventoryManagement.BLL.Services
         {
             var (request, approver) = await LoadForDecisionAsync(requestId, actingUserId);
 
-            var pickup = await _context.Locations.FirstOrDefaultAsync(l => l.LocationID == dto.PickupLocationID);
-            if (pickup is null)
-                throw new ArgumentException("Pick where the supplies are collected.");
-            if (pickup.BranchID != request.BranchID)
-                throw new ArgumentException("The pick-up location must be in the requester's branch.");
+            // The requester already said where to bring the supplies. Only
+            // an older request, made before that was asked, still needs a
+            // pick-up location from the approver.
+            Location? pickup = null;
+            if (request.DeliverToLocationID is null)
+            {
+                pickup = await _context.Locations.FirstOrDefaultAsync(l => l.LocationID == dto.PickupLocationID);
+                if (pickup is null)
+                    throw new ArgumentException("Pick where the supplies are collected.");
+                if (pickup.BranchID != request.BranchID)
+                    throw new ArgumentException("The pick-up location must be in the requester's branch.");
+            }
 
             var supplyIds = request.Items.Select(i => i.SupplyID).ToList();
             var held = await HeldAsync(request.BranchID, requestId, supplyIds);
@@ -388,10 +455,18 @@ namespace SchoolInventoryManagement.BLL.Services
             request.DecidedByUserID = approver.UserID;
             request.DecidedAt = PhilippineTime.Now;
             request.DecisionNote = note;
-            request.PickupLocationID = pickup.LocationID;
+            if (pickup is not null)
+                request.PickupLocationID = pickup.LocationID;
+
+            var deliveryName = request.DeliverToLocationID is null
+                ? null
+                : await _context.Locations.Where(l => l.LocationID == request.DeliverToLocationID)
+                    .Select(l => l.LocationName).FirstOrDefaultAsync();
 
             NotificationHelper.Queue(_context, request.RequestedByUserID,
-                $"Your supply request S-{request.SupplyRequestID} was approved. Pick up at {pickup.LocationName}.",
+                deliveryName is not null
+                    ? $"Your supply request S-{request.SupplyRequestID} was approved. It will be delivered to {deliveryName}."
+                    : $"Your supply request S-{request.SupplyRequestID} was approved. Pick up at {pickup!.LocationName}.",
                 $"/SupplyRequests/Details/{request.SupplyRequestID}");
 
             await SupplyAlerts.SaveAsync(_context);
@@ -430,7 +505,7 @@ namespace SchoolInventoryManagement.BLL.Services
             var supplyIds = request.Items.Select(i => i.SupplyID).ToList();
             var rooms = await _context.SupplyStock.AsNoTracking()
                 .Where(k => supplyIds.Contains(k.SupplyID) && k.Location.BranchID == request.BranchID && k.Quantity > 0)
-                .OrderByDescending(k => k.LocationID == request.PickupLocationID)
+                .OrderByDescending(k => k.LocationID == (request.DeliverToLocationID ?? request.PickupLocationID))
                 .ThenByDescending(k => k.Quantity)
                 .Select(k => new { k.SupplyID, k.LocationID, k.Location.LocationName, k.Quantity })
                 .ToListAsync();
@@ -460,9 +535,12 @@ namespace SchoolInventoryManagement.BLL.Services
             if (request.Status != SupplyRequestStatus.Approved)
                 throw new InvalidOperationException("Only an approved request can be released.");
 
-            var receivedBy = (dto.ReceivedByName ?? "").Trim();
-            if (receivedBy.Length == 0)
-                throw new ArgumentException("Enter who received the supplies.");
+            // Where they are going, for the history lines and the notice.
+            var whereId = request.DeliverToLocationID ?? request.PickupLocationID;
+            var where = whereId is null
+                ? null
+                : await _context.Locations.Where(l => l.LocationID == whereId)
+                    .Select(l => l.LocationName).FirstOrDefaultAsync();
 
             var lines = (dto.Lines ?? new List<SupplyReleaseLineDTO>()).Where(l => l.Quantity != 0).ToList();
             if (lines.Any(l => l.Quantity < 0))
@@ -514,7 +592,7 @@ namespace SchoolInventoryManagement.BLL.Services
                         Type = SupplyTransactionType.Issued,
                         QuantityChange = -line.Quantity,
                         QuantityAfter = row.Quantity,
-                        Note = $"Supply request S-{request.SupplyRequestID} · received by {receivedBy}",
+                        Note = $"Supply request S-{request.SupplyRequestID}" + (where is null ? "" : $" · for delivery to {where}"),
                         PerformedByUserID = officer.UserID,
                         CreatedAt = now
                     });
@@ -538,7 +616,7 @@ namespace SchoolInventoryManagement.BLL.Services
 
             if (released == 0)
                 throw new InvalidOperationException(
-                    "Nothing would be released. If the supplies are not being collected, cancel the request instead.");
+                    "Nothing would be released. If the supplies are not going out, cancel the request instead.");
 
             if (shortNotes.Count > 0)
             {
@@ -547,15 +625,84 @@ namespace SchoolInventoryManagement.BLL.Services
                 request.DecisionNote = all.Length > 500 ? all[..500] : all;
             }
 
+            // Out for delivery: off the shelf, not yet received.
             request.Status = SupplyRequestStatus.Released;
             request.ReleasedByUserID = officer.UserID;
             request.ReleasedAt = now;
-            request.ReceivedByName = receivedBy.Length > 100 ? receivedBy[..100] : receivedBy;
 
             await SupplyAlerts.QueueLowStockAsync(_context, before, change);
 
             NotificationHelper.Queue(_context, request.RequestedByUserID,
-                $"Supply request S-{request.SupplyRequestID} was released to {receivedBy}.",
+                $"Supply request S-{request.SupplyRequestID} is on its way" + (where is null ? "." : $" to {where}."),
+                $"/SupplyRequests/Details/{request.SupplyRequestID}");
+
+            await SupplyAlerts.SaveAsync(_context);
+        }
+
+        // ================= Delivery =================
+
+        private async Task<(SupplyRequest request, User officer, string? where)> LoadOutForDeliveryAsync(
+            int requestId, int actingUserId)
+        {
+            var officer = await PermissionHelper.EnsureIsAssetManagerAsync(_context, actingUserId);
+
+            var request = await _context.SupplyRequests
+                .Include(r => r.DeliverToLocation)
+                .Include(r => r.PickupLocation)
+                .FirstOrDefaultAsync(r => r.SupplyRequestID == requestId);
+            if (request is null)
+                throw new KeyNotFoundException("Supply request not found.");
+            if (request.Status != SupplyRequestStatus.Released)
+                throw new InvalidOperationException(
+                    "Only a request that is out for delivery can be marked delivered or not delivered.");
+
+            var where = request.DeliverToLocation?.LocationName ?? request.PickupLocation?.LocationName;
+            return (request, officer, where);
+        }
+
+        public async Task MarkDeliveredAsync(int requestId, string? receivedByName, int actingUserId)
+        {
+            var receivedBy = (receivedByName ?? "").Trim();
+            if (receivedBy.Length == 0)
+                throw new ArgumentException("Enter who received the supplies.");
+            if (receivedBy.Length > 100)
+                receivedBy = receivedBy[..100];
+
+            var (request, officer, where) = await LoadOutForDeliveryAsync(requestId, actingUserId);
+
+            request.Status = SupplyRequestStatus.Delivered;
+            request.DeliveredByUserID = officer.UserID;
+            request.DeliveredAt = PhilippineTime.Now;
+            request.ReceivedByName = receivedBy;
+            // The earlier problem is over; it stays in the audit history.
+            request.DeliveryProblem = null;
+            request.DeliveryProblemAt = null;
+
+            NotificationHelper.Queue(_context, request.RequestedByUserID,
+                $"Supply request S-{request.SupplyRequestID} was delivered" + (where is null ? "" : $" to {where}")
+                    + $" and received by {receivedBy}.",
+                $"/SupplyRequests/Details/{request.SupplyRequestID}");
+
+            await SupplyAlerts.SaveAsync(_context);
+        }
+
+        public async Task MarkNotDeliveredAsync(int requestId, string? reason, int actingUserId)
+        {
+            var why = (reason ?? "").Trim();
+            if (why.Length == 0)
+                throw new ArgumentException("Say why it could not be delivered, so the requester knows.");
+            if (why.Length > 500)
+                why = why[..500];
+
+            var (request, _, where) = await LoadOutForDeliveryAsync(requestId, actingUserId);
+
+            // Still out for delivery: it is tried again.
+            request.DeliveryProblem = why;
+            request.DeliveryProblemAt = PhilippineTime.Now;
+
+            NotificationHelper.Queue(_context, request.RequestedByUserID,
+                $"Supply request S-{request.SupplyRequestID} could not be delivered" + (where is null ? "" : $" to {where}")
+                    + $": {why} It will be tried again.",
                 $"/SupplyRequests/Details/{request.SupplyRequestID}");
 
             await SupplyAlerts.SaveAsync(_context);
@@ -575,7 +722,7 @@ namespace SchoolInventoryManagement.BLL.Services
             request.CancelledAt = PhilippineTime.Now;
 
             NotificationHelper.Queue(_context, request.RequestedByUserID,
-                $"Supply request S-{request.SupplyRequestID} was cancelled because it was not collected.",
+                $"Supply request S-{request.SupplyRequestID} was cancelled before the supplies were sent out.",
                 $"/SupplyRequests/Details/{request.SupplyRequestID}");
 
             await SupplyAlerts.SaveAsync(_context);

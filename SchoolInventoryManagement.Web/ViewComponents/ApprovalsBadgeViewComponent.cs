@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SchoolInventoryManagement.DAL.Constants;
-using SchoolInventoryManagement.DAL.Context;
+using SchoolInventoryManagement.BLL.Interfaces;
 using SchoolInventoryManagement.DAL.Entities.Enums;
 
 namespace SchoolInventoryManagement.Web.ViewComponents
@@ -14,11 +14,11 @@ namespace SchoolInventoryManagement.Web.ViewComponents
     // so it is cheap enough for every page. Nothing for roles that cannot approve.
     public class ApprovalsBadgeViewComponent : ViewComponent
     {
-        private readonly ApplicationDbContext _context;
+        private readonly ILiveStatusService _live;
 
-        public ApprovalsBadgeViewComponent(ApplicationDbContext context)
+        public ApprovalsBadgeViewComponent(ILiveStatusService live)
         {
-            _context = context;
+            _live = live;
         }
 
         public async Task<IViewComponentResult> InvokeAsync()
@@ -28,24 +28,16 @@ namespace SchoolInventoryManagement.Web.ViewComponents
                 || user.IsInRole(RoleNames.Principal)
                 || user.IsInRole(RoleNames.AssetOfficer);
 
-            // Same rule as the Approvals page: nobody decides a request from
-            // someone with their own role, so those aren't counted.
+            // The same count the live updates send (LiveStatusService), so
+            // the number never jumps when the first update arrives.
             var pending = 0;
             if (canApprove
                 && int.TryParse(user.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
-            {
-                var roleId = await _context.Users.Where(u => u.UserID == userId)
-                    .Select(u => u.RoleID).FirstOrDefaultAsync();
-                pending = await _context.AssetRequests.CountAsync(r =>
-                    r.RequestStatus == RequestStatus.Pending && r.RequestedByUser.RoleID != roleId);
-                // Supply requests waiting for a decision, by the same rule.
-                pending += await _context.SupplyRequests.CountAsync(r =>
-                    r.Status == SupplyRequestStatus.Pending
-                    && r.RequestedByUserID != userId
-                    && r.RequestedBy.RoleID != roleId);
-            }
+                pending = await _live.CountApprovalsAsync(userId);
 
-            // Same pill as the notifications count.
+            // Same pill as the notifications count; the live updates find it
+            // by this name.
+            ViewData["LiveKey"] = "approvals";
             return View("~/Views/Shared/Components/NotificationBell/Badge.cshtml", pending);
         }
     }

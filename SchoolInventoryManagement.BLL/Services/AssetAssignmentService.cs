@@ -131,6 +131,239 @@ namespace SchoolInventoryManagement.BLL.Services
             return created.ToResponseDTO();
         }
 
+        // =====================================================
+        // Assigned to a department, with no person
+        // =====================================================
+
+        public async Task<DepartmentPlacementLookupsDTO> GetDepartmentPlacementLookupsAsync()
+        {
+            // Available units, counted by model and by the room they are in.
+            var groups = await _context.Assets.AsNoTracking()
+                .Where(a => a.Status == AssetStatus.Available)
+                .GroupBy(a => new { a.ModelID, a.CurrentLocationID })
+                .Select(g => new { g.Key.ModelID, g.Key.CurrentLocationID, Count = g.Count() })
+                .ToListAsync();
+
+            var modelIds = groups.Select(g => g.ModelID).Distinct().ToList();
+            var models = await _context.Models.AsNoTracking()
+                .Where(m => modelIds.Contains(m.ModelID))
+                .Select(m => new { m.ModelID, m.ModelName, m.Category.CategoryName })
+                .ToListAsync();
+
+            var locations = await _context.Locations.AsNoTracking()
+                .OrderBy(l => l.Branch.BranchName).ThenBy(l => l.LocationName)
+                .Select(l => new PlacementLocationDTO
+                {
+                    LocationID = l.LocationID,
+                    LocationName = l.LocationName,
+                    BranchID = l.BranchID,
+                    BranchName = l.Branch.BranchName
+                })
+                .ToListAsync();
+            var roomNames = locations.ToDictionary(l => l.LocationID, l => l.LocationName);
+
+            return new DepartmentPlacementLookupsDTO
+            {
+                Models = models
+                    .OrderBy(m => m.ModelName)
+                    .Select(m => new PlacementModelDTO
+                    {
+                        ModelID = m.ModelID,
+                        ModelName = m.ModelName,
+                        CategoryName = m.CategoryName,
+                        Available = groups.Where(g => g.ModelID == m.ModelID).Sum(g => g.Count),
+                        Rooms = groups.Where(g => g.ModelID == m.ModelID)
+                            .Select(g => new PlacementRoomDTO
+                            {
+                                LocationID = g.CurrentLocationID,
+                                LocationName = g.CurrentLocationID is int id && roomNames.TryGetValue(id, out var name)
+                                    ? name : "No room recorded",
+                                Count = g.Count
+                            })
+                            .OrderByDescending(r => r.Count)
+                            .ToList()
+                    })
+                    .ToList(),
+                Departments = await _context.Departments.AsNoTracking()
+                    .OrderBy(d => d.Branch.BranchName).ThenBy(d => d.DepartmentName)
+                    .Select(d => new PlacementDepartmentDTO
+                    {
+                        DepartmentID = d.DepartmentID,
+                        DepartmentName = d.DepartmentName,
+                        BranchID = d.BranchID,
+                        BranchName = d.Branch.BranchName
+                    })
+                    .ToListAsync(),
+                Locations = locations
+            };
+        }
+
+        public async Task<DepartmentPlacementResultDTO> AssignToDepartmentAsync(AssignToDepartmentDTO dto, int actingUserId)
+        {
+            var actor = await PermissionHelper.EnsureIsAssetManagerAsync(_context, actingUserId);
+
+            var department = await _context.Departments.FindAsync(dto.DepartmentID);
+            if (department is null)
+                throw new ArgumentException("Pick a department.");
+
+            var location = await _context.Locations.FindAsync(dto.LocationID);
+            if (location is null)
+                throw new ArgumentException("Pick the location the assets are placed in.");
+            if (location.BranchID != department.BranchID)
+                throw new InvalidOperationException("Pick a location in the department's own branch.");
+
+            // ---- which units ----
+            List<Asset> units;
+            string itemName;
+            if (dto.AssetID is int assetId)
+            {
+                var one = await _context.Assets.FindAsync(assetId);
+                if (one is null)
+                    throw new KeyNotFoundException("Asset not found.");
+                if (one.Status != AssetStatus.Available)
+                    throw new InvalidOperationException(
+                        $"{one.AssetCode} is currently '{one.Status}' and cannot be assigned.");
+                units = new List<Asset> { one };
+                itemName = $"{one.AssetName} ({one.AssetCode})";
+            }
+            else
+            {
+                if (dto.ModelID is not int modelId)
+                    throw new ArgumentException("Pick a model.");
+                if (dto.Quantity < 1 || dto.Quantity > 1000)
+                    throw new ArgumentException("Enter how many to assign: from 1 to 1000 at a time.");
+
+                var modelName = await _context.Models.Where(m => m.ModelID == modelId)
+                    .Select(m => m.ModelName).FirstOrDefaultAsync();
+                if (modelName is null)
+                    throw new KeyNotFoundException("Model not found.");
+
+                var query = _context.Assets.Where(a => a.ModelID == modelId && a.Status == AssetStatus.Available);
+                if (dto.FromLocationID is int from)
+                    query = query.Where(a => a.CurrentLocationID == from);
+
+                // Units already in the room come first, so nothing is moved
+                // for no reason; then in code order.
+                var available = await query
+                    .OrderByDescending(a => a.CurrentLocationID == dto.LocationID)
+                    .ThenBy(a => a.AssetCode)
+                    .ToListAsync();
+
+                if (available.Count == 0)
+                    throw new InvalidOperationException(
+                        $"No {modelName} is available{(dto.FromLocationID is null ? "" : " in that location")}.");
+                if (available.Count < dto.Quantity)
+                    throw new InvalidOperationException(
+                        $"Only {available.Count} {modelName} available{(dto.FromLocationID is null ? "" : " in that location")}. Lower the number.");
+
+                units = available.Take(dto.Quantity).ToList();
+                itemName = modelName;
+            }
+
+            var remarks = string.IsNullOrWhiteSpace(dto.Remarks) ? null : dto.Remarks.Trim();
+            if (remarks is { Length: > 500 })
+                remarks = remarks[..500];
+
+            foreach (var unit in units)
+            {
+                // Recorded as a movement when the room changes, so the
+                // unit's history shows where it went and why.
+                MovementHelper.Record(
+                    _context, unit, location.LocationID, actor.UserID,
+                    $"Assigned to {department.DepartmentName}", unit.Condition, remarks);
+
+                unit.Status = AssetStatus.Assigned;
+                unit.AssignedUserID = null;
+                unit.DepartmentID = department.DepartmentID;
+                unit.BranchID = department.BranchID;
+            }
+
+            // ---- the rest of the model: into storage, still unassigned ----
+            var moved = 0;
+            string? storageName = null;
+            if (dto.AssetID is null && dto.MoveRestToLocationID is int storageId)
+            {
+                var storage = await _context.Locations.FindAsync(storageId);
+                if (storage is null)
+                    throw new ArgumentException("Pick the storage location for the rest.");
+                if (storage.BranchID != department.BranchID)
+                    throw new InvalidOperationException("Pick a storage location in the same branch.");
+                if (storage.LocationID == location.LocationID)
+                    throw new ArgumentException(
+                        "The storage location is the same room the assets are placed in. Pick another, or leave the rest where they are.");
+
+                var pickedIds = units.Select(u => u.AssetID).ToList();
+                var rest = await _context.Assets
+                    .Where(a => a.ModelID == dto.ModelID
+                                && a.Status == AssetStatus.Available
+                                && a.BranchID == department.BranchID
+                                && !pickedIds.Contains(a.AssetID)
+                                && a.CurrentLocationID != storageId)
+                    .ToListAsync();
+
+                foreach (var unit in rest)
+                {
+                    MovementHelper.Record(
+                        _context, unit, storageId, actor.UserID,
+                        "Placed in storage, not assigned", unit.Condition);
+                    moved++;
+                }
+                storageName = storage.LocationName;
+            }
+
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                throw new ConcurrencyConflictException(
+                    "One of these assets was changed by someone else just now. Nothing was assigned; please try again.");
+            }
+
+            var modelForCount = units[0].ModelID;
+            return new DepartmentPlacementResultDTO
+            {
+                Assigned = units.Count,
+                MovedToStorage = moved,
+                ItemName = itemName,
+                DepartmentName = department.DepartmentName,
+                LocationName = location.LocationName,
+                StorageName = storageName,
+                StillAvailable = await _context.Assets.CountAsync(a =>
+                    a.ModelID == modelForCount && a.Status == AssetStatus.Available)
+            };
+        }
+
+        public async Task ReleaseFromDepartmentAsync(int assetId, byte[] rowVersion, int actingUserId)
+        {
+            await PermissionHelper.EnsureIsAssetManagerAsync(_context, actingUserId);
+
+            var asset = await _context.Assets.FindAsync(assetId);
+            if (asset is null)
+                throw new KeyNotFoundException("Asset not found.");
+
+            // With a person (or out on a request) it is returned instead.
+            var withPerson = asset.AssignedUserID is not null
+                || await _context.AssetAssignments.AnyAsync(a => a.AssetID == assetId && a.ReturnDate == null);
+            if (asset.Status != AssetStatus.Assigned || withPerson)
+                throw new InvalidOperationException(
+                    "Only an asset assigned to a department, with no person holding it, can be released here.");
+
+            _context.Entry(asset).Property(a => a.RowVersion).OriginalValue = rowVersion;
+            asset.Status = AssetStatus.Available;
+
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                throw new ConcurrencyConflictException(
+                    "This asset was modified by someone else. Please reload and try again.");
+            }
+        }
+
         public async Task ReturnAssetAsync(
             int assignmentId, ConditionStatus conditionOnReturn, int returnLocationId,
             byte[] rowVersion, int actingUserId)
@@ -199,7 +432,7 @@ namespace SchoolInventoryManagement.BLL.Services
                 _context,
                 assignment.AssignedToUserID,
                 $"Your return of {assignment.Asset.AssetName} ({assignment.Asset.AssetCode}) " +
-                $"was recorded as '{conditionOnReturn}'.",
+                $"was recorded, in {conditionOnReturn} condition.",
                 $"/Assets/Details/{assignment.AssetID}");
 
             try

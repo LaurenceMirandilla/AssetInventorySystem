@@ -1,6 +1,8 @@
 ﻿@model SchoolInventoryManagement.Web.ViewModels.HomeDashboardViewModel
 @{
     ViewData["Title"] = Model.IsReportsViewer ? "Dashboard" : "Home";
+    // What this page shows, for the live updates (_Layout, site.js).
+    ViewData["LiveScope"] = "home";
 
     var now = PhilippineTime.Now;
     var greeting = now.Hour < 12 ? "Good morning" : now.Hour < 18 ? "Good afternoon" : "Good evening";
@@ -144,9 +146,11 @@
                 <p class="text-muted small">
                     <strong>Borrow</strong> asks for models and how many of each;
                     staff pick the units. <strong>Transfer</strong> asks for them to
-                    be moved to another location. Either way an approver decides.
+                    be moved to another location. <strong>Supplies</strong> asks
+                    for things that get used up. Either way an approver decides.
                 </p>
                 <a asp-controller="AssetRequests" asp-action="Create" class="dash-btn w-100 justify-content-center">+ New request</a>
+                <a asp-controller="SupplyRequests" asp-action="Create" class="dash-btn is-outline w-100 justify-content-center mt-2">Request supplies</a>
                 <a asp-controller="Assets" asp-action="MyAssets" class="dash-btn is-outline w-100 justify-content-center mt-2">See what I'm holding</a>
             </div>
         </div>

@@ -11,7 +11,7 @@
             <li>
                 <div>
                     <a asp-controller="Supplies" asp-action="Details" asp-route-id="@s.SupplyID" class="dash-list-title">@s.SupplyName</a>
-                    <div class="dash-list-sub">@(s.LowStockLevel > 0 ? "Low-stock level " + s.LowStockLevel : "No warning level set")</div>
+                    <div class="dash-list-sub">@s.BranchName@(s.LowStockLevel > 0 ? " · level " + s.LowStockLevel : "")</div>
                 </div>
                 <div class="dash-list-end">
                     <span class="asset-pill asset-status @(s.Quantity <= 0 ? "st-overdue" : "st-low")">@(s.Quantity <= 0 ? "Out of stock" : s.Quantity + " " + SupplyText.Unit(s.Quantity, s.Unit) + " left")</span>

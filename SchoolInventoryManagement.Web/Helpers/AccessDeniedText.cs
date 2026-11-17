@@ -52,6 +52,7 @@ namespace SchoolInventoryManagement.Web.Helpers
             ["Home/Privacy"] = "The Privacy page",
             ["NewItemRequests/All"] = "The list of all new-item requests",
             ["NewItemRequests/Pending"] = "New-item approvals",
+            ["NewItemRequests/Requesters"] = "Choosing who can request new items",
             ["Reports/*"] = "Reports",
             ["Users/ResetPassword"] = "Resetting passwords",
             ["Users/*"] = "Managing users",

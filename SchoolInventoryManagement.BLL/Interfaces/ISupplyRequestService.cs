@@ -13,6 +13,9 @@ namespace SchoolInventoryManagement.BLL.Interfaces
         // The name of the user's branch, for the form's wording.
         Task<string> GetBranchNameAsync(int actingUserId);
 
+        // The locations in the user's own branch, for "Deliver to".
+        Task<List<SupplyRoomDTO>> GetDeliveryLocationsAsync(int actingUserId);
+
         // Any signed-in user may ask. Stock does not change here; it goes
         // down when the supplies are released.
         Task<int> CreateAsync(CreateSupplyRequestDTO dto, int actingUserId);
@@ -28,12 +31,14 @@ namespace SchoolInventoryManagement.BLL.Interfaces
 
         // ---- Approvers (Asset Officer, Administrator, Principal) ----
 
-        // Waiting for a decision, and approved but not yet handed over.
+        // Waiting for a decision, approved and waiting to be released, and
+        // released and out for delivery. Each pending line also says how
+        // many the branch has free.
         Task<List<SupplyRequestResponseDTO>> GetOpenAsync(int actingUserId);
         Task<int> CountOpenAsync();
         Task<int> CountAwaitingAsync(int actingUserId);
 
-        // Released, rejected and cancelled requests, newest first.
+        // Delivered, rejected and cancelled requests, newest first.
         Task<(List<SupplyRequestResponseDTO> Rows, int Total)> GetHistoryAsync(
             int actingUserId, SchoolInventoryManagement.DAL.Entities.Enums.SupplyRequestStatus? status, int page, int pageSize);
 
@@ -41,8 +46,9 @@ namespace SchoolInventoryManagement.BLL.Interfaces
         // supplies could be collected from.
         Task<SupplyApprovalInfoDTO> GetApprovalInfoAsync(int requestId);
 
-        // Confirms (or lowers) each amount and sets the pick-up room. Stock
-        // does not change; the amounts are held for this request.
+        // Confirms (or lowers) each amount. Stock does not change; the
+        // amounts are held for this request. The supplies go to the
+        // location the requester chose.
         Task ApproveAsync(int requestId, ApproveSupplyRequestDTO dto, int actingUserId);
 
         Task RejectAsync(int requestId, string? reason, int actingUserId);
@@ -51,9 +57,20 @@ namespace SchoolInventoryManagement.BLL.Interfaces
 
         Task<SupplyReleaseInfoDTO> GetReleaseInfoAsync(int requestId);
 
-        // Hands the supplies over: takes each amount from the rooms given,
-        // writes "Issued" history lines and finishes the request.
+        // Takes each amount from the rooms given and writes "Issued"
+        // history lines. The supplies are now out for delivery.
         Task ReleaseAsync(int requestId, ReleaseSupplyRequestDTO dto, int actingUserId);
+
+        // ---- Delivery (Asset Officer, Administrator) ----
+
+        // The supplies reached the requester's location: records who
+        // received them and finishes the request.
+        Task MarkDeliveredAsync(int requestId, string? receivedByName, int actingUserId);
+
+        // A delivery that could not be made. The reason is required; the
+        // request stays out for delivery so it can be tried again, and
+        // the requester is told.
+        Task MarkNotDeliveredAsync(int requestId, string? reason, int actingUserId);
 
         // Approved but never collected: frees the held amounts.
         Task CancelUncollectedAsync(int requestId, int actingUserId);

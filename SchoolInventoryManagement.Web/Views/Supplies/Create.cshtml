@@ -72,12 +72,12 @@
                             <span asp-validation-for="Unit" class="text-danger small"></span>
                         </div>
                         <div class="col-md-4">
-                            <label asp-for="UnitPrice" class="form-label">Price per unit <span class="register-optional">optional</span></label>
+                            <label asp-for="UnitPrice" class="form-label">Price paid per unit <span class="register-optional">optional</span></label>
                             <div class="input-group">
                                 <span class="input-group-text">&#8369;</span>
                                 <input asp-for="UnitPrice" class="form-control" id="supplyPrice" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0.00" />
                             </div>
-                            <div class="form-text">Used for stock value and reports.</div>
+                            <div class="form-text">What the opening quantity cost each. Later deliveries have their own price; the supply shows the average.</div>
                             <span asp-validation-for="UnitPrice" class="text-danger small"></span>
                         </div>
                         <div class="col-12">
@@ -117,7 +117,7 @@
                             <span asp-validation-for="LocationID" class="text-danger small"></span>
                         </div>
                         <div class="col-md-4">
-                            <label asp-for="LowStockLevel" class="form-label">Low-stock level</label>
+                            <label asp-for="LowStockLevel" class="form-label">Low-stock level, per branch</label>
                             <input asp-for="LowStockLevel" class="form-control" id="supplyLow" type="number" min="0" step="1" inputmode="numeric" />
                             <div class="form-text">At or below this it reads "Running low". 0 turns the warning off.</div>
                             <span asp-validation-for="LowStockLevel" class="text-danger small"></span>

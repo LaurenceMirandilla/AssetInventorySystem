@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using SchoolInventoryManagement.DAL.Constants;
 using SchoolInventoryManagement.DAL.Context;
+using SchoolInventoryManagement.DAL.Entities;
 
 namespace SchoolInventoryManagement.BLL.Services
 {
@@ -38,31 +39,78 @@ namespace SchoolInventoryManagement.BLL.Services
                 .ToDictionaryAsync(x => x.SupplyID, x => x.Total);
         }
 
-        // Tells Asset Officers and Administrators when a change takes a
-        // supply down to its low-stock level, or to nothing. Only on the
-        // way down, so a supply that stays low does not notify again.
-        // Queued, not saved: it commits with the change that caused it.
-        public static async Task QueueLowStockAsync(
-            ApplicationDbContext context, Dictionary<int, int> before, Dictionary<int, int> change)
+        // At or under the level. A level of 0 means no warning.
+        public static bool IsLow(int quantity, int level) => level > 0 && quantity <= level;
+
+        // Kept for callers that still pass totals; the check below works
+        // everything out itself.
+        public static Task QueueLowStockAsync(
+            ApplicationDbContext context, Dictionary<int, int> before, Dictionary<int, int> change) =>
+            QueueLowStockAsync(context);
+
+        // Tells Asset Officers and Administrators when the changes about to
+        // be saved take a supply down to its low-stock level, or to
+        // nothing, IN A BRANCH: the level is per branch, not school-wide.
+        // Only on the way down, so a branch that stays low does not notify
+        // again. Queued, not saved: it commits with the change that caused
+        // it. Call it after changing the stock rows and before saving.
+        public static async Task QueueLowStockAsync(ApplicationDbContext context)
         {
-            var ids = change.Where(c => c.Value < 0).Select(c => c.Key).ToList();
-            if (ids.Count == 0)
+            var changes = context.ChangeTracker.Entries<SupplyStock>()
+                .Where(e => e.State == EntityState.Modified || e.State == EntityState.Added)
+                .Select(e => new
+                {
+                    e.Entity.SupplyID,
+                    e.Entity.LocationID,
+                    Delta = e.Entity.Quantity
+                            - (e.State == EntityState.Added ? 0 : e.OriginalValues.GetValue<int>(nameof(SupplyStock.Quantity)))
+                })
+                .Where(c => c.Delta != 0)
+                .ToList();
+            if (!changes.Any(c => c.Delta < 0))
                 return;
 
+            var locationIds = changes.Select(c => c.LocationID).Distinct().ToList();
+            var branchOf = await context.Locations.AsNoTracking()
+                .Where(l => locationIds.Contains(l.LocationID))
+                .Select(l => new { l.LocationID, l.BranchID, l.Branch.BranchName })
+                .ToDictionaryAsync(l => l.LocationID);
+
+            var supplyIds = changes.Select(c => c.SupplyID).Distinct().ToList();
             var supplies = await context.Supplies.AsNoTracking()
-                .Where(s => ids.Contains(s.SupplyID))
+                .Where(s => supplyIds.Contains(s.SupplyID))
                 .Select(s => new { s.SupplyID, s.SupplyName, s.Unit, s.LowStockLevel })
+                .ToDictionaryAsync(s => s.SupplyID);
+
+            // Branches with a low-stock level of their own.
+            var ownLevels = await context.SupplyBranchLevels.AsNoTracking()
+                .Where(l => supplyIds.Contains(l.SupplyID))
+                .Select(l => new { l.SupplyID, l.BranchID, l.LowStockLevel })
+                .ToListAsync();
+
+            // What each branch holds in the database now, before this save.
+            var held = await context.SupplyStock.AsNoTracking()
+                .Where(k => supplyIds.Contains(k.SupplyID))
+                .Select(k => new { k.SupplyID, k.Location.BranchID, k.Quantity })
                 .ToListAsync();
 
             var messages = new List<(int SupplyID, string Text)>();
-            foreach (var s in supplies)
+            foreach (var g in changes.Where(c => branchOf.ContainsKey(c.LocationID))
+                         .GroupBy(c => new { c.SupplyID, branchOf[c.LocationID].BranchID, branchOf[c.LocationID].BranchName }))
             {
-                var was = before.GetValueOrDefault(s.SupplyID);
-                var now = was + change[s.SupplyID];
+                var delta = g.Sum(c => c.Delta);
+                if (delta >= 0 || !supplies.TryGetValue(g.Key.SupplyID, out var s))
+                    continue;
+
+                var was = held.Where(h => h.SupplyID == g.Key.SupplyID && h.BranchID == g.Key.BranchID).Sum(h => h.Quantity);
+                var now = was + delta;
+                var level = ownLevels.Where(l => l.SupplyID == g.Key.SupplyID && l.BranchID == g.Key.BranchID)
+                    .Select(l => (int?)l.LowStockLevel).FirstOrDefault() ?? s.LowStockLevel;
                 if (now <= 0 && was > 0)
-                    messages.Add((s.SupplyID, $"{s.SupplyName} is out of stock."));
-                else if (s.LowStockLevel > 0 && was > s.LowStockLevel && now <= s.LowStockLevel)
-                    messages.Add((s.SupplyID, $"{s.SupplyName} is running low: {now} {s.Unit} left (level {s.LowStockLevel})."));
+                    messages.Add((s.SupplyID, $"{s.SupplyName} is out of stock at {g.Key.BranchName}."));
+                else if (level > 0 && was > level && now <= level)
+                    messages.Add((s.SupplyID,
+                        $"{s.SupplyName} is running low at {g.Key.BranchName}: {now} {s.Unit} left (level {level})."));
             }
             if (messages.Count == 0)
                 return;

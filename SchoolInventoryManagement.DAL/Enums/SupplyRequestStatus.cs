@@ -8,9 +8,12 @@
         Pending,
         // Amounts confirmed and a pick-up room set; ready to collect.
         Approved,
-        // Handed over. Stock went down at this point.
+        // Taken off the shelf and on its way to the requester's location.
+        // Stock went down at this point.
         Released,
         Rejected,
-        Cancelled
+        Cancelled,
+        // Brought to the location and received. The request is finished.
+        Delivered
     }
 }

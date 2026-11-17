@@ -77,10 +77,11 @@ namespace SchoolInventoryManagement.BLL.Services
                     s.UnitPrice,
                     s.LowStockLevel,
                     s.Description,
+                    Levels = s.BranchLevels.Select(l => new { l.BranchID, l.LowStockLevel }).ToList(),
                     Stock = s.Stock
                         .Where(k => (locationId == null || k.LocationID == locationId) &&
                                     (branchId == null || k.Location.BranchID == branchId))
-                        .Select(k => new { k.Location.LocationName, k.Quantity })
+                        .Select(k => new { k.Location.LocationName, k.Location.BranchID, k.Quantity })
                         .ToList()
                 })
                 .ToListAsync();
@@ -96,6 +97,13 @@ namespace SchoolInventoryManagement.BLL.Services
                 LowStockLevel = s.LowStockLevel,
                 Description = s.Description,
                 TotalQuantity = s.Stock.Sum(k => k.Quantity),
+                // The low-stock level is per branch: the worst-off branch decides.
+                LowestBranchQuantity = s.Stock.GroupBy(k => k.BranchID).Select(g => g.Sum(k => k.Quantity))
+                    .DefaultIfEmpty(0).Min(),
+                // Each branch against its own level, or the general one.
+                AnyBranchLow = s.Stock.GroupBy(k => k.BranchID).Any(g => SupplyAlerts.IsLow(
+                    g.Sum(k => k.Quantity),
+                    s.Levels.Where(l => l.BranchID == g.Key).Select(l => (int?)l.LowStockLevel).FirstOrDefault() ?? s.LowStockLevel)),
                 LocationNames = s.Stock.Select(k => k.LocationName).OrderBy(n => n).ToList()
             });
 
@@ -171,6 +179,7 @@ namespace SchoolInventoryManagement.BLL.Services
                     QuantityChange = dto.OpeningQuantity,
                     QuantityAfter = dto.OpeningQuantity,
                     Note = "Opening quantity",
+                    UnitPrice = dto.UnitPrice,
                     PerformedByUserID = actingUserId,
                     CreatedAt = PhilippineTime.Now
                 });
@@ -227,6 +236,8 @@ namespace SchoolInventoryManagement.BLL.Services
                 throw new ArgumentException("Every quantity must be 1 or more.");
             if (lines.Any(l => l.Quantity > 1000000))
                 throw new ArgumentException("A quantity is too large.");
+            if (lines.Any(l => l.UnitPrice is < 0))
+                throw new ArgumentException("A price cannot be less than 0.");
             if (lines.GroupBy(l => new { l.SupplyID, l.LocationID }).Any(g => g.Count() > 1))
                 throw new ArgumentException("The same supply and location is listed twice. Combine those rows.");
 
@@ -271,13 +282,46 @@ namespace SchoolInventoryManagement.BLL.Services
                     QuantityChange = line.Quantity,
                     QuantityAfter = row.Quantity,
                     Note = note,
+                    UnitPrice = line.UnitPrice,
                     PerformedByUserID = actingUserId,
                     CreatedAt = now
                 });
             }
 
+            await RefreshAveragePricesAsync(lines);
+
             await SupplyAlerts.SaveAsync(_context);
             return lines.Sum(l => l.Quantity);
+        }
+
+        // A supply's price is the average of what was paid for it: every
+        // priced delivery (and a priced opening quantity), weighted by how
+        // many came in. Worked out again from all of them each time, so
+        // rounding never builds up.
+        private async Task RefreshAveragePricesAsync(List<AddStockLineDTO> lines)
+        {
+            var priced = lines.Where(l => l.UnitPrice.HasValue).ToList();
+            if (priced.Count == 0)
+                return;
+
+            var ids = priced.Select(l => l.SupplyID!.Value).Distinct().ToList();
+            var past = await _context.SupplyTransactions.AsNoTracking()
+                .Where(t => ids.Contains(t.SupplyID) && t.UnitPrice != null && t.QuantityChange > 0
+                            && (t.Type == SupplyTransactionType.Opening || t.Type == SupplyTransactionType.Received))
+                .Select(t => new { t.SupplyID, t.QuantityChange, Price = t.UnitPrice!.Value })
+                .ToListAsync();
+            var supplies = await _context.Supplies.Where(s => ids.Contains(s.SupplyID)).ToListAsync();
+
+            foreach (var supply in supplies)
+            {
+                var mine = priced.Where(l => l.SupplyID == supply.SupplyID).ToList();
+                var units = past.Where(t => t.SupplyID == supply.SupplyID).Sum(t => (decimal)t.QuantityChange)
+                            + mine.Sum(l => (decimal)l.Quantity);
+                var paid = past.Where(t => t.SupplyID == supply.SupplyID).Sum(t => t.QuantityChange * t.Price)
+                           + mine.Sum(l => l.Quantity * l.UnitPrice!.Value);
+                if (units > 0)
+                    supply.UnitPrice = Math.Round(paid / units, 2, MidpointRounding.AwayFromZero);
+            }
         }
 
         public async Task<SupplyDetailsDTO?> GetSupplyDetailsAsync(int supplyId, int historyRows = 50, int? scopeBranchId = null)
@@ -306,11 +350,53 @@ namespace SchoolInventoryManagement.BLL.Services
                 .Select(k => new SupplyStockRowDTO
                 {
                     LocationName = k.Location.LocationName,
+                    BranchID = k.Location.BranchID,
                     BranchName = k.Location.Branch.BranchName,
                     Quantity = k.Quantity
                 })
                 .ToListAsync();
             supply.TotalQuantity = supply.Stock.Sum(k => k.Quantity);
+            // The low-stock level is checked for each branch on its own.
+            var ownLevels = await _context.SupplyBranchLevels.AsNoTracking()
+                .Where(l => l.SupplyID == supplyId)
+                .ToDictionaryAsync(l => l.BranchID, l => l.LowStockLevel);
+            supply.Branches = supply.Stock
+                .GroupBy(k => new { k.BranchID, k.BranchName })
+                .Select(g =>
+                {
+                    var level = ownLevels.TryGetValue(g.Key.BranchID, out var own) ? own : supply.LowStockLevel;
+                    return new SupplyBranchStockDTO
+                    {
+                        BranchID = g.Key.BranchID,
+                        BranchName = g.Key.BranchName,
+                        Quantity = g.Sum(k => k.Quantity),
+                        LowStockLevel = level,
+                        HasOwnLevel = ownLevels.ContainsKey(g.Key.BranchID),
+                        IsLow = SupplyAlerts.IsLow(g.Sum(k => k.Quantity), level)
+                    };
+                })
+                .ToList();
+            supply.LowestBranchQuantity = supply.Branches.Select(b => b.Quantity).DefaultIfEmpty(0).Min();
+            supply.AnyBranchLow = supply.Branches.Any(b => b.IsLow);
+            // Every branch, for the edit form.
+            var allStock = await _context.SupplyStock.AsNoTracking()
+                .Where(k => k.SupplyID == supplyId)
+                .Select(k => new { k.Location.BranchID, k.Quantity })
+                .ToListAsync();
+            supply.BranchLevels = (await _context.Branches.AsNoTracking()
+                    .OrderBy(b => b.BranchName)
+                    .Select(b => new { b.BranchID, b.BranchName })
+                    .ToListAsync())
+                .Select(b => new SupplyBranchLevelDTO
+                {
+                    BranchID = b.BranchID,
+                    BranchName = b.BranchName,
+                    LowStockLevel = ownLevels.TryGetValue(b.BranchID, out var own) ? own : null,
+                    Quantity = allStock.Where(k => k.BranchID == b.BranchID).Sum(k => k.Quantity)
+                })
+                .ToList();
+            supply.PricedPurchases = await _context.SupplyTransactions.CountAsync(t =>
+                t.SupplyID == supplyId && t.UnitPrice != null && t.QuantityChange > 0);
 
             // Not kept in the user's branch: to them it does not exist.
             if (scopeBranchId.HasValue && supply.Stock.Count == 0)
@@ -331,7 +417,8 @@ namespace SchoolInventoryManagement.BLL.Services
                     Note = t.Note,
                     PerformedBy = t.PerformedBy.FirstName + " " + t.PerformedBy.LastName,
                     QuantityChange = t.QuantityChange,
-                    QuantityAfter = t.QuantityAfter
+                    QuantityAfter = t.QuantityAfter,
+                    UnitPrice = t.UnitPrice
                 })
                 .ToListAsync();
 
@@ -355,8 +442,6 @@ namespace SchoolInventoryManagement.BLL.Services
                 throw new ArgumentException("Enter what it is counted in, e.g. box.");
             if (dto.LowStockLevel < 0)
                 throw new ArgumentException("The low-stock level cannot be less than 0.");
-            if (dto.UnitPrice is < 0)
-                throw new ArgumentException("The price cannot be less than 0.");
 
             var category = await _context.Categories.FirstOrDefaultAsync(c => c.CategoryID == dto.CategoryID);
             if (category is null)
@@ -372,9 +457,32 @@ namespace SchoolInventoryManagement.BLL.Services
             supply.SupplyName = name;
             supply.CategoryID = category.CategoryID;
             supply.Unit = unit;
-            supply.UnitPrice = dto.UnitPrice;
+            // The price is not set here: it is the average of what was paid
+            // each time stock was added.
             supply.LowStockLevel = dto.LowStockLevel;
             supply.Description = string.IsNullOrWhiteSpace(dto.Description) ? null : dto.Description.Trim();
+
+            // A branch's own level: set, changed, or (left empty) taken away
+            // so it uses the general one again.
+            var wanted = (dto.BranchLevels ?? new List<SupplyBranchLevelDTO>())
+                .GroupBy(b => b.BranchID).Select(g => g.First()).ToList();
+            if (wanted.Any(b => b.LowStockLevel is < 0))
+                throw new ArgumentException("A low-stock level cannot be less than 0.");
+            var branchIds = await _context.Branches.Select(b => b.BranchID).ToListAsync();
+            var existing = await _context.SupplyBranchLevels.Where(l => l.SupplyID == supplyId).ToListAsync();
+            foreach (var b in wanted.Where(b => branchIds.Contains(b.BranchID)))
+            {
+                var row = existing.FirstOrDefault(l => l.BranchID == b.BranchID);
+                if (b.LowStockLevel is null)
+                {
+                    if (row is not null) _context.SupplyBranchLevels.Remove(row);
+                }
+                else if (row is null)
+                    _context.SupplyBranchLevels.Add(new SupplyBranchLevel
+                        { SupplyID = supplyId, BranchID = b.BranchID, LowStockLevel = b.LowStockLevel.Value });
+                else
+                    row.LowStockLevel = b.LowStockLevel.Value;
+            }
 
             await _context.SaveChangesAsync();
         }
@@ -408,8 +516,14 @@ namespace SchoolInventoryManagement.BLL.Services
         {
             var used = await _context.SupplyTransactions
                 .CountAsync(t => t.SupplyID == supplyId && t.Type != SupplyTransactionType.Opening);
-            return used > 0
-                ? $"Can't delete: it has {used} stock history entr{(used == 1 ? "y" : "ies")} after its opening quantity."
+            if (used > 0)
+                return $"Can't delete: it has {used} stock history entr{(used == 1 ? "y" : "ies")} after its opening quantity.";
+
+            // A supply request's lines point at the supply and cannot be
+            // left without it.
+            var requested = await _context.SupplyRequestItems.CountAsync(i => i.SupplyID == supplyId);
+            return requested > 0
+                ? $"Can't delete: it is on {requested} supply request{(requested == 1 ? "" : "s")}."
                 : null;
         }
     }

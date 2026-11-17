@@ -89,10 +89,16 @@ namespace SchoolInventoryManagement.BLL.DTOs
         public int Issued { get; set; }
         public int Adjusted { get; set; }
         public int InStock { get; set; }
+        // Taken out as unusable (damaged, expired, lost).
+        public int Removed { get; set; }
+        // The smallest amount any one branch that keeps it has.
+        public int LowestBranchQuantity { get; set; }
+        // A branch that keeps it is at or under its own low-stock level.
+        public bool AnyBranchLow { get; set; }
         public int LowStockLevel { get; set; }
         public SupplyStockStatus Status =>
             InStock <= 0 ? SupplyStockStatus.OutOfStock :
-            LowStockLevel > 0 && InStock <= LowStockLevel ? SupplyStockStatus.RunningLow :
+            AnyBranchLow ? SupplyStockStatus.RunningLow :
             SupplyStockStatus.InStock;
     }
 
@@ -104,5 +110,27 @@ namespace SchoolInventoryManagement.BLL.DTOs
         public string Unit { get; set; } = null!;
         public int Quantity { get; set; }
         public int LowStockLevel { get; set; }
+        // The branch that is low or out.
+        public string BranchName { get; set; } = "";
+    }
+
+    // Taking stock out because it cannot be used.
+    public class RemoveStockDTO
+    {
+        [Required(ErrorMessage = "Pick a supply.")]
+        public int? SupplyID { get; set; }
+
+        [Required(ErrorMessage = "Pick where it is taken from.")]
+        public int? LocationID { get; set; }
+
+        [Range(1, 1000000, ErrorMessage = "Enter a quantity of 1 or more.")]
+        public int Quantity { get; set; } = 1;
+
+        [Required(ErrorMessage = "Pick a reason.")]
+        [MaxLength(40)]
+        public string Reason { get; set; } = null!;
+
+        [MaxLength(150)]
+        public string? Note { get; set; }
     }
 }

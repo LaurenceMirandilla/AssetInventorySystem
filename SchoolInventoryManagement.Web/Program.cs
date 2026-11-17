@@ -31,6 +31,16 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
         options.Cookie.HttpOnly = true;
         options.Cookie.SameSite = SameSiteMode.Lax;
+
+        // Open pages check for changes every few seconds (/Live/Status).
+        // Those checks must not count as activity: otherwise a tab left
+        // open would keep its owner signed in for good.
+        options.Events.OnCheckSlidingExpiration = context =>
+        {
+            if (context.Request.Path.StartsWithSegments("/Live"))
+                context.ShouldRenew = false;
+            return Task.CompletedTask;
+        };
     });
 
 // ---- HTTPS only ----------------------------------------------------------
@@ -88,6 +98,7 @@ builder.Services.AddScoped<IDepartmentService, DepartmentService>();
 builder.Services.AddScoped<ILocationService, LocationService>();
 builder.Services.AddScoped<IReportService, ReportService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
+builder.Services.AddScoped<ILiveStatusService, LiveStatusService>();
 // Someone on a starting password can only change it (Helpers/MustChangePasswordFilter).
 builder.Services.AddControllersWithViews(options =>
     options.Filters.Add<SchoolInventoryManagement.Web.Helpers.MustChangePasswordFilter>());

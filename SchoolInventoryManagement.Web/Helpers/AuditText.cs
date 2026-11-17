@@ -35,6 +35,7 @@ namespace SchoolInventoryManagement.Web.Helpers
             ["DestinationLocationID"] = ("Location", "To"),
             ["RequestedLocationID"] = ("Location", "Requested location"),
             ["PickupLocationID"] = ("Location", "Pickup location"),
+            ["DeliverToLocationID"] = ("Location", "Deliver to"),
             ["ReturnLocationID"] = ("Location", "Returned to"),
             ["LocationID"] = ("Location", "Location"),
             ["DepartmentID"] = ("Department", "Department"),
@@ -50,6 +51,9 @@ namespace SchoolInventoryManagement.Web.Helpers
             ["MovedByUserID"] = ("User", "Moved by"),
             ["ApprovedByUserID"] = ("User", "Approved by"),
             ["RequestedByUserID"] = ("User", "Requested by"),
+            ["DecidedByUserID"] = ("User", "Decided by"),
+            ["ReleasedByUserID"] = ("User", "Released by"),
+            ["DeliveredByUserID"] = ("User", "Delivered by"),
             ["UserID"] = ("User", "User"),
         };
 

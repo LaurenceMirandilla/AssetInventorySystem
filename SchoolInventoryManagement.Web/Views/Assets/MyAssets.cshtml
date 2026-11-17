@@ -3,6 +3,8 @@
 @using SchoolInventoryManagement.DAL.Entities.Enums
 @{
     ViewData["Title"] = "My Assets";
+    // What this page shows, for the live updates (_Layout, site.js).
+    ViewData["LiveScope"] = "mine";
 
     // One entry per request; a unit assigned directly from an asset page has
     // no request, so it is an entry of its own. The list on the left groups

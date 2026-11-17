@@ -486,6 +486,12 @@ namespace SchoolInventoryManagement.BLL.Services
             // Out on a request -- reserved and waiting (InTransit) or with
             // someone (Assigned, Overdue). Changing its status here, say to
             // Under Maintenance, would pull it out from under the request.
+            // Assigned to a department with no person: released first.
+            if (asset.Status == AssetStatus.Assigned && asset.AssignedUserID is null
+                && !await _context.AssetAssignments.AnyAsync(a => a.AssetID == assetId && a.ReturnDate == null))
+                throw new InvalidOperationException(
+                    "This asset is assigned to a department. Release it to storage before changing its status.");
+
             if (asset.Status == AssetStatus.InTransit || asset.Status == AssetStatus.Assigned ||
                 asset.Status == AssetStatus.Overdue)
                 throw new InvalidOperationException(

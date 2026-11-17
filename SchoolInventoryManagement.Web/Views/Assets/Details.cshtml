@@ -3,6 +3,8 @@
 @using SchoolInventoryManagement.DAL.Entities.Enums
 @{
     ViewData["Title"] = Model.AssetName;
+    // What this page shows, for the live updates (_Layout, site.js).
+    ViewData["LiveScope"] = "asset:" + Model.AssetID;
 
     // Mirrors the [Authorize] on AssetsController.History. The card below is
     // hidden rather than left to 403 on click -- but hiding it is cosmetic,
@@ -19,6 +21,9 @@
         || Model.Status == SchoolInventoryManagement.DAL.Entities.Enums.AssetStatus.Overdue;
 
     var canManage = User.IsInRole(RoleNames.AssetOfficer) || User.IsInRole(RoleNames.Administrator);
+    // Assigned to a department with no person: it belongs to that
+    // department and cannot be borrowed until it is released.
+    var withDepartment = Model.Status == AssetStatus.Assigned && Model.AssignedUserID is null && !Model.ActiveAssignmentID.HasValue;
     var statusLabel = Model.Status == AssetStatus.UnderMaintenance
         ? "Maintenance"
         : DisplayText.AssetStatusLabel(Model.Status);
@@ -85,7 +90,17 @@
                 </form>
 
                 <a asp-action="Dispose" asp-route-id="@Model.AssetID" class="btn btn-outline-danger">Dispose</a>
-                <a asp-controller="AssetAssignments" asp-action="Assign" asp-route-id="@Model.AssetID" class="btn btn-primary">Assign</a>
+                <a asp-controller="AssetAssignments" asp-action="Department" asp-route-assetId="@Model.AssetID" class="btn btn-outline-secondary">Assign to department</a>
+                <a asp-controller="AssetAssignments" asp-action="Assign" asp-route-id="@Model.AssetID" class="btn btn-primary">Assign to person</a>
+            }
+            else if (withDepartment)
+            {
+                <form asp-controller="AssetAssignments" asp-action="ReleaseFromDepartment" asp-route-id="@Model.AssetID" method="post"
+                      onsubmit="return confirm('Release this asset from @(Model.DepartmentName ?? "its department")? It becomes available to borrow again and stays where it is.');">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="rowVersionBase64" value="@Convert.ToBase64String(Model.RowVersion)" />
+                    <button type="submit" class="btn btn-primary">Release to storage</button>
+                </form>
             }
             else if (isOut && !isInTransit && Model.ActiveAssignmentID.HasValue)
             {
@@ -204,6 +219,15 @@
     </div>
 
     <div class="col-lg-4">
+        @if (withDepartment)
+        {
+            <div class="asset-card asset-side-card mb-3">
+                <div class="asset-card-title asset-side-title">Assigned to department</div>
+                <div class="fw-semibold">@DisplayText.Or(Model.DepartmentName, "No department")</div>
+                <div class="text-muted small">Kept at @DisplayText.Or(Model.CurrentLocationName, "no recorded room") · @Model.BranchName</div>
+                <div class="text-muted small mt-2">Belongs to this department, so it cannot be borrowed. Release it to make it available again.</div>
+            </div>
+        }
         @if (!string.IsNullOrWhiteSpace(Model.AssignedUserName))
         {
             <div class="asset-card asset-side-card mb-3">

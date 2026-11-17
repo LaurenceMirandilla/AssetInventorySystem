@@ -2,6 +2,8 @@
 @using System.Text.RegularExpressions
 @{
     ViewData["Title"] = "Notifications";
+    // What this page shows, for the live updates (_Layout, site.js).
+    ViewData["LiveScope"] = "notifications";
     var unreadOnly = ViewData["UnreadOnly"] as bool? ?? false;
     var unreadCount = Model.Count(n => !n.IsRead);
 
@@ -21,6 +23,9 @@
         if (m.Contains("overdue")) return ("Overdue", "is-red", "<circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M12 7v5l3 2\"/>");
         if (m.Contains("reject")) return ("Rejected", "is-red", "<path d=\"M6 6l12 12M18 6 6 18\"/>");
         if (m.Contains("cancel")) return ("Cancelled", "is-gray", "<path d=\"M6 6l12 12M18 6 6 18\"/>");
+        if (m.Contains("could not be delivered")) return ("Not delivered", "is-red", "<path d=\"M3 7h11v9H3zM14 10h4l3 3v3h-7\"/><path d=\"M6 6l12 12\"/>");
+        if (m.Contains("delivered") && !m.Contains("will be delivered")) return ("Delivered", "is-green", "<path d=\"m5 12 5 5 9-10\"/>");
+        if (m.Contains("has arrived") || m.Contains("on its way")) return ("On its way", "is-teal", "<path d=\"M3 7h11v9H3zM14 10h4l3 3v3h-7\"/><circle cx=\"7\" cy=\"18\" r=\"1.5\"/><circle cx=\"17\" cy=\"18\" r=\"1.5\"/>");
         if (m.Contains("new-item") || m.Contains("new item")) return ("New item", "is-teal", "<path d=\"M3 4h2l2.5 11h11L21 7H7\"/><circle cx=\"10\" cy=\"19\" r=\"1.5\"/><circle cx=\"17\" cy=\"19\" r=\"1.5\"/>");
         if (m.Contains("return")) return ("Returned", "is-gray", "<path d=\"M9 14 4 9l5-5\"/><path d=\"M4 9h11a5 5 0 0 1 0 10h-3\"/>");
         if (m.Contains("set aside") || m.Contains("ready") || m.Contains("collect") || m.Contains("pick")) return ("Ready", "is-teal", "<path d=\"M3 7h11v9H3zM14 10h4l3 3v3h-7\"/><circle cx=\"7\" cy=\"18\" r=\"1.5\"/><circle cx=\"17\" cy=\"18\" r=\"1.5\"/>");
@@ -29,11 +34,13 @@
         return ("Update", "is-gray", "<path d=\"M6 16V11a6 6 0 0 1 12 0v5l2 2H4z\"/><path d=\"M10 20a2 2 0 0 0 4 0\"/>");
     }
 
-    // The message, with request numbers ("#35") and asset codes in bold.
+    // The message, with request numbers ("#35", "S-4") and asset codes in bold.
     static string Emphasise(string message)
     {
         var safe = System.Net.WebUtility.HtmlEncode(message);
-        return Regex.Replace(safe, @"(#\d+|\b[A-Z]{2,4}-\d{3,4}\b)", "<strong>$1</strong>");
+        // (?<!&): the "#39" inside an encoded apostrophe (&#39;) or times
+        // sign (&#215;) is not a request number.
+        return Regex.Replace(safe, @"((?<!&)#\d+|\bS-\d+\b|\b[A-Z]{2,4}-\d{3,4}\b)", "<strong>$1</strong>");
     }
 
     static string When(DateTime d, DateTime today) =>

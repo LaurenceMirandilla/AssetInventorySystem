@@ -26,6 +26,7 @@ namespace SchoolInventoryManagement.DAL.Context
         public DbSet<Category> Categories { get; set; } = null!;
         public DbSet<Supply> Supplies { get; set; } = null!;
         public DbSet<SupplyStock> SupplyStock { get; set; } = null!;
+        public DbSet<SupplyBranchLevel> SupplyBranchLevels { get; set; } = null!;
         public DbSet<SupplyTransaction> SupplyTransactions { get; set; } = null!;
         public DbSet<SupplyRequest> SupplyRequests { get; set; } = null!;
         public DbSet<SupplyRequestItem> SupplyRequestItems { get; set; } = null!;
@@ -361,6 +362,14 @@ namespace SchoolInventoryManagement.DAL.Context
                 .HasConversion<string>()
                 .HasMaxLength(20);
 
+            // A branch's own low-stock level (Scripts/023)
+            modelBuilder.Entity<SupplyBranchLevel>()
+                .HasOne(l => l.Supply).WithMany(s => s.BranchLevels)
+                .HasForeignKey(l => l.SupplyID).OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<SupplyBranchLevel>()
+                .HasOne(l => l.Branch).WithMany()
+                .HasForeignKey(l => l.BranchID).OnDelete(DeleteBehavior.Restrict);
+
             // SUPPLY REQUESTS (Scripts/017)
             modelBuilder.Entity<SupplyRequest>()
                 .Property(r => r.Status)
@@ -379,8 +388,14 @@ namespace SchoolInventoryManagement.DAL.Context
                 .HasOne(r => r.ReleasedBy).WithMany()
                 .HasForeignKey(r => r.ReleasedByUserID).OnDelete(DeleteBehavior.Restrict);
             modelBuilder.Entity<SupplyRequest>()
+                .HasOne(r => r.DeliveredBy).WithMany()
+                .HasForeignKey(r => r.DeliveredByUserID).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<SupplyRequest>()
                 .HasOne(r => r.PickupLocation).WithMany()
                 .HasForeignKey(r => r.PickupLocationID).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<SupplyRequest>()
+                .HasOne(r => r.DeliverToLocation).WithMany()
+                .HasForeignKey(r => r.DeliverToLocationID).OnDelete(DeleteBehavior.Restrict);
             modelBuilder.Entity<SupplyRequestItem>()
                 .HasOne(i => i.Request).WithMany(r => r.Items)
                 .HasForeignKey(i => i.SupplyRequestID).OnDelete(DeleteBehavior.Cascade);
@@ -427,6 +442,31 @@ namespace SchoolInventoryManagement.DAL.Context
                 .Property(n => n.RequestStatus)
                 .HasConversion<string>()
                 .HasMaxLength(20);
+
+            // Assets or Supplies, and where to bring them (Scripts/019).
+            modelBuilder.Entity<NewItemRequest>()
+                .Property(n => n.ItemKind)
+                .HasConversion<string>()
+                .HasMaxLength(20);
+            modelBuilder.Entity<NewItemRequest>()
+                .HasOne(n => n.DeliverToLocation)
+                .WithMany()
+                .HasForeignKey(n => n.DeliverToLocationID)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // A line may point at the model or supply it asks for more of.
+            // Deleting that model or supply clears the link; the line keeps
+            // its typed name.
+            modelBuilder.Entity<NewItemRequestItem>()
+                .HasOne(i => i.Model)
+                .WithMany()
+                .HasForeignKey(i => i.ModelID)
+                .OnDelete(DeleteBehavior.SetNull);
+            modelBuilder.Entity<NewItemRequestItem>()
+                .HasOne(i => i.Supply)
+                .WithMany()
+                .HasForeignKey(i => i.SupplyID)
+                .OnDelete(DeleteBehavior.SetNull);
 
             // Two foreign keys into Users (requester and reviewer) mean EF
             // would otherwise configure cascading deletes down both, which

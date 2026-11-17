@@ -9,24 +9,16 @@
     var isManager = User.IsInRole(RoleNames.AssetOfficer) || User.IsInRole(RoleNames.Administrator);
     var isApproverRole = isManager || User.IsInRole(RoleNames.Principal);
     ViewData["Title"] = "Supply request S-" + Model.SupplyRequestID;
+    // What this page shows, for the live updates (_Layout, site.js).
+    ViewData["LiveScope"] = "supplyrequest:" + Model.SupplyRequestID;
     var isMine = ViewBag.IsMine is true;
     var s = Model.Status;
 
-    var statusLabel = s switch
-    {
-        SupplyRequestStatus.Pending => "Waiting for approval",
-        SupplyRequestStatus.Approved => "Ready for pick-up",
-        _ => s.ToString()
-    };
-    var statusClass = s switch
-    {
-        SupplyRequestStatus.Pending => "st-low",
-        SupplyRequestStatus.Approved => "st-intransit",
-        SupplyRequestStatus.Released => "st-available",
-        SupplyRequestStatus.Rejected => "st-overdue",
-        _ => "st-undermaintenance"
-    };
-    var decided = s is SupplyRequestStatus.Approved or SupplyRequestStatus.Released;
+    var statusLabel = DisplayText.SupplyStage(s);
+    var statusClass = DisplayText.SupplyStagePill(s);
+    var decided = s is SupplyRequestStatus.Approved or SupplyRequestStatus.Released or SupplyRequestStatus.Delivered;
+    var sentOut = s is SupplyRequestStatus.Released or SupplyRequestStatus.Delivered;
+    var whereName = Model.WhereName;
 }
 
 @if (TempData["SuccessMessage"] != null)
@@ -76,7 +68,7 @@
                 }
                 else
                 {
-                    <div class="myassets-stats lk-stats-3 mt-0">
+                    <div class="myassets-stats mt-0">
                         <div>
                             <span>1 &middot; Submitted</span>
                             <strong>@Model.CreatedAt.ToString("MMM d")</strong>
@@ -87,9 +79,20 @@
                         </div>
                         <div>
                             <span>3 &middot; Released</span>
-                            <strong>@(Model.ReleasedAt.HasValue ? Model.ReleasedAt.Value.ToString("MMM d") : decided ? "Waiting for pick-up" : "—")</strong>
+                            <strong>@(sentOut ? (Model.ReleasedAt?.ToString("MMM d") ?? "Done") : decided ? "Being prepared" : "—")</strong>
+                        </div>
+                        <div class="@(s == SupplyRequestStatus.Released && Model.DeliveryProblem is not null ? "is-late" : "")">
+                            <span>4 &middot; Delivery</span>
+                            <strong>@(s == SupplyRequestStatus.Delivered ? "Delivered " + (Model.DeliveredAt?.ToString("MMM d") ?? "") : s == SupplyRequestStatus.Released ? (Model.DeliveryProblem is null ? "On its way" : "Not delivered yet") : "—")</strong>
                         </div>
                     </div>
+                    @if (s == SupplyRequestStatus.Released && Model.DeliveryProblem is not null)
+                    {
+                        <div class="sab-callout sab-callout-warn mt-3 mb-0">
+                            <span class="sab-callout-label">Not delivered@(Model.DeliveryProblemAt.HasValue ? " · " + Model.DeliveryProblemAt.Value.ToString("MMM d, h:mm tt") : "")</span>
+                            @Model.DeliveryProblem It will be tried again.
+                        </div>
+                    }
                 }
             </div>
         </div>
@@ -140,15 +143,25 @@
                         <div class="form-text mb-3">You can lower an amount or set it to 0. You cannot approve more than is available in @Model.BranchName; other branches are shown for information only.</div>
                         <div class="row g-3">
                             <div class="col-md-5">
-                                <label class="form-label" for="pickup">Pick up at</label>
-                                <select name="PickupLocationID" id="pickup" class="form-select" required>
-                                    <option value="">Pick a location</option>
-                                    @foreach (var l in approval.PickupLocations)
-                                    {
-                                        <option value="@l.LocationID">@l.LocationName</option>
-                                    }
-                                </select>
-                                <div class="form-text">Only locations in @Model.BranchName.</div>
+                                @if (Model.IsDelivery)
+                                {
+                                    @* The requester already said where. *@
+                                    <div class="form-label">Deliver to</div>
+                                    <div class="form-control" style="background:var(--sab-sidebar-bg);">@Model.DeliverToLocationName</div>
+                                    <div class="form-text">Chosen by the requester. In @Model.BranchName.</div>
+                                }
+                                else
+                                {
+                                    <label class="form-label" for="pickup">Pick up at</label>
+                                    <select name="PickupLocationID" id="pickup" class="form-select" required>
+                                        <option value="">Pick a location</option>
+                                        @foreach (var l in approval.PickupLocations)
+                                        {
+                                            <option value="@l.LocationID">@l.LocationName</option>
+                                        }
+                                    </select>
+                                    <div class="form-text">Only locations in @Model.BranchName.</div>
+                                }
                             </div>
                             <div class="col-md-7">
                                 <label class="form-label" for="approveNote">Note to requester <span class="register-optional" id="noteHint">optional</span></label>
@@ -183,7 +196,7 @@
         {
             <div class="asset-card register-step mb-3">
                 <div class="register-step-head">
-                    <div class="register-step-title flex-grow-1">Hand over</div>
+                    <div class="register-step-title flex-grow-1">Release for delivery</div>
                     <span class="nr-head-note">stock goes down when you release</span>
                 </div>
                 <form asp-action="Release" asp-route-id="@Model.SupplyRequestID" method="post" id="releaseForm">
@@ -222,23 +235,48 @@
                         </div>
                     }
                     <div class="register-step-body">
-                        <div class="form-text mb-3">A supply can be taken from more than one location. The amounts must add up to what was approved, unless the branch has none left.</div>
-                        <div class="row g-3">
-                            <div class="col-md-6">
-                                <label class="form-label" for="receivedBy">Received by</label>
-                                <input name="ReceivedByName" id="receivedBy" class="form-control" maxlength="100" value="@Model.RequestedByName" required />
-                                <div class="form-text">Change this if someone else collects it.</div>
-                            </div>
-                        </div>
+                        <div class="form-text mb-0">A supply can be taken from more than one location. The amounts must add up to what was approved, unless the branch has none left. After releasing, bring the supplies@(whereName is null ? "" : " to " + whereName) and mark the request delivered.</div>
                         <div class="d-flex justify-content-end mt-3" style="gap:8px;">
-                            <button type="submit" form="uncollectedForm" class="btn btn-outline-secondary">Not collected, cancel request</button>
-                            <button type="submit" class="btn btn-primary">Release and deduct stock</button>
+                            <button type="submit" form="uncollectedForm" class="btn btn-outline-secondary">Cancel request</button>
+                            <button type="submit" class="btn btn-primary">Release for delivery</button>
                         </div>
                     </div>
                 </form>
                 <form asp-action="CancelUncollected" asp-route-id="@Model.SupplyRequestID" method="post" id="uncollectedForm"
                       onsubmit="return confirm('Cancel this request? The held supplies become available again.');">
                     @Html.AntiForgeryToken()
+                </form>
+            </div>
+        }
+
+        @* Out for delivery: delivered, or not delivered with a reason. *@
+        @if (s == SupplyRequestStatus.Released && isManager)
+        {
+            <div class="asset-card register-step mb-3">
+                <div class="register-step-head">
+                    <div class="register-step-title flex-grow-1">Delivery</div>
+                    <span class="nr-head-note">@(whereName is null ? "out for delivery" : "bring to " + whereName)</span>
+                </div>
+                <form asp-action="Delivered" asp-route-id="@Model.SupplyRequestID" method="post" class="register-step-body" data-delivery-form>
+                    @Html.AntiForgeryToken()
+                    @Html.FormTicket()
+                    <div class="row g-3">
+                        <div class="col-md-5">
+                            <label class="form-label" for="receivedBy">Received by</label>
+                            <input name="receivedByName" id="receivedBy" class="form-control" maxlength="100" value="@Model.RequestedByName" />
+                            <div class="form-text">Change this if someone else took the supplies.</div>
+                        </div>
+                        <div class="col-md-7">
+                            <label class="form-label" for="notDeliveredReason">If not delivered, why</label>
+                            <input name="reason" id="notDeliveredReason" class="form-control" maxlength="500" placeholder="For example: the room was locked" />
+                            <div class="form-text">Only needed for "Not delivered". The request stays out for delivery and the requester is told.</div>
+                        </div>
+                    </div>
+                    <div class="d-flex justify-content-end mt-3" style="gap:8px;">
+                        <button type="submit" class="btn btn-outline-danger" data-not-delivered
+                                formaction="@Url.Action("NotDelivered", new { id = Model.SupplyRequestID })">Not delivered</button>
+                        <button type="submit" class="btn btn-primary" data-delivered>&#10003; Delivered</button>
+                    </div>
                 </form>
             </div>
         }
@@ -297,27 +335,51 @@
 
     <div class="col-lg-4">
         <div class="asset-card register-step lk-side">
-            <div class="register-step-head"><div class="register-step-title">Pick up at</div></div>
+            <div class="register-step-head"><div class="register-step-title">@(Model.IsDelivery ? "Deliver to" : "Pick up at")</div></div>
             <div class="register-step-body">
-                <div class="lk-code-box">
-                    <div class="lk-code-label">@(s == SupplyRequestStatus.Approved ? "Ready for pick-up" : s == SupplyRequestStatus.Released ? "Collected from" : "Pick-up location")</div>
-                    <div class="lk-code-big">@(Model.PickupLocationName ?? (s == SupplyRequestStatus.Pending ? "Decided on approval" : "—"))</div>
-                </div>
-                @if (Model.PickupLocationName is not null)
+                @if (Model.IsDelivery)
                 {
-                    <p class="lk-side-note">@Model.BranchName@(Model.DecidedByName is null ? "" : " · set by " + Model.DecidedByName)</p>
+                    <div class="lk-code-box">
+                        <div class="lk-code-label">@(s == SupplyRequestStatus.Delivered ? "Delivered to" : s == SupplyRequestStatus.Released ? "On its way to" : "Deliver to")</div>
+                        <div class="lk-code-big">@Model.DeliverToLocationName</div>
+                    </div>
+                    <p class="lk-side-note">@Model.BranchName &middot; chosen by @(isMine ? "you" : Model.RequestedByName)</p>
+                    @if (s == SupplyRequestStatus.Pending)
+                    {
+                        <p class="lk-side-note mb-0">The supplies are brought here once the request is approved.</p>
+                    }
+                    @if (s == SupplyRequestStatus.Approved)
+                    {
+                        <p class="lk-side-note mb-0">Approved. An Asset Officer will bring the supplies here.</p>
+                    }
+                    @if (s == SupplyRequestStatus.Released)
+                    {
+                        <p class="lk-side-note mb-0">The supplies have left the storeroom and are being brought here.</p>
+                    }
                 }
-                @if (s == SupplyRequestStatus.Approved)
+                else
                 {
-                    <p class="lk-side-note mb-0">Bring this request number: <strong>S-@Model.SupplyRequestID</strong>.</p>
+                    @* Older requests: the approver set a pick-up location. *@
+                    <div class="lk-code-box">
+                        <div class="lk-code-label">@(s == SupplyRequestStatus.Approved ? "Ready for pick-up" : s == SupplyRequestStatus.Delivered ? "Collected from" : "Pick-up location")</div>
+                        <div class="lk-code-big">@(Model.PickupLocationName ?? (s == SupplyRequestStatus.Pending ? "Decided on approval" : "—"))</div>
+                    </div>
+                    @if (Model.PickupLocationName is not null)
+                    {
+                        <p class="lk-side-note">@Model.BranchName@(Model.DecidedByName is null ? "" : " · set by " + Model.DecidedByName)</p>
+                    }
+                    @if (s == SupplyRequestStatus.Approved)
+                    {
+                        <p class="lk-side-note mb-0">Bring this request number: <strong>S-@Model.SupplyRequestID</strong>.</p>
+                    }
                 }
-                @if (s == SupplyRequestStatus.Released)
+                @if (sentOut && Model.ReleasedAt.HasValue)
                 {
-                    <p class="lk-side-note mb-0">Released@(Model.ReleasedAt.HasValue ? " " + Model.ReleasedAt.Value.ToString("MMM d, yyyy") : "")@(Model.ReleasedByName is null ? "" : " by " + Model.ReleasedByName)@(Model.ReceivedByName is null ? "" : " · received by " + Model.ReceivedByName).</p>
+                    <p class="lk-side-note @(s == SupplyRequestStatus.Delivered ? "" : "mb-0")">Released @Model.ReleasedAt.Value.ToString("MMM d, yyyy")@(Model.ReleasedByName is null ? "" : " by " + Model.ReleasedByName).</p>
                 }
-                @if (s == SupplyRequestStatus.Pending)
+                @if (s == SupplyRequestStatus.Delivered)
                 {
-                    <p class="lk-side-note mb-0">The approver chooses a storage room in @Model.BranchName.</p>
+                    <p class="lk-side-note mb-0">Delivered@(Model.DeliveredAt.HasValue ? " " + Model.DeliveredAt.Value.ToString("MMM d, yyyy") : "")@(Model.DeliveredByName is null ? "" : " by " + Model.DeliveredByName)@(Model.ReceivedByName is null ? "" : " · received by " + Model.ReceivedByName).</p>
                 }
             </div>
         </div>
@@ -361,6 +423,23 @@
             }
             form.addEventListener('input', sync);
             sync();
+        })();
+
+        // Delivery: "Delivered" needs who received them; "Not delivered"
+        // needs the reason.
+        (function () {
+            var form = document.querySelector('[data-delivery-form]');
+            if (!form) return;
+            function need(input, message) {
+                if (input.value.trim()) { input.classList.remove('is-invalid'); return true; }
+                input.classList.add('is-invalid'); input.focus(); alert(message); return false;
+            }
+            form.querySelector('[data-delivered]').addEventListener('click', function (e) {
+                if (!need(form.querySelector('[name=receivedByName]'), 'Enter who received the supplies.')) e.preventDefault();
+            });
+            form.querySelector('[data-not-delivered]').addEventListener('click', function (e) {
+                if (!need(form.querySelector('[name=reason]'), 'Say why it could not be delivered, so the requester knows.')) e.preventDefault();
+            });
         })();
 
         // Release: show how much of each approved amount has been chosen.

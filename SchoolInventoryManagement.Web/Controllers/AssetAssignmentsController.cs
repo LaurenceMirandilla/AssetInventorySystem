@@ -10,6 +10,7 @@ using SchoolInventoryManagement.BLL.DTOs;
 using SchoolInventoryManagement.BLL.Interfaces;
 using SchoolInventoryManagement.DAL.Constants;
 using SchoolInventoryManagement.DAL.Context;
+using SchoolInventoryManagement.DAL.Entities.Enums;
 using SchoolInventoryManagement.Web.Helpers;
 using SchoolInventoryManagement.Web.ViewModels;
 
@@ -88,6 +89,110 @@ namespace SchoolInventoryManagement.Web.Controllers
                 await PopulateDropdownsAsync(asset);
                 return View(model);
             }
+        }
+
+        // GET /AssetAssignments/Department[?modelId=3][&assetId=5]
+        // Assign to a department with no person: a number of units of a
+        // model, or the one unit given. Those units can no longer be
+        // borrowed; the ones left unassigned still can.
+        public async Task<IActionResult> Department(int? modelId, int? assetId)
+        {
+            var model = new AssignToDepartmentViewModel { ModelID = modelId, AssetID = assetId };
+
+            if (assetId is int id)
+            {
+                var asset = await _assetService.GetAssetByIdAsync(id);
+                if (asset is null)
+                    return NotFound();
+                if (asset.Status != AssetStatus.Available)
+                {
+                    TempData["ErrorMessage"] = "Only an available asset can be assigned to a department.";
+                    return RedirectToAction("Details", "Assets", new { id });
+                }
+                ViewBag.Asset = asset;
+                // Starts as the department it is filed under and the room it is in.
+                model.DepartmentID = asset.DepartmentID;
+                model.LocationID = asset.CurrentLocationID;
+            }
+
+            ViewBag.Lookups = await _assignmentService.GetDepartmentPlacementLookupsAsync();
+            return View(model);
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        [OneTimeSubmit]
+        public async Task<IActionResult> Department(AssignToDepartmentViewModel model)
+        {
+            if (model.AssetID is null && model.ModelID is null)
+                ModelState.AddModelError(nameof(model.ModelID), "Pick a model.");
+
+            if (ModelState.IsValid)
+            {
+                try
+                {
+                    var result = await _assignmentService.AssignToDepartmentAsync(new AssignToDepartmentDTO
+                    {
+                        AssetID = model.AssetID,
+                        ModelID = model.ModelID,
+                        Quantity = model.Quantity,
+                        FromLocationID = model.FromLocationID,
+                        DepartmentID = model.DepartmentID!.Value,
+                        LocationID = model.LocationID!.Value,
+                        Remarks = model.Remarks,
+                        MoveRestToLocationID = model.MoveRestToLocationID
+                    }, CurrentUserId);
+
+                    if (model.AssetID is int one)
+                    {
+                        TempData["StatusMessage"] =
+                            $"{result.ItemName} assigned to {result.DepartmentName}, kept at {result.LocationName}. It can no longer be borrowed.";
+                        return RedirectToAction("Details", "Assets", new { id = one });
+                    }
+
+                    TempData["StatusMessage"] =
+                        $"{result.Assigned} × {result.ItemName} assigned to {result.DepartmentName}, kept at {result.LocationName}."
+                        + (result.MovedToStorage > 0 ? $" {result.MovedToStorage} moved to {result.StorageName}." : "")
+                        + (result.StillAvailable > 0
+                            ? $" {result.StillAvailable} still unassigned and available to borrow."
+                            : " None are left unassigned.");
+                    // Back to the form, ready for the next model.
+                    return RedirectToAction(nameof(Department));
+                }
+                catch (Exception ex)
+                {
+                    HandleServiceException(ex);
+                }
+            }
+
+            if (model.AssetID is int again)
+            {
+                var asset = await _assetService.GetAssetByIdAsync(again);
+                if (asset is null)
+                    return NotFound();
+                ViewBag.Asset = asset;
+            }
+            ViewBag.Lookups = await _assignmentService.GetDepartmentPlacementLookupsAsync();
+            return View(model);
+        }
+
+        // POST /AssetAssignments/ReleaseFromDepartment/5  (5 = AssetID)
+        // A department's unit goes back to Available, where it is.
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> ReleaseFromDepartment(int id, string rowVersionBase64)
+        {
+            try
+            {
+                await _assignmentService.ReleaseFromDepartmentAsync(
+                    id, RowVersionHelper.FromBase64(rowVersionBase64), CurrentUserId);
+                TempData["StatusMessage"] = "Released. It is unassigned and can be borrowed again. Use Transfer to move it to a storage room.";
+            }
+            catch (Exception ex)
+            {
+                TempData["ErrorMessage"] = UserMessageFor(ex);
+            }
+            return RedirectToAction("Details", "Assets", new { id });
         }
 
         // GET /AssetAssignments/Return/12

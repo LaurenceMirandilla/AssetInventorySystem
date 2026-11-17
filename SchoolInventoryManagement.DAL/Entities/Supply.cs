@@ -40,6 +40,8 @@ namespace SchoolInventoryManagement.DAL.Entities
         public Category Category { get; set; } = null!;
 
         public ICollection<SupplyStock> Stock { get; set; } = new List<SupplyStock>();
+        // Branches with a low-stock level of their own.
+        public ICollection<SupplyBranchLevel> BranchLevels { get; set; } = new List<SupplyBranchLevel>();
         public ICollection<SupplyTransaction> Transactions { get; set; } = new List<SupplyTransaction>();
     }
 }

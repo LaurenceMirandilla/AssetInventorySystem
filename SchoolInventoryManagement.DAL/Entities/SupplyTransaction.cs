@@ -26,6 +26,11 @@ namespace SchoolInventoryManagement.DAL.Entities
         [MaxLength(255)]
         public string? Note { get; set; }
 
+        // What each unit cost, on stock coming in (Opening, Received). The
+        // supply's price is the average of these (Scripts/022).
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal? UnitPrice { get; set; }
+
         public int PerformedByUserID { get; set; }
         public DateTime CreatedAt { get; set; }
 

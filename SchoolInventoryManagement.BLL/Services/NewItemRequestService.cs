@@ -15,22 +15,32 @@ namespace SchoolInventoryManagement.BLL.Services
 {
     // A new-item request moves through these stages:
     //
-    //   AwaitingDeptHead --approve--> AwaitingBudget --approve--> Procuring
-    //          |                            |              --procured--> AwaitingArrival
-    //          |                            |              --arrival confirmed--> Arrived
-    //          |                            |
-    //          +---------reject-------------+--> Rejected
+    //   AwaitingBudget --approve--> Procuring --procured--> AwaitingArrival
+    //         |                         |                        |
+    //         |                         |          --arrival confirmed--> Arrived
+    //         +--------reject-----------+------------------------+--> Rejected
+    //
+    //   Arrived --delivered--> Delivered
+    //      |
+    //      +--not delivered (reason)--> stays Arrived, to be tried again
     //
     // Who acts at each stage:
-    //   AwaitingDeptHead: the department head of the request's department.
-    //   AwaitingBudget:   the Principal, who checks the budget and the
-    //                     reason for it.
+    //   AwaitingBudget:   the Principal, who reads the reason and approves
+    //                     or rejects.
     //   Procuring:        an Asset Officer buys or obtains it and marks
-    //                     it procured.
+    //                     it procured, or rejects it with a reason.
     //   AwaitingArrival:  an Asset Officer confirms it has arrived; the
     //                     requester is told.
+    //   Arrived:          the Delivery stage. An Asset Officer brings it to
+    //                     the requester's location and marks it Delivered,
+    //                     or records why it could not be delivered.
     // An Administrator can act at every stage, so a request is never stuck
     // because nobody holds the role it is waiting on.
+    //
+    // Only people who have been allowed to (User.CanRequestNewItems) can
+    // file a request. There is no department-head step and there are no
+    // prices: both were removed (Scripts/019). AwaitingDeptHead survives
+    // only as the "submitted" marker on a ticket's first step.
     // Nobody acts on their own request. Every move adds a
     // NewItemRequestStep saying who did it, when, and their remarks.
     public class NewItemRequestService : INewItemRequestService
@@ -51,6 +61,8 @@ namespace SchoolInventoryManagement.BLL.Services
                     .ThenInclude(u => u.Role)
                 .Include(n => n.Department)
                 .Include(n => n.ReviewedByUser)
+                .Include(n => n.DeliverToLocation)
+                    .ThenInclude(l => l!.Branch)
                 .Include(n => n.Items)
                 .Include(n => n.Steps)
                     .ThenInclude(s => s.ActedByUser)
@@ -62,16 +74,20 @@ namespace SchoolInventoryManagement.BLL.Services
         private const int MaxItemsPerSubmission = 20;
         private const int MaxQuantity = 1000;
 
-        // The largest value the decimal(12,2) column holds.
-        private const decimal MaxUnitPrice = 9999999999.99m;
+        // Who chooses the people allowed to request new items.
+        private static readonly string[] RequesterManagerRoles =
+            { RoleNames.Administrator, RoleNames.Principal, RoleNames.AssetOfficer };
 
         // The stage that follows each one when it is approved / moved on.
         private static readonly Dictionary<NewItemStatus, NewItemStatus> NextStage = new()
         {
-            [NewItemStatus.AwaitingDeptHead] = NewItemStatus.AwaitingBudget,
+            // A ticket still at the old department-head stage is treated
+            // as waiting for the Principal.
+            [NewItemStatus.AwaitingDeptHead] = NewItemStatus.Procuring,
             [NewItemStatus.AwaitingBudget] = NewItemStatus.Procuring,
             [NewItemStatus.Procuring] = NewItemStatus.AwaitingArrival,
-            [NewItemStatus.AwaitingArrival] = NewItemStatus.Arrived
+            [NewItemStatus.AwaitingArrival] = NewItemStatus.Arrived,
+            [NewItemStatus.Arrived] = NewItemStatus.Delivered
         };
 
         // Queue order: earliest stage first.
@@ -79,7 +95,7 @@ namespace SchoolInventoryManagement.BLL.Services
         {
             NewItemStatus.AwaitingDeptHead, NewItemStatus.AwaitingBudget,
             NewItemStatus.Procuring, NewItemStatus.AwaitingArrival, NewItemStatus.Arrived,
-            NewItemStatus.Rejected, NewItemStatus.Cancelled
+            NewItemStatus.Delivered, NewItemStatus.Rejected, NewItemStatus.Cancelled
         };
 
         // Whether this user may move the request on (or reject it) now.
@@ -91,12 +107,9 @@ namespace SchoolInventoryManagement.BLL.Services
             var role = actor.Role.RoleName;
             return request.RequestStatus switch
             {
-                NewItemStatus.AwaitingDeptHead =>
-                    role == RoleNames.Administrator ||
-                    (role == RoleNames.DepartmentHead && actor.DepartmentID == request.DepartmentID),
-                NewItemStatus.AwaitingBudget =>
+                NewItemStatus.AwaitingDeptHead or NewItemStatus.AwaitingBudget =>
                     role == RoleNames.Principal || role == RoleNames.Administrator,
-                NewItemStatus.Procuring or NewItemStatus.AwaitingArrival =>
+                NewItemStatus.Procuring or NewItemStatus.AwaitingArrival or NewItemStatus.Arrived =>
                     role == RoleNames.AssetOfficer || role == RoleNames.Administrator,
                 _ => false
             };
@@ -144,22 +157,162 @@ namespace SchoolInventoryManagement.BLL.Services
                 : await ActiveUserIdsAsync(_context.Users.Where(u => u.Role.RoleName == RoleNames.Administrator));
         }
 
-        // The budget and reason check is the Principal's.
-        private Task<List<int>> BudgetCheckerIdsAsync() => RoleOrAdminIdsAsync(RoleNames.Principal);
+        // Approving a new ticket is the Principal's.
+        private Task<List<int>> ApproverIdsAsync() => RoleOrAdminIdsAsync(RoleNames.Principal);
 
         // Buying the item is the Asset Officers'.
         private Task<List<int>> ProcurerIdsAsync() => RoleOrAdminIdsAsync(RoleNames.AssetOfficer);
 
-        // The department heads of a department. When it has none, the
-        // Administrators, who can act in their place.
-        private async Task<List<int>> DeptApproverIdsAsync(int departmentId)
-        {
-            var heads = await ActiveUserIdsAsync(_context.Users.Where(u =>
-                u.Role.RoleName == RoleNames.DepartmentHead && u.DepartmentID == departmentId));
+        // Stages at which the ticket can still be rejected. Not Arrived:
+        // once the item is at the school it is delivered, not rejected.
+        private static bool IsOpen(NewItemStatus s) =>
+            s is NewItemStatus.AwaitingDeptHead or NewItemStatus.AwaitingBudget
+              or NewItemStatus.Procuring or NewItemStatus.AwaitingArrival;
 
-            return heads.Count > 0
-                ? heads
-                : await ActiveUserIdsAsync(_context.Users.Where(u => u.Role.RoleName == RoleNames.Administrator));
+        // =====================================================
+        // Who can request new items
+        // =====================================================
+
+        public Task<bool> CanRequestAsync(int userId) =>
+            _context.Users.AnyAsync(u => u.UserID == userId && u.Status == "Active" && u.CanRequestNewItems);
+
+        public async Task<List<string>> GetDepartmentRequesterNamesAsync(int userId)
+        {
+            var departmentId = await _context.Users
+                .Where(u => u.UserID == userId)
+                .Select(u => (int?)u.DepartmentID)
+                .FirstOrDefaultAsync();
+            if (departmentId is null)
+                return new List<string>();
+
+            return await _context.Users
+                .Where(u => u.DepartmentID == departmentId && u.Status == "Active"
+                            && u.CanRequestNewItems && u.UserID != userId)
+                .OrderBy(u => u.FirstName).ThenBy(u => u.LastName)
+                .Select(u => u.FirstName + " " + u.LastName)
+                .ToListAsync();
+        }
+
+        private async Task<User> EnsureManagesRequestersAsync(int actingUserId)
+        {
+            var actor = await PermissionHelper.GetUserOrThrowAsync(_context, actingUserId);
+            PermissionHelper.EnsureIsActive(actor);
+            if (!RequesterManagerRoles.Contains(actor.Role.RoleName))
+                throw new UnauthorizedAccessException(
+                    "Only an Administrator, the Principal or an Asset Officer can choose who requests new items.");
+            return actor;
+        }
+
+        public async Task<List<RequesterDepartmentDTO>> GetRequesterDirectoryAsync(int actingUserId)
+        {
+            await EnsureManagesRequestersAsync(actingUserId);
+
+            var people = await _context.Users.AsNoTracking()
+                .Where(u => u.Status == "Active")
+                .OrderBy(u => u.FirstName).ThenBy(u => u.LastName)
+                .Select(u => new
+                {
+                    u.UserID,
+                    u.DepartmentID,
+                    Name = u.FirstName + " " + u.LastName,
+                    u.Role.RoleName,
+                    u.CanRequestNewItems
+                })
+                .ToListAsync();
+
+            var departments = await _context.Departments.AsNoTracking()
+                .OrderBy(d => d.Branch.BranchName).ThenBy(d => d.DepartmentName)
+                .Select(d => new { d.DepartmentID, d.DepartmentName, d.Branch.BranchName })
+                .ToListAsync();
+
+            return departments.Select(d => new RequesterDepartmentDTO
+            {
+                DepartmentID = d.DepartmentID,
+                DepartmentName = d.DepartmentName,
+                BranchName = d.BranchName,
+                People = people.Where(p => p.DepartmentID == d.DepartmentID)
+                    .Select(p => new RequesterPersonDTO
+                    {
+                        UserID = p.UserID,
+                        Name = p.Name,
+                        RoleName = p.RoleName,
+                        CanRequest = p.CanRequestNewItems
+                    })
+                    .ToList()
+            }).ToList();
+        }
+
+        public async Task SetCanRequestAsync(int userId, bool allowed, int actingUserId)
+        {
+            await EnsureManagesRequestersAsync(actingUserId);
+
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.UserID == userId);
+            if (user is null)
+                throw new KeyNotFoundException("User not found.");
+            if (allowed && user.Status != "Active")
+                throw new InvalidOperationException("This account is not active, so it cannot be allowed to request.");
+
+            if (user.CanRequestNewItems == allowed)
+                return;
+
+            // The audit interceptor records this as a change to the user.
+            user.CanRequestNewItems = allowed;
+
+            NotificationHelper.Queue(_context, user.UserID,
+                allowed
+                    ? "You can now request new items for your department."
+                    : "You can no longer request new items. Your earlier requests are not affected.",
+                "/NewItemRequests/MyRequests");
+
+            await _context.SaveChangesAsync();
+        }
+
+        public async Task<NewItemFormLookupsDTO> GetFormLookupsAsync(int actingUserId)
+        {
+            var me = await _context.Users.AsNoTracking()
+                .Where(u => u.UserID == actingUserId)
+                .Select(u => new { u.BranchID, u.Branch.BranchName, u.Department.DepartmentName })
+                .FirstOrDefaultAsync();
+            if (me is null)
+                throw new KeyNotFoundException("User not found.");
+
+            return new NewItemFormLookupsDTO
+            {
+                DepartmentName = me.DepartmentName,
+                BranchName = me.BranchName,
+                BranchID = me.BranchID,
+                Models = await _context.Models.AsNoTracking()
+                    .OrderBy(m => m.ModelName)
+                    .Select(m => new NewItemModelChoiceDTO
+                    {
+                        Id = m.ModelID,
+                        Name = m.ModelName,
+                        Category = m.Category.CategoryName,
+                        Units = m.Assets.Count(a => a.Status != AssetStatus.Disposed)
+                    })
+                    .ToListAsync(),
+                Supplies = await _context.Supplies.AsNoTracking()
+                    .OrderBy(s => s.SupplyName)
+                    .Select(s => new NewItemSupplyChoiceDTO
+                    {
+                        Id = s.SupplyID,
+                        Name = s.SupplyName,
+                        Category = s.Category.CategoryName,
+                        Unit = s.Unit,
+                        Quantity = s.Stock.Where(k => k.Location.BranchID == me.BranchID).Sum(k => (int?)k.Quantity) ?? 0
+                    })
+                    .ToListAsync(),
+                Locations = await _context.Locations.AsNoTracking()
+                    .OrderBy(l => l.Branch.BranchName).ThenBy(l => l.LocationName)
+                    .Select(l => new NewItemLocationChoiceDTO
+                    {
+                        Id = l.LocationID,
+                        Name = l.LocationName,
+                        BranchID = l.BranchID,
+                        BranchName = l.Branch.BranchName
+                    })
+                    .ToListAsync()
+            };
         }
 
         // One ticket: every item on it shares the reason and the date, and
@@ -175,11 +328,18 @@ namespace SchoolInventoryManagement.BLL.Services
             // Ensure* helpers apply to approvers.
             PermissionHelper.EnsureIsActive(requester);
 
+            // Only the people chosen under "Who can request".
+            if (!requester.CanRequestNewItems)
+                throw new UnauthorizedAccessException(
+                    "You are not one of the people who can request new items. Ask a requester in your department, or ask the Administrator, the Principal or an Asset Officer to add you.");
+
             var lines = dto.Items ?? new List<CreateNewItemRequestItemDTO>();
             if (lines.Count == 0)
                 throw new ArgumentException("Add at least one item.");
             if (lines.Count > MaxItemsPerSubmission)
                 throw new ArgumentException($"You can ask for at most {MaxItemsPerSubmission} items at once.");
+
+            var isSupplies = dto.Kind == CategoryKind.Supply;
 
             foreach (var line in lines)
             {
@@ -191,10 +351,10 @@ namespace SchoolInventoryManagement.BLL.Services
                 if (line.Quantity < 1 || line.Quantity > MaxQuantity)
                     throw new ArgumentException($"The quantity for {line.ItemName.Trim()} must be from 1 to {MaxQuantity}.");
 
-                if (line.EstimatedUnitPrice is null or <= 0)
-                    throw new ArgumentException($"Give an estimated price for {line.ItemName.Trim()}.");
-                if (line.EstimatedUnitPrice > MaxUnitPrice)
-                    throw new ArgumentException($"The estimated price for {line.ItemName.Trim()} is too large.");
+                if (line.Description is { Length: > 500 })
+                    throw new ArgumentException($"The description for {line.ItemName.Trim()} can be at most 500 characters.");
+                if (line.Unit is { Length: > 30 })
+                    throw new ArgumentException($"The unit for {line.ItemName.Trim()} can be at most 30 characters.");
             }
 
             if (string.IsNullOrWhiteSpace(dto.Reason))
@@ -207,20 +367,65 @@ namespace SchoolInventoryManagement.BLL.Services
             if (dto.NeededBy.Value.Date < PhilippineTime.Today)
                 throw new ArgumentException("The date you need the item cannot be in the past.");
 
-            // A department head's own request has nobody above it at the
-            // first stage, and neither does an Administrator's (who would
-            // otherwise wait on their department's head, or on another
-            // Administrator). Both start at the budget check -- recorded as
-            // a step so the history says why.
-            var role = requester.Role.RoleName;
-            var skipsDeptHead = role == RoleNames.DepartmentHead || role == RoleNames.Administrator;
+            var deliverTo = await _context.Locations
+                .FirstOrDefaultAsync(l => l.LocationID == dto.DeliverToLocationID);
+            if (deliverTo is null)
+                throw new ArgumentException("Pick where the items should be brought.");
+
+            // An existing model or supply picked from the search list. The
+            // link is checked against the ticket's kind; anything that does
+            // not match is dropped and the line stays as typed.
+            var modelIds = isSupplies
+                ? new List<int>()
+                : lines.Where(l => l.ModelID.HasValue).Select(l => l.ModelID!.Value).Distinct().ToList();
+            var supplyIds = isSupplies
+                ? lines.Where(l => l.SupplyID.HasValue).Select(l => l.SupplyID!.Value).Distinct().ToList()
+                : new List<int>();
+
+            var knownModels = modelIds.Count == 0
+                ? new Dictionary<int, string>()
+                : await _context.Models.Where(m => modelIds.Contains(m.ModelID))
+                    .ToDictionaryAsync(m => m.ModelID, m => m.ModelName);
+            var knownSupplies = supplyIds.Count == 0
+                ? new Dictionary<int, (string Name, string Unit)>()
+                : (await _context.Supplies.Where(x => supplyIds.Contains(x.SupplyID))
+                        .Select(x => new { x.SupplyID, x.SupplyName, x.Unit })
+                        .ToListAsync())
+                    .ToDictionary(x => x.SupplyID, x => (Name: x.SupplyName, Unit: x.Unit));
+
             var now = PhilippineTime.Now;
 
-            var items = lines.Select(line => new NewItemRequestItem
+            var items = lines.Select(line =>
             {
-                ItemName = line.ItemName.Trim(),
-                Quantity = line.Quantity,
-                EstimatedUnitPrice = decimal.Round(line.EstimatedUnitPrice!.Value, 2)
+                int? modelId = !isSupplies && line.ModelID.HasValue && knownModels.ContainsKey(line.ModelID.Value)
+                    ? line.ModelID : null;
+                int? supplyId = isSupplies && line.SupplyID.HasValue && knownSupplies.ContainsKey(line.SupplyID.Value)
+                    ? line.SupplyID : null;
+
+                // An existing supply keeps its own unit; a new one uses what
+                // was typed, or "piece".
+                string? unit = null;
+                if (isSupplies)
+                    unit = supplyId.HasValue
+                        ? knownSupplies[supplyId.Value].Unit
+                        : string.IsNullOrWhiteSpace(line.Unit) ? "piece" : line.Unit.Trim();
+
+                // A linked line goes by the school's own name for the item.
+                var name = modelId.HasValue ? knownModels[modelId.Value]
+                    : supplyId.HasValue ? knownSupplies[supplyId.Value].Name
+                    : line.ItemName.Trim();
+                if (name.Length > 150)
+                    name = name[..150];
+
+                return new NewItemRequestItem
+                {
+                    ItemName = name,
+                    Quantity = line.Quantity,
+                    Description = string.IsNullOrWhiteSpace(line.Description) ? null : line.Description.Trim(),
+                    Unit = unit,
+                    ModelID = modelId,
+                    SupplyID = supplyId
+                };
             }).ToList();
 
             var request = new NewItemRequest
@@ -228,23 +433,21 @@ namespace SchoolInventoryManagement.BLL.Services
                 RequestedByUserID = actingUserId,
                 DepartmentID = requester.DepartmentID,
                 // The summary columns: the list pages and old reports read
-                // them. A one-item ticket keeps its price there too.
+                // them.
                 ItemName = Summary(items.Select(i => i.ItemName).ToList()),
                 Quantity = items.Sum(i => i.Quantity),
-                EstimatedUnitPrice = items.Count == 1 ? items[0].EstimatedUnitPrice : null,
+                ItemKind = dto.Kind,
+                DeliverToLocationID = deliverTo.LocationID,
                 Reason = dto.Reason.Trim(),
                 NeededBy = dto.NeededBy.Value.Date,
                 RequestDate = now,
-                RequestStatus = skipsDeptHead ? NewItemStatus.AwaitingBudget : NewItemStatus.AwaitingDeptHead,
+                // Straight to the Principal: there is no department-head step.
+                RequestStatus = NewItemStatus.AwaitingBudget,
                 Items = items
             };
 
+            // The "submitted" marker (see NewItemRequestStep).
             AddStep(request, NewItemStatus.AwaitingDeptHead, actingUserId, null, now);
-            if (skipsDeptHead)
-                AddStep(request, NewItemStatus.AwaitingBudget, actingUserId,
-                    role == RoleNames.Administrator
-                        ? "Submitted by an Administrator, so no separate department approval was needed."
-                        : "Submitted by the department head, so no separate department approval was needed.", now);
 
             _context.NewItemRequests.Add(request);
             await _context.SaveChangesAsync();
@@ -252,16 +455,9 @@ namespace SchoolInventoryManagement.BLL.Services
             var requesterName = $"{requester.FirstName} {requester.LastName}";
             var what = $"{ItemText(request)}, needed by {request.NeededBy:MMM d, yyyy}";
             var url = DetailsUrl(request.NewItemRequestID);
+            var message = $"New item request from {requesterName} needs your approval: {what}.";
 
-            var recipients = skipsDeptHead
-                ? await BudgetCheckerIdsAsync()
-                : await DeptApproverIdsAsync(requester.DepartmentID);
-
-            var message = skipsDeptHead
-                ? $"Budget and reason check needed: new item request from {requesterName} ({what})."
-                : $"New item request from {requesterName} needs your approval: {what}.";
-
-            foreach (var userId in recipients.Where(id => id != actingUserId))
+            foreach (var userId in (await ApproverIdsAsync()).Where(id => id != actingUserId))
                 NotificationHelper.Queue(_context, userId, message, url);
 
             await _context.SaveChangesAsync();
@@ -328,18 +524,18 @@ namespace SchoolInventoryManagement.BLL.Services
                 query = query.Where(n => n.RequestStatus == NewItemStatus.AwaitingDeptHead
                                          || n.RequestStatus == NewItemStatus.AwaitingBudget
                                          || n.RequestStatus == NewItemStatus.Procuring
-                                         || n.RequestStatus == NewItemStatus.AwaitingArrival);
+                                         || n.RequestStatus == NewItemStatus.AwaitingArrival
+                                         || n.RequestStatus == NewItemStatus.Arrived);
             else if (role == RoleNames.Principal)
-                query = query.Where(n => n.RequestStatus == NewItemStatus.AwaitingBudget);
+                query = query.Where(n => n.RequestStatus == NewItemStatus.AwaitingDeptHead
+                                         || n.RequestStatus == NewItemStatus.AwaitingBudget);
             else if (role == RoleNames.AssetOfficer)
                 query = query.Where(n => n.RequestStatus == NewItemStatus.Procuring
-                                         || n.RequestStatus == NewItemStatus.AwaitingArrival);
-            else if (role == RoleNames.DepartmentHead)
-                query = query.Where(n => n.RequestStatus == NewItemStatus.AwaitingDeptHead
-                                         && n.DepartmentID == actor.DepartmentID);
+                                         || n.RequestStatus == NewItemStatus.AwaitingArrival
+                                         || n.RequestStatus == NewItemStatus.Arrived);
             else
                 throw new UnauthorizedAccessException(
-                    "Only department heads, the Principal, Asset Officers and Administrators act on new item requests.");
+                    "Only the Principal, Asset Officers and Administrators act on new item requests.");
 
             var requests = await query.ToListAsync();
 
@@ -358,8 +554,7 @@ namespace SchoolInventoryManagement.BLL.Services
         }
 
         // Open tickets the acting user can see that are not waiting on them:
-        // further along, or still on an earlier step. A department head sees
-        // their own department's; the other acting roles see everyone's.
+        // further along, or still on an earlier step.
         public async Task<List<NewItemRequestResponseDTO>> GetInProgressRequestsAsync(int actingUserId)
         {
             var actor = await PermissionHelper.GetUserOrThrowAsync(_context, actingUserId);
@@ -370,13 +565,12 @@ namespace SchoolInventoryManagement.BLL.Services
                 n.RequestStatus == NewItemStatus.AwaitingDeptHead ||
                 n.RequestStatus == NewItemStatus.AwaitingBudget ||
                 n.RequestStatus == NewItemStatus.Procuring ||
-                n.RequestStatus == NewItemStatus.AwaitingArrival);
+                n.RequestStatus == NewItemStatus.AwaitingArrival ||
+                n.RequestStatus == NewItemStatus.Arrived);
 
-            if (role == RoleNames.DepartmentHead)
-                query = query.Where(n => n.DepartmentID == actor.DepartmentID);
-            else if (!PermissionHelper.ApproverRoles.Contains(role))
+            if (!PermissionHelper.ApproverRoles.Contains(role))
                 throw new UnauthorizedAccessException(
-                    "Only department heads, the Principal, Asset Officers and Administrators act on new item requests.");
+                    "Only the Principal, Asset Officers and Administrators act on new item requests.");
 
             var requests = await query.AsSplitQuery().ToListAsync();
 
@@ -435,9 +629,8 @@ namespace SchoolInventoryManagement.BLL.Services
             if (!CanActOn(request, actor))
                 throw new UnauthorizedAccessException(request.RequestStatus switch
                 {
-                    NewItemStatus.AwaitingDeptHead => "Only the department head of this request's department, or an Administrator, can act on it now.",
-                    NewItemStatus.AwaitingBudget => "Only the Principal, or an Administrator, can act on it now.",
-                    NewItemStatus.Procuring or NewItemStatus.AwaitingArrival => "Only an Asset Officer, or an Administrator, can act on it now.",
+                    NewItemStatus.AwaitingDeptHead or NewItemStatus.AwaitingBudget => "Only the Principal, or an Administrator, can act on it now.",
+                    NewItemStatus.Procuring or NewItemStatus.AwaitingArrival or NewItemStatus.Arrived => "Only an Asset Officer, or an Administrator, can act on it now.",
                     _ => $"This request is {request.RequestStatus} and has no further steps."
                 });
 
@@ -445,7 +638,7 @@ namespace SchoolInventoryManagement.BLL.Services
             return (request, actor);
         }
 
-        public async Task AdvanceRequestAsync(
+        public async Task<NewItemStatus> AdvanceRequestAsync(
             int requestId, byte[] rowVersion, int actingUserId, string? remarks)
         {
             var (request, actor) = await LoadForActionAsync(requestId, rowVersion, actingUserId);
@@ -466,17 +659,9 @@ namespace SchoolInventoryManagement.BLL.Services
 
             switch (to)
             {
-                case NewItemStatus.AwaitingBudget:
-                    NotificationHelper.Queue(_context, request.RequestedByUserID,
-                        $"Your request for {item} was approved by {actorName}. It now goes to the Principal for the budget check.", url);
-                    foreach (var userId in (await BudgetCheckerIdsAsync()).Where(id => id != actor.UserID && id != request.RequestedByUserID))
-                        NotificationHelper.Queue(_context, userId,
-                            $"Budget and reason check needed: new item request #{requestId} for {item}.", url);
-                    break;
-
                 case NewItemStatus.Procuring:
                     NotificationHelper.Queue(_context, request.RequestedByUserID,
-                        $"The Principal approved your request for {item}. It is now being procured.", url);
+                        $"The Principal approved your request #{requestId} for {item}. It is now being procured.", url);
                     foreach (var userId in (await ProcurerIdsAsync()).Where(id => id != actor.UserID && id != request.RequestedByUserID))
                         NotificationHelper.Queue(_context, userId,
                             $"To procure: new item request #{requestId} for {item} was approved by {actorName}.", url);
@@ -484,45 +669,103 @@ namespace SchoolInventoryManagement.BLL.Services
 
                 case NewItemStatus.AwaitingArrival:
                     NotificationHelper.Queue(_context, request.RequestedByUserID,
-                        $"Your request for {item} has been procured. You will be told when it arrives.", url);
+                        $"Your request #{requestId} for {item} has been procured. You will be told when it arrives.", url);
                     break;
 
                 case NewItemStatus.Arrived:
+                    var where = request.DeliverToLocationID is null
+                        ? null
+                        : await _context.Locations.Where(l => l.LocationID == request.DeliverToLocationID)
+                            .Select(l => l.LocationName).FirstOrDefaultAsync();
                     NotificationHelper.Queue(_context, request.RequestedByUserID,
-                        $"The item you requested has arrived: {item}.", url);
+                        $"Your request #{requestId} has arrived: {item}." + (where is null ? "" : $" It will be brought to {where}."), url);
+                    break;
+
+                case NewItemStatus.Delivered:
+                    var deliveredTo = await DeliverToNameAsync(request);
+                    NotificationHelper.Queue(_context, request.RequestedByUserID,
+                        $"Your request #{requestId} was delivered: {item}" + (deliveredTo is null ? "." : $" was brought to {deliveredTo}."), url);
                     break;
             }
 
             await SaveWithConcurrencyGuardAsync();
+            return to;
         }
 
         public async Task RejectRequestAsync(
             int requestId, byte[] rowVersion, int actingUserId, string? remarks)
         {
+            // A rejection always says why: the requester has to be able to
+            // act on it.
+            var reason = (remarks ?? "").Trim();
+            if (reason.Length == 0)
+                throw new ArgumentException("Give a reason for rejecting, so the requester knows why.");
+
             var (request, actor) = await LoadForActionAsync(requestId, rowVersion, actingUserId);
 
-            if (request.RequestStatus is NewItemStatus.Procuring or NewItemStatus.AwaitingArrival)
-                throw new InvalidOperationException("This request is already being procured and can no longer be rejected.");
+            if (!IsOpen(request.RequestStatus))
+                throw new InvalidOperationException($"This request is {request.RequestStatus} and can no longer be rejected.");
 
-            var stage = request.RequestStatus == NewItemStatus.AwaitingDeptHead
-                ? "at the department head stage"
-                : "at the Principal's budget check";
+            // The Principal rejects before procurement; an Asset Officer
+            // can reject during it (cannot be bought, no longer made, and
+            // so on). LoadForActionAsync already checked the actor holds
+            // the stage.
+            var stage = request.RequestStatus switch
+            {
+                NewItemStatus.Procuring => "during procurement",
+                NewItemStatus.AwaitingArrival => "while waiting for it to arrive",
+                _ => "at the Principal's approval"
+            };
             var now = PhilippineTime.Now;
 
             request.RequestStatus = NewItemStatus.Rejected;
             request.ReviewedByUserID = actor.UserID;
             request.ReviewDate = now;
-            request.Remarks = string.IsNullOrWhiteSpace(remarks) ? null : remarks.Trim();
-            AddStep(request, NewItemStatus.Rejected, actor.UserID, remarks, now);
-
-            // The reason travels with the rejection, as it does for
-            // Borrow/Transfer.
-            var reason = string.IsNullOrWhiteSpace(remarks) ? "No reason was given." : remarks.Trim();
+            request.Remarks = reason;
+            AddStep(request, NewItemStatus.Rejected, actor.UserID, reason, now);
 
             NotificationHelper.Queue(
                 _context,
                 request.RequestedByUserID,
-                $"Your request for {ItemText(request)} was rejected {stage} by {actor.FirstName} {actor.LastName}. {reason}",
+                $"Your request #{requestId} for {ItemText(request)} was rejected {stage} by {actor.FirstName} {actor.LastName}. Reason: {reason}",
+                DetailsUrl(requestId));
+
+            await SaveWithConcurrencyGuardAsync();
+        }
+
+        private async Task<string?> DeliverToNameAsync(NewItemRequest request) =>
+            request.DeliverToLocationID is null
+                ? null
+                : await _context.Locations.Where(l => l.LocationID == request.DeliverToLocationID)
+                    .Select(l => l.LocationName).FirstOrDefaultAsync();
+
+        // A delivery that could not be made (nobody there, room locked...).
+        // The ticket stays at the Delivery stage to be tried again; the
+        // attempt and its reason go into the steps, and the requester is
+        // told.
+        public async Task MarkNotDeliveredAsync(
+            int requestId, byte[] rowVersion, int actingUserId, string? remarks)
+        {
+            var reason = (remarks ?? "").Trim();
+            if (reason.Length == 0)
+                throw new ArgumentException("Say why it could not be delivered, so the requester knows.");
+
+            var (request, actor) = await LoadForActionAsync(requestId, rowVersion, actingUserId);
+
+            if (request.RequestStatus != NewItemStatus.Arrived)
+                throw new InvalidOperationException("Only a request that is out for delivery can be marked not delivered.");
+
+            var now = PhilippineTime.Now;
+            request.ReviewedByUserID = actor.UserID;
+            request.ReviewDate = now;
+            request.Remarks = reason;
+            AddStep(request, NewItemStatus.DeliveryFailed, actor.UserID, reason, now);
+
+            var where = await DeliverToNameAsync(request);
+            NotificationHelper.Queue(
+                _context,
+                request.RequestedByUserID,
+                $"Your request #{requestId} ({ItemText(request)}) could not be delivered" + (where is null ? "" : $" to {where}") + $": {reason} It will be tried again.",
                 DetailsUrl(requestId));
 
             await SaveWithConcurrencyGuardAsync();
