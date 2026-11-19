@@ -4,6 +4,7 @@
     ViewData["Title"] = "Locations";
     var usage = ViewBag.Usage as Dictionary<int, LookupUsage.LocationUsage> ?? new();
     var branches = ViewBag.BranchList as List<SchoolInventoryManagement.BLL.DTOs.BranchDTO> ?? new();
+    var branchFilter = ViewBag.BranchFilter as int?;
 }
 @if (TempData["ErrorMessage"] != null)
 {
@@ -50,7 +51,7 @@ else
                             <option value="">All branches</option>
                             @foreach (var b in Model.GroupBy(l => l.BranchID).Select(g => (Id: g.Key, Name: g.First().BranchName, Count: g.Count())).OrderBy(b => b.Name))
                             {
-                                <option value="@b.Id">@b.Name (@b.Count)</option>
+                                <option value="@b.Id" selected="@(b.Id == branchFilter)">@b.Name (@b.Count)</option>
                             }
                         </select>
                     </div>

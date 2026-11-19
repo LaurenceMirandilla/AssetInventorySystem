@@ -252,13 +252,15 @@ namespace SchoolInventoryManagement.BLL.Services
                             && (from == null || r.ReleasedAt >= from)
                             && (until == null || r.ReleasedAt < until)
                             && (branchId == null || r.BranchID == branchId)
-                            && (departmentId == null || r.RequestedBy.DepartmentID == departmentId));
+                            // The department each request was made for, so
+                            // moving someone does not move their old requests.
+                            && (departmentId == null || r.DepartmentID == departmentId));
 
             var lines = await released
                 .SelectMany(r => r.Items.Select(i => new
                 {
                     r.SupplyRequestID,
-                    r.RequestedBy.Department.DepartmentName,
+                    r.Department.DepartmentName,
                     Units = i.QuantityApproved ?? 0,
                     Price = i.Supply.UnitPrice ?? 0m
                 }))

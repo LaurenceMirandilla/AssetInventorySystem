@@ -71,13 +71,16 @@ else
                     <div class="myassets-stats lk-stats-3">
                         <div>
                             <span>Locations</span><strong>@(u?.Locations ?? 0)</strong>
-                            <a asp-controller="Locations" asp-action="Index" class="lk-link">View locations &rarr;</a>
+                            <a asp-controller="Locations" asp-action="Index" asp-route-branchId="@x.BranchID" class="lk-link">View locations &rarr;</a>
                         </div>
                         <div>
                             <span>Departments</span><strong>@(u?.Departments ?? 0)</strong>
-                            <a asp-controller="Departments" asp-action="Index" class="lk-link">View departments &rarr;</a>
+                            <a asp-controller="Departments" asp-action="Index" asp-route-branchId="@x.BranchID" class="lk-link">View departments &rarr;</a>
                         </div>
-                        <div><span>Users</span><strong>@(u?.Users ?? 0)</strong></div>
+                        <div>
+                            <span>Users</span><strong>@(u?.Users ?? 0)</strong>
+                            <a asp-controller="Users" asp-action="Index" asp-route-branchId="@x.BranchID" class="lk-link">View users &rarr;</a>
+                        </div>
                     </div>
 
                     <div class="asset-card register-step mt-3">

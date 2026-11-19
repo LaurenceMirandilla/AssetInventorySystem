@@ -34,8 +34,11 @@ namespace SchoolInventoryManagement.Web.Controllers
             ViewBag.Branches = new SelectList(branches, "BranchID", "BranchName");
         }
 
-        public async Task<IActionResult> Index([FromServices] Helpers.LookupUsage usage)
+        // GET /Departments?branchId=2 -- the Branch filter starts on that
+        // branch (a branch's "View departments" link).
+        public async Task<IActionResult> Index([FromServices] Helpers.LookupUsage usage, int? branchId)
         {
+            ViewBag.BranchFilter = branchId;
             var departments = await _departmentService.GetAllDepartmentsAsync();
             ViewBag.Usage = await usage.DepartmentsAsync();
             // For the Branch list in each department's edit form.

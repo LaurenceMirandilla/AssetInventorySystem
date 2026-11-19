@@ -81,19 +81,38 @@ namespace SchoolInventoryManagement.Web.Controllers
         private int CurrentUserId =>
             int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
-        // GET /Users?status=Active
+        // GET /Users?status=Active&departmentId=4&branchId=2
         // Defaults to Active: deactivated accounts are never
         // removed, so without a filter they accumulate in the list forever
         // and bury the people who can actually sign in.
+        // departmentId / branchId start the Department and Branch filters
+        // there (the "View users" links on Departments and Branches).
         [Authorize(Roles = UserManagerRoles)]
-        public async Task<IActionResult> Index(string status = StatusFilterActive)
+        public async Task<IActionResult> Index(string status = StatusFilterActive, int? departmentId = null, int? branchId = null)
         {
-            // Every account comes to the page; its Status filter starts on
-            // the one asked for (Active by default), and the others are a
-            // click away without reloading.
+            // Every account comes to the page; its filters start on the
+            // ones asked for, and the others are a click away without
+            // reloading.
             var users = await _userService.GetAllUsersAsync(null);
+            var departments = await _departmentService.GetAllDepartmentsAsync();
+            var branches = await _branchService.GetAllBranchesAsync();
+
+            // A department is in one branch: the Branch filter follows it.
+            var department = departments.FirstOrDefault(d => d.DepartmentID == departmentId);
+            if (department is not null)
+                branchId = department.BranchID;
+            else
+                departmentId = null;
+            if (branchId is not null && branches.All(b => b.BranchID != branchId))
+                branchId = null;
 
             ViewData["StatusFilter"] = status;
+            ViewData["DepartmentFilter"] = departmentId;
+            ViewData["BranchFilter"] = branchId;
+            // Every department and branch, so one with no users yet can
+            // still be picked (and shows an empty list, not everyone).
+            ViewBag.FilterDepartments = departments;
+            ViewBag.FilterBranches = branches;
             return View(users);
         }
 

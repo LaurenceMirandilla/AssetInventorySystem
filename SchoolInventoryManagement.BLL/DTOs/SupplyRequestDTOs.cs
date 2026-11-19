@@ -24,6 +24,10 @@ namespace SchoolInventoryManagement.BLL.DTOs
     // Property Department, and the rooms it keeps supplies in.
     public class SupplySourceDTO
     {
+        // Who asks: the requester's own department, saved with the request.
+        public string ForDepartmentName { get; set; } = null!;
+
+        // Where it comes from: the branch's Property Department.
         public string DepartmentName { get; set; } = null!;
         public string BranchName { get; set; } = null!;
         public List<string> Rooms { get; set; } = new();

@@ -62,7 +62,7 @@
                 <div class="register-step-head"><div class="register-step-title">In use</div></div>
                 <div class="register-step-body">
                     <div class="lk-side-facts"><div><span>Locations</span><strong>@(usage?.Locations ?? 0)</strong></div><div><span>Departments</span><strong>@(usage?.Departments ?? 0)</strong></div><div><span>Users</span><strong>@(usage?.Users ?? 0)</strong></div></div>
-                    <a asp-controller="Locations" asp-action="Index" class="lk-link">View locations &rarr;</a>
+                    <a asp-controller="Locations" asp-action="Index" asp-route-branchId="@recordId" class="lk-link">View locations &rarr;</a>
                 </div>
             </div>
         </div>

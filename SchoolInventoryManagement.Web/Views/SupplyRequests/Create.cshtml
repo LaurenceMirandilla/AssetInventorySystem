@@ -176,6 +176,8 @@
                 <div class="asset-card-title">Your request</div>
                 <dl class="approve-facts nr-summary-body">
                     <div><dt>Type</dt><dd>Supplies</dd></div>
+                    @* From the requester's account, and saved with the request. *@
+                    <div><dt>For</dt><dd>@(source?.ForDepartmentName ?? "Your department")</dd></div>
                     <div><dt>Items</dt><dd id="sumItems" class="is-empty">None yet</dd></div>
                     <div><dt>Needed by</dt><dd id="sumNeeded" class="is-empty">Not chosen yet</dd></div>
                     <div><dt>Taken from</dt><dd>@(source?.DepartmentName ?? "Property Department") · @branchName</dd></div>

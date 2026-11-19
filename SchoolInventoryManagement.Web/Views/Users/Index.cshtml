@@ -16,10 +16,32 @@
     var startStatus = statusFilter == UsersController.StatusFilterAll ? "" : statusFilter.ToLowerInvariant();
 
     var users = Model.OrderBy(u => u.FirstName).ThenBy(u => u.LastName).ToList();
-    var branches = users.Select(u => (u.BranchID, u.BranchName)).Distinct().OrderBy(b => b.BranchName).ToList();
-    var departments = users.Select(u => (u.DepartmentID, u.DepartmentName, u.BranchID, u.BranchName)).Distinct()
-        .OrderBy(d => d.BranchName).ThenBy(d => d.DepartmentName).ToList();
+    var allBranches = ViewBag.FilterBranches as List<SchoolInventoryManagement.BLL.DTOs.BranchDTO>;
+    var allDepartments = ViewBag.FilterDepartments as List<SchoolInventoryManagement.BLL.DTOs.DepartmentDTO>;
+    var branches = allBranches is not null
+        ? allBranches.Select(b => (b.BranchID, b.BranchName)).OrderBy(b => b.BranchName).ToList()
+        : users.Select(u => (u.BranchID, u.BranchName)).Distinct().OrderBy(b => b.BranchName).ToList();
+    var departments = allDepartments is not null
+        ? allDepartments.Select(d => (d.DepartmentID, d.DepartmentName, d.BranchID, d.BranchName)).OrderBy(d => d.BranchName).ThenBy(d => d.DepartmentName).ToList()
+        : users.Select(u => (u.DepartmentID, u.DepartmentName, u.BranchID, u.BranchName)).Distinct()
+            .OrderBy(d => d.BranchName).ThenBy(d => d.DepartmentName).ToList();
     var roles = users.Select(u => u.RoleName).Distinct().OrderBy(r => r).ToList();
+
+    // The Branch and Department filters start where the address asked
+    // (a "View users" link on Departments or Branches).
+    var deptFilter = ViewData["DepartmentFilter"] as int?;
+    var branchFilter = ViewData["BranchFilter"] as int?;
+
+    // The list's heading says what it shows: "Active users · Admin Office,
+    // Annex Campus (High School)". The script below keeps it in step with
+    // the filters.
+    var startLabel = startStatus switch { "active" => "Active users", "inactive" => "Inactive users", _ => "All users" };
+    var startDept = departments.FirstOrDefault(d => d.DepartmentID == deptFilter);
+    var startBranch = branches.FirstOrDefault(b => b.BranchID == branchFilter);
+    if (deptFilter is not null && startDept.DepartmentName is not null)
+        startLabel += " · " + startDept.DepartmentName + ", " + startDept.BranchName;
+    else if (branchFilter is not null && startBranch.BranchName is not null)
+        startLabel += " · " + startBranch.BranchName;
 
     static string Search(SchoolInventoryManagement.BLL.DTOs.UserResponseDTO u) =>
         $"{u.FirstName} {u.LastName} {u.Username} {u.RoleName} {u.DepartmentName} {u.BranchName}".ToLowerInvariant();
@@ -83,7 +105,7 @@ else
                                 <option value="">Any</option>
                                 @foreach (var b in branches)
                                 {
-                                    <option value="@b.BranchID">@b.BranchName</option>
+                                    <option value="@b.BranchID" selected="@(b.BranchID == branchFilter)">@b.BranchName</option>
                                 }
                             </select>
                         </div>
@@ -92,7 +114,7 @@ else
                             <option value="">Any</option>
                             @foreach (var d in departments)
                             {
-                                <option value="@d.DepartmentID" data-branch="@d.BranchID">@d.BranchName — @d.DepartmentName</option>
+                                <option value="@d.DepartmentID" data-branch="@d.BranchID" data-name="@d.DepartmentName" data-branch-name="@d.BranchName" selected="@(d.DepartmentID == deptFilter)">@d.BranchName — @d.DepartmentName</option>
                             }
                         </select>
                     </div>
@@ -100,7 +122,7 @@ else
             </div>
 
             <div class="myassets-group" data-md-group>
-                <div class="myassets-group-label">All users · <span data-md-count>@users.Count</span></div>
+                <div class="myassets-group-label"><span><span data-users-label>@startLabel</span> · <span data-md-count>@users.Count</span></span></div>
                 @foreach (var u in users)
                 {
                     <button type="button" class="myassets-item" data-entry="u-@u.UserID" data-search="@Search(u)"
@@ -207,6 +229,37 @@ else
             var branch = document.getElementById('userBranch');
             var dept = document.getElementById('userDept');
             if (branch && dept) sabFilterByBranch(dept, branch, { showAllWhenEmpty: true, strip: true, notify: true });
+
+            // The list's heading follows the filters: "Active users · Admin
+            // Office, Annex Campus (High School)". It is redone whenever the
+            // list is (the count beside it changes then).
+            var label = document.querySelector('[data-users-label]');
+            var none = document.querySelector('.myassets-list [data-md-empty]');
+            var count = document.querySelector('.myassets-list [data-md-count]');
+            var status = document.querySelector('[data-md-filter="status"]');
+            var role = document.querySelector('[data-md-filter="role"]');
+            function picked(sel) { var o = sel && sel.options[sel.selectedIndex]; return o && o.value ? o : null; }
+            function relabel() {
+                if (!label) return;
+                var s = status ? status.value : '';
+                var text = s === 'active' ? 'Active users' : s === 'inactive' ? 'Inactive users' : 'All users';
+                var r = picked(role), d = picked(dept), b = picked(branch);
+                var place = d ? d.dataset.name + ', ' + d.dataset.branchName : b ? b.text : '';
+                if (r) text += ' · ' + r.text;
+                if (place) text += ' · ' + place;
+                label.textContent = text;
+                // An empty list says what it was looking for: "No active
+                // users in Property Department, Special Education Campus."
+                if (none) {
+                    var who = (s === 'active' ? 'active ' : s === 'inactive' ? 'inactive ' : '') + (r ? r.text.toLowerCase() + 's' : 'users');
+                    none.textContent = place ? 'No ' + who + ' in ' + place + '.' : 'Nobody matches.';
+                }
+            }
+            if (label && count) {
+                new MutationObserver(relabel).observe(count, { childList: true, characterData: true, subtree: true });
+                document.querySelectorAll('[data-md-filter]').forEach(function (f) { f.addEventListener('change', relabel); });
+                relabel();
+            }
 
             // A person's Holding now / Requests / Past items, fetched the
             // first time their panel shows (Users/Activity).

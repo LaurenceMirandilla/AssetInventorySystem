@@ -26,6 +26,7 @@ namespace SchoolInventoryManagement.BLL.Services
             var user = await _context.Users
                 .Include(u => u.Role)
                 .Include(u => u.Branch)
+                .Include(u => u.Department)
                 .FirstOrDefaultAsync(u => u.UserID == userId);
             if (user is null)
                 throw new KeyNotFoundException("User not found.");
@@ -66,6 +67,7 @@ namespace SchoolInventoryManagement.BLL.Services
                 .FirstOrDefaultAsync() ?? "Property Department";
             return new SupplySourceDTO
             {
+                ForDepartmentName = user.Department.DepartmentName,
                 DepartmentName = property,
                 BranchName = user.Branch.BranchName,
                 Rooms = await _context.SupplyStock.AsNoTracking()
@@ -143,6 +145,9 @@ namespace SchoolInventoryManagement.BLL.Services
             {
                 RequestedByUserID = user.UserID,
                 BranchID = user.BranchID,
+                // Kept with the request: it stays this department's if
+                // the requester moves to another one later.
+                DepartmentID = user.DepartmentID,
                 Status = SupplyRequestStatus.Pending,
                 NeededBy = dto.NeededBy?.Date,
                 DeliverToLocationID = deliverTo.LocationID,
@@ -177,7 +182,9 @@ namespace SchoolInventoryManagement.BLL.Services
                 RequestedByUserID = r.RequestedByUserID,
                 RequestedByName = r.RequestedBy.FirstName + " " + r.RequestedBy.LastName,
                 RequestedByRoleName = r.RequestedBy.Role.RoleName,
-                DepartmentName = r.RequestedBy.Department.DepartmentName,
+                // The department it was made for, not the requester's
+                // department today.
+                DepartmentName = r.Department.DepartmentName,
                 BranchID = r.BranchID,
                 BranchName = r.Branch.BranchName,
                 NeededBy = r.NeededBy,

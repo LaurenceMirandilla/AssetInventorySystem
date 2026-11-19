@@ -535,7 +535,13 @@ window.sabFilterByBranch = function (select, branch, opts) {
             root: root,
             has: function (id) { return items.some(function (b) { return b.dataset.entry === id; }); },
             select: select,
-            first: function () { return items[0] && items[0].dataset.entry; }
+            // The first item the filters leave in the list: a list that
+            // starts filtered (Users on Active, or on one department) opens
+            // on someone it shows, and on no one when it shows no one.
+            first: function () {
+                var hit = matching()[0];
+                return hit && hit.dataset.entry;
+            }
         };
     }
 

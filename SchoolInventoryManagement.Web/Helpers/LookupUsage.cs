@@ -141,13 +141,17 @@ namespace SchoolInventoryManagement.Web.Helpers
         }
 
         // ---- Branches ---------------------------------------------------
+        // Users: the active accounts (the ones who can sign in). Inactive
+        // accounts still belong to the branch, so they still stop a delete.
         public record BranchUsage(int Locations, int Departments, int Users, bool HasAssets, string? Blocked);
 
         public async Task<Dictionary<int, BranchUsage>> BranchesAsync()
         {
             var locations = await _context.Locations.GroupBy(l => l.BranchID).Select(g => new { Id = g.Key, N = g.Count() }).ToDictionaryAsync(x => x.Id, x => x.N);
             var departments = await _context.Departments.GroupBy(d => d.BranchID).Select(g => new { Id = g.Key, N = g.Count() }).ToDictionaryAsync(x => x.Id, x => x.N);
-            var users = await _context.Users.GroupBy(u => u.BranchID).Select(g => new { Id = g.Key, N = g.Count() }).ToDictionaryAsync(x => x.Id, x => x.N);
+            var users = await _context.Users.GroupBy(u => u.BranchID)
+                .Select(g => new { Id = g.Key, N = g.Count(), Active = g.Count(u => u.Status == "Active") })
+                .ToDictionaryAsync(x => x.Id);
             var assets = await _context.Assets.Where(a => a.BranchID != null).Select(a => a.BranchID!.Value).Distinct().ToListAsync();
 
             var ids = await _context.Branches.Select(b => b.BranchID).ToListAsync();
@@ -159,22 +163,26 @@ namespace SchoolInventoryManagement.Web.Helpers
                 var parts = new List<string>();
                 if (l > 0) parts.Add("locations");
                 if (d > 0) parts.Add("departments");
-                if (u > 0) parts.Add("users");
+                if (u?.N > 0) parts.Add(u.Active > 0 ? "users" : "inactive users");
                 if (assets.Contains(id)) parts.Add("assets");
                 var blocked = parts.Count == 0 ? null
                     : "Can't delete: it has " + (parts.Count == 1 ? parts[0] : string.Join(", ", parts.Take(parts.Count - 1)) + " and " + parts[^1]) + ".";
-                return new BranchUsage(l, d, u, assets.Contains(id), blocked);
+                return new BranchUsage(l, d, u?.Active ?? 0, assets.Contains(id), blocked);
             });
         }
 
         // ---- Departments ------------------------------------------------
         // InStock: Available units filed under it -- what the Property
         // Department has to lend (other departments have none).
-        public record DepartmentUsage(int Users, int AssetsIssued, int OpenRequests, string? Head, string? Blocked, int InStock = 0);
+        // Users: the active accounts. Inactive ones still belong to it, so
+        // they still stop a delete (InactiveUsers).
+        public record DepartmentUsage(int Users, int AssetsIssued, int OpenRequests, string? Head, string? Blocked, int InStock = 0, int InactiveUsers = 0);
 
         public async Task<Dictionary<int, DepartmentUsage>> DepartmentsAsync()
         {
-            var users = await _context.Users.GroupBy(u => u.DepartmentID).Select(g => new { Id = g.Key, N = g.Count() }).ToDictionaryAsync(x => x.Id, x => x.N);
+            var users = await _context.Users.GroupBy(u => u.DepartmentID)
+                .Select(g => new { Id = g.Key, Active = g.Count(u => u.Status == "Active"), Inactive = g.Count(u => u.Status != "Active") })
+                .ToDictionaryAsync(x => x.Id);
             var heads = await _context.Users
                 .Where(u => u.Status == "Active" && u.Role.RoleName == RoleNames.DepartmentHead)
                 .Select(u => new { u.DepartmentID, Name = u.FirstName + " " + u.LastName })
@@ -185,7 +193,13 @@ namespace SchoolInventoryManagement.Web.Helpers
                 .GroupBy(a => a.DepartmentID!.Value).Select(g => new { Id = g.Key, N = g.Count() }).ToDictionaryAsync(x => x.Id, x => x.N);
             var open = await _context.AssetRequests.Where(r => OpenRequest.Contains(r.RequestStatus))
                 .GroupBy(r => r.DepartmentID).Select(g => new { Id = g.Key, N = g.Count() }).ToDictionaryAsync(x => x.Id, x => x.N);
-            var everRequested = await _context.AssetRequests.Select(r => r.DepartmentID).Distinct().ToListAsync();
+            var everRequested = await _context.AssetRequests.Select(r => r.DepartmentID)
+                .Union(_context.NewItemRequests.Select(r => r.DepartmentID))
+                .Union(_context.SupplyRequests.Select(r => r.DepartmentID))
+                .Distinct().ToListAsync();
+            var anySupplies = await _context.SupplyStock.Select(k => k.DepartmentID)
+                .Union(_context.SupplyTransactions.Where(t => t.DepartmentID != null).Select(t => t.DepartmentID!.Value))
+                .Distinct().ToListAsync();
             var anyAssets = await _context.Assets.Where(a => a.DepartmentID != null).Select(a => a.DepartmentID!.Value).Distinct().ToListAsync();
             var owedBack = await _context.AssetAssignments.Where(a => a.ReturnDate == null && a.PreviousDepartmentID != null)
                 .Select(a => a.PreviousDepartmentID!.Value).Distinct().ToListAsync();
@@ -193,14 +207,27 @@ namespace SchoolInventoryManagement.Web.Helpers
             var ids = await _context.Departments.Select(d => d.DepartmentID).ToListAsync();
             return ids.ToDictionary(id => id, id =>
             {
-                var u = users.GetValueOrDefault(id);
-                var blocked = u > 0 ? $"Can't delete: {u} user{(u == 1 ? " belongs" : "s belong")} to it."
+                var active = users.GetValueOrDefault(id)?.Active ?? 0;
+                var inactive = users.GetValueOrDefault(id)?.Inactive ?? 0;
+                var blocked = active + inactive > 0 ? "Can't delete: " + UsersInIt(active, inactive)
                     : anyAssets.Contains(id) ? "Can't delete: assets are filed under it."
+                    : anySupplies.Contains(id) ? "Can't delete: supplies are filed under it."
                     : everRequested.Contains(id) ? "Can't delete: requests are filed under it."
                     : owedBack.Contains(id) ? "Can't delete: loaned-out units go back to it." : null;
-                return new DepartmentUsage(u, assets.GetValueOrDefault(id), open.GetValueOrDefault(id),
-                    heads.FirstOrDefault(h => h.DepartmentID == id)?.Name, blocked, inStock.GetValueOrDefault(id));
+                return new DepartmentUsage(active, assets.GetValueOrDefault(id), open.GetValueOrDefault(id),
+                    heads.FirstOrDefault(h => h.DepartmentID == id)?.Name, blocked, inStock.GetValueOrDefault(id), inactive);
             });
+        }
+
+        // "2 users belong to it." / "7 inactive users still belong to it." /
+        // "2 active and 7 inactive users belong to it."
+        private static string UsersInIt(int active, int inactive)
+        {
+            var total = active + inactive;
+            var verb = total == 1 ? "belongs" : "belong";
+            if (inactive == 0) return $"{active} user{(active == 1 ? "" : "s")} {verb} to it.";
+            if (active == 0) return $"{inactive} inactive user{(inactive == 1 ? "" : "s")} still {verb} to it. Move them to another department first.";
+            return $"{active} active and {inactive} inactive users {verb} to it.";
         }
     }
 }

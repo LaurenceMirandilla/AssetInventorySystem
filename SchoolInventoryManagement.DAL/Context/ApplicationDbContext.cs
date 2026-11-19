@@ -394,6 +394,9 @@ namespace SchoolInventoryManagement.DAL.Context
                 .HasOne(r => r.Branch).WithMany()
                 .HasForeignKey(r => r.BranchID).OnDelete(DeleteBehavior.Restrict);
             modelBuilder.Entity<SupplyRequest>()
+                .HasOne(r => r.Department).WithMany()
+                .HasForeignKey(r => r.DepartmentID).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<SupplyRequest>()
                 .HasOne(r => r.DecidedBy).WithMany()
                 .HasForeignKey(r => r.DecidedByUserID).OnDelete(DeleteBehavior.Restrict);
             modelBuilder.Entity<SupplyRequest>()

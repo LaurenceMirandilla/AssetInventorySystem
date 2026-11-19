@@ -31,8 +31,11 @@ namespace SchoolInventoryManagement.Web.Controllers
             ViewBag.Branches = new SelectList(branches, "BranchID", "BranchName");
         }
 
-        public async Task<IActionResult> Index([FromServices] Helpers.LookupUsage usage)
+        // GET /Locations?branchId=2 -- the Branch filter starts on that
+        // branch (a branch's "View locations" link).
+        public async Task<IActionResult> Index([FromServices] Helpers.LookupUsage usage, int? branchId)
         {
+            ViewBag.BranchFilter = branchId;
             var locations = await _locationService.GetAllLocationsAsync();
             ViewBag.Usage = await usage.LocationsAsync();
             // For the Branch list in each location's edit form.

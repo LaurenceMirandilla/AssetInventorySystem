@@ -123,12 +123,17 @@ namespace SchoolInventoryManagement.BLL.Services
             var inUse = await _context.Users.AnyAsync(u => u.DepartmentID == departmentId)
                 || await _context.Assets.AnyAsync(a => a.DepartmentID == departmentId)
                 || await _context.AssetRequests.AnyAsync(ar => ar.DepartmentID == departmentId)
+                || await _context.NewItemRequests.AnyAsync(r => r.DepartmentID == departmentId)
+                || await _context.SupplyRequests.AnyAsync(r => r.DepartmentID == departmentId)
+                // Supplies it keeps, and their history.
+                || await _context.SupplyStock.AnyAsync(k => k.DepartmentID == departmentId)
+                || await _context.SupplyTransactions.AnyAsync(t => t.DepartmentID == departmentId)
                 // Units out on a borrow or transfer that were taken from it.
                 || await _context.AssetAssignments.AnyAsync(a => a.ReturnDate == null && a.PreviousDepartmentID == departmentId);
 
             if (inUse)
                 throw new InvalidOperationException(
-                    "This department cannot be deleted because it has users, assets (including ones out on loan), or asset requests under it.");
+                    "This department cannot be deleted because it has users, assets (including ones out on loan), supplies, or requests under it.");
 
             _context.Departments.Remove(department);
             await _context.SaveChangesAsync();

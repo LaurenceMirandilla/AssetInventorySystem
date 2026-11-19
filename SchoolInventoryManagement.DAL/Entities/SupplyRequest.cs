@@ -21,6 +21,11 @@ namespace SchoolInventoryManagement.DAL.Entities
         // from this branch's stock.
         public int BranchID { get; set; }
 
+        // The requester's department when they asked (Scripts/027). The
+        // request stays under it if they later move to another
+        // department; what they ask for after the move is under the new one.
+        public int DepartmentID { get; set; }
+
         public SupplyRequestStatus Status { get; set; } = SupplyRequestStatus.Pending;
 
         public DateTime? NeededBy { get; set; }
@@ -78,6 +83,9 @@ namespace SchoolInventoryManagement.DAL.Entities
 
         [ForeignKey("BranchID")]
         public Branch Branch { get; set; } = null!;
+
+        [ForeignKey("DepartmentID")]
+        public Department Department { get; set; } = null!;
 
         [ForeignKey("DecidedByUserID")]
         public User? DecidedBy { get; set; }
