@@ -41,12 +41,14 @@ namespace SchoolInventoryManagement.BLL.Services
             if (asset is null)
                 throw new KeyNotFoundException("Asset not found.");
 
-            if (asset.Status != AssetStatus.Available)
+            // Stock, or a red-tagged unit being taken to where disposals
+            // are kept.
+            if (asset.Status != AssetStatus.Available && asset.Status != AssetStatus.RedTagged)
                 throw new InvalidOperationException(
                     $"Asset is currently '{asset.Status}' and cannot be transferred.");
 
-            var destinationExists = await _context.Locations.AnyAsync(l => l.LocationID == destinationLocationId);
-            if (!destinationExists)
+            var destination = await _context.Locations.FindAsync(destinationLocationId);
+            if (destination is null)
                 throw new KeyNotFoundException("Destination location not found.");
 
             if (asset.CurrentLocationID == destinationLocationId)
@@ -68,6 +70,13 @@ namespace SchoolInventoryManagement.BLL.Services
             asset.CurrentLocationID = destinationLocationId;
             if (conditionOnTransfer.HasValue)
                 asset.Condition = conditionOnTransfer.Value;
+
+            // Stock moved to another campus is that campus's Property stock.
+            if (asset.BranchID != destination.BranchID)
+            {
+                asset.BranchID = destination.BranchID;
+                asset.DepartmentID = await PropertyStock.DepartmentIdAsync(_context, destination.BranchID);
+            }
 
             await _context.SaveChangesAsync();
 

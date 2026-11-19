@@ -134,7 +134,7 @@
                 rows.forEach(function (k) {
                     var o = document.createElement('option');
                     o.value = k.LocationID;
-                    o.textContent = k.LocationName + ' (' + k.BranchName + ') \u00B7 has ' + k.Quantity;
+                    o.textContent = k.Label + ' \u00B7 has ' + k.Quantity;
                     o.dataset.qty = k.Quantity;
                     o.dataset.name = k.LocationName;
                     from.appendChild(o);

@@ -55,6 +55,16 @@
             tracker.Add(new RequestStep(st.Label, hints[i], RequestStepState.Todo));
     }
 
+    // Assets: the requester confirms receipt, and they become the
+    // department's. Not shown on requests delivered before units were
+    // registered against them.
+    if (NewItemProgress.HasReceipt(Model))
+        tracker.Add(new RequestStep("Received",
+            Model.AcknowledgedAt?.ToString("MMM d") ?? "requester confirms",
+            Model.AcknowledgedAt is not null ? RequestStepState.Done
+                : Model.AwaitsAcknowledgment ? RequestStepState.Current
+                : RequestStepState.Todo));
+
     // What the dashed "Waiting for ..." entry and its "Next:" hint say.
     var waitingFor = Model.RequestStatus switch
     {
@@ -124,8 +134,15 @@
         }
         else
         {
-            <span class="flex-grow-1">These assets have arrived. Register each unit so it gets its code@(Model.DeliverToText is null ? "" : ", then bring them to " + Model.DeliverToLocationName) and mark this request delivered.</span>
-            <a asp-controller="Assets" asp-action="BulkCreate" class="btn btn-sm btn-primary">Register the assets</a>
+            var left = Model.OrderedUnits - Model.RegisteredUnits.Count;
+            <span class="flex-grow-1">
+                These assets have arrived. Register each unit so it gets its control number@(Model.DeliverToText is null ? "" : ", then bring them to " + Model.DeliverToLocationName) and mark this request delivered.
+                <strong>@Model.RegisteredUnits.Count of @Model.OrderedUnits registered.</strong>
+            </span>
+            @if (left > 0)
+            {
+                <a asp-controller="Assets" asp-action="BulkCreate" asp-route-newItemRequestId="@Model.NewItemRequestID" class="btn btn-sm btn-primary">Register the assets</a>
+            }
         }
     </div>
 }
@@ -184,6 +201,36 @@
             @Model.Remarks
         </div>
     }
+    @* Receipt: the requester confirms they have the assets, which makes
+       them the department's. *@
+    @if (Model.AcknowledgedAt is not null)
+    {
+        <div class="rq-remarks">
+            <span>Receipt confirmed</span>
+            @Model.RequestedByUserName confirmed receiving the items on @Model.AcknowledgedAt.Value.ToString("MMM d, yyyy · h:mm tt"). They are @(Model.DepartmentName)'s.
+        </div>
+    }
+    else if (Model.AwaitsAcknowledgment && isMine)
+    {
+        <form asp-action="Acknowledge" asp-route-id="@Model.NewItemRequestID" method="post" class="sab-callout sab-callout-warn rq-ack"
+              onsubmit="return confirm('Confirm you received every item on this request?');">
+            @Html.AntiForgeryToken()
+            @Html.FormTicket()
+            <input type="hidden" name="rowVersionBase64" value="@RowVersionHelper.ToBase64(Model.RowVersion)" />
+            <div>
+                <span class="sab-callout-label">Did you get @(Model.RegisteredUnits.Count == 1 ? "it" : "them")?</span>
+                Confirm you received the items. They then become @(Model.DepartmentName)'s, and your department answers for them.
+            </div>
+            <button type="submit" class="btn btn-primary">Confirm receipt</button>
+        </form>
+    }
+    else if (Model.AwaitsAcknowledgment)
+    {
+        <div class="rq-remarks">
+            <span>Receipt</span>
+            Not confirmed by @Model.RequestedByUserName yet. The items become @(Model.DepartmentName)'s once they confirm; until then the Property Department holds them.
+        </div>
+    }
 </div>
 
 @* ---- 2. Step tracker (fixed height) ---- *@
@@ -219,6 +266,27 @@
         <div class="pb-3"></div>
     }
 </div>
+
+@* ---- Units registered for this request (assets) ---- *@
+@if (Model.RegisteredUnits.Any())
+{
+    <div class="asset-card mb-3">
+        <div class="rq-card-head">
+            <h3>Units registered</h3>
+            <span>@Model.RegisteredUnits.Count of @Model.OrderedUnits · each with its control number</span>
+        </div>
+        <div class="rq-units">
+            @foreach (var unit in Model.RegisteredUnits)
+            {
+                <div class="rq-unit">
+                    <a asp-controller="Assets" asp-action="Details" asp-route-id="@unit.AssetID" class="asset-code-chip">@unit.AssetCode</a>
+                    <span class="rq-unit-name">@unit.AssetName</span>
+                    <span class="asset-pill asset-status md-pill st-@unit.Status.ToString().ToLowerInvariant()">@(unit.Status == AssetStatus.InTransit ? "Held for this request" : unit.Status == AssetStatus.Assigned ? Model.DepartmentName : DisplayText.Humanize(unit.Status.ToString()))</span>
+                </div>
+            }
+        </div>
+    </div>
+}
 
 @* ---- 4. Steps and History: side by side on wide screens, stacked on narrow ---- *@
 <div class="row g-3 mb-3">
@@ -350,9 +418,9 @@ else
 {
     <div class="register-footer ni-footer">
         <a asp-action="@(isMine ? "MyRequests" : "Pending")" class="btn btn-outline-secondary">&larr; @(isMine ? "New-Item Requests" : "New-Item Approvals")</a>
-        @if (!isMine && NewItemProgress.Active.Contains(Model.RequestStatus))
+        @if (!isMine && NewItemProgress.IsActive(Model))
         {
-            <span class="ms-auto">Waiting on @NewItemProgress.WaitingOn(Model.RequestStatus).</span>
+            <span class="ms-auto">Waiting on @NewItemProgress.WaitingOn(Model).</span>
         }
     </div>
 }

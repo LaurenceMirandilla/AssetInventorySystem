@@ -1435,6 +1435,29 @@ a.dash-kpi:hover { background: rgba(255, 255, 255, 0.14); color: #fff; text-deco
 .rp-bar { height: 8px; background: #eaf1ec; }
 .rp-bar > div { height: 8px; background: var(--sab-green); }
 .st-disposed         { background: var(--sab-gray-bg); color: var(--sab-gray-text); }
+/* Red tagged for disposal by the Property Department. */
+.st-redtagged        { background: #b3261e; color: #fff; }
+.st-redtagged::before { background: #fff; }
+/* A red card head: red tagged, or missing at the last count. */
+.redtag-card { border-color: #f1c4c0; }
+.redtag-card .asset-card-title { background: #b3261e; color: #fff; }
+
+/* Physical counts (AssetCounts): ticked rows, a scanned row flashing,
+   the "found here" codes, and missing numbers. */
+.count-table tbody tr.is-found td { background: var(--sab-green-light); }
+.count-table .count-box { width: 1.25rem; height: 1.25rem; cursor: pointer; }
+.count-table label { cursor: pointer; }
+@keyframes count-flash { from { box-shadow: inset 0 0 0 2px var(--sab-green-dark); } to { box-shadow: inset 0 0 0 2px transparent; } }
+.count-table tbody tr.is-flash td { animation: count-flash 1.2s ease-out; }
+@media (prefers-reduced-motion: reduce) { .count-table tbody tr.is-flash td { animation: none; } }
+.count-extras { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.count-extras:empty { display: none; }
+.count-extras li { display: inline-flex; align-items: center; gap: 4px; }
+.count-extra-remove { border: 0; background: none; color: var(--sab-text-muted); font-size: 1.1rem; line-height: 1; padding: 0 4px; cursor: pointer; }
+.count-extra-remove:hover, .count-extra-remove:focus-visible { color: var(--sab-red-text); }
+.count-missing { color: var(--sab-red-text); }
+.count-found > summary { cursor: pointer; list-style: none; }
+.count-found > summary::-webkit-details-marker { display: none; }
 .st-available::before { background: #43a047; }
 .st-overdue::before   { background: #e53935; }
 .st-intransit::before { background: #26a0b5; }
@@ -3320,6 +3343,9 @@ a.dash-kpi:hover { background: rgba(255, 255, 255, 0.14); color: #fff; text-deco
 .rq-remarks { margin: 0 0 16px; padding: 10px 14px; border-radius: var(--sab-radius-sm); background: var(--sab-sidebar-bg); font-size: 0.9rem; }
 .rq-remarks.is-red { background: var(--sab-red-bg); color: var(--sab-red-text); }
 .rq-remarks span { display: block; font-size: 0.76rem; font-weight: 700; opacity: 0.8; }
+/* "Did you get them?" -- the requester confirms receipt (request pages). */
+.rq-ack { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin: 0 0 16px; }
+.rq-ack > div { flex: 1 1 260px; min-width: 0; }
 
 .rq-card-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; padding: 16px 20px; border-bottom: 1px solid var(--sab-border); }
 .rq-card-head h3 { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 0; font-size: 1rem; font-weight: 700; }

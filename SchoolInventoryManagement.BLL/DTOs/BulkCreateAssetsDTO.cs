@@ -32,8 +32,15 @@ namespace SchoolInventoryManagement.BLL.DTOs
         public int? CurrentLocationID { get; set; }
         public int BranchID { get; set; }
 
-        // Must belong to BranchID.
+        // Must belong to BranchID. The branch's Property Department: the
+        // units are in stock and can be borrowed. Any other department: they
+        // are issued to it and cannot be borrowed.
         public int DepartmentID { get; set; }
+
+        // Registering the units bought for an arrived new-item request:
+        // they stay with Property, held for that request, until the
+        // requester confirms receipt; then they are the department's.
+        public int? NewItemRequestID { get; set; }
 
         // "Add barcode" on the form. On: every unit is saved with its barcode.
         public bool CreateBarcode { get; set; }

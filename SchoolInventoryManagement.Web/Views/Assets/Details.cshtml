@@ -58,7 +58,7 @@
     @if (canManage)
     {
         <div class="asset-detail-actions">
-            @if (!isOut)
+            @if (!isOut || withDepartment)
             {
                 <a asp-action="Edit" asp-route-id="@Model.AssetID" class="btn btn-outline-secondary">Edit</a>
             }
@@ -71,8 +71,19 @@
                     <button type="submit" class="btn btn-primary">Restore</button>
                 </form>
             }
+            else if (Model.Status == AssetStatus.RedTagged)
+            {
+                <a asp-controller="AssetMovements" asp-action="Transfer" asp-route-id="@Model.AssetID" class="btn btn-outline-secondary">Transfer</a>
+                <form asp-action="RemoveRedTag" asp-route-id="@Model.AssetID" method="post" onsubmit="return confirm('Remove the red tag? The asset goes back into Property stock.');">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="rowVersionBase64" value="@Convert.ToBase64String(Model.RowVersion)" />
+                    <button type="submit" class="btn btn-outline-secondary">Remove red tag</button>
+                </form>
+                <a asp-action="Dispose" asp-route-id="@Model.AssetID" class="btn btn-danger">Dispose</a>
+            }
             else if (Model.Status == AssetStatus.UnderMaintenance)
             {
+                <a asp-action="RedTag" asp-route-id="@Model.AssetID" class="btn btn-outline-danger">Red tag</a>
                 <form asp-action="ReturnToService" asp-route-id="@Model.AssetID" method="post" onsubmit="return confirm('Mark this asset Available and set its condition to Repaired?');">
                     @Html.AntiForgeryToken()
                     <input type="hidden" name="rowVersionBase64" value="@Convert.ToBase64String(Model.RowVersion)" />
@@ -89,12 +100,13 @@
                     <button type="submit" class="btn btn-outline-secondary">Send to Maintenance</button>
                 </form>
 
-                <a asp-action="Dispose" asp-route-id="@Model.AssetID" class="btn btn-outline-danger">Dispose</a>
+                <a asp-action="RedTag" asp-route-id="@Model.AssetID" class="btn btn-outline-danger">Red tag</a>
                 <a asp-controller="AssetAssignments" asp-action="Department" asp-route-assetId="@Model.AssetID" class="btn btn-outline-secondary">Assign to department</a>
                 <a asp-controller="AssetAssignments" asp-action="Assign" asp-route-id="@Model.AssetID" class="btn btn-primary">Assign to person</a>
             }
             else if (withDepartment)
             {
+                <a asp-action="RedTag" asp-route-id="@Model.AssetID" class="btn btn-outline-danger">Red tag</a>
                 <form asp-controller="AssetAssignments" asp-action="ReleaseFromDepartment" asp-route-id="@Model.AssetID" method="post"
                       onsubmit="return confirm('Release this asset from @(Model.DepartmentName ?? "its department")? It becomes available to borrow again and stays where it is.');">
                     @Html.AntiForgeryToken()
@@ -219,6 +231,42 @@
     </div>
 
     <div class="col-lg-4">
+        @if (!string.IsNullOrWhiteSpace(Model.RedTagReason))
+        {
+            <div class="asset-card asset-side-card mb-3 redtag-card">
+                <div class="asset-card-title asset-side-title">@(Model.Status == AssetStatus.Disposed ? "Red tagged before disposal" : "Red tagged for disposal")</div>
+                <div class="fw-semibold">@Model.RedTagReason</div>
+                <div class="text-muted small">@Model.RedTaggedByName · @Model.RedTaggedAt?.ToString("MMM d, yyyy")</div>
+                @if (Model.Status == AssetStatus.RedTagged)
+                {
+                    <div class="text-muted small mt-2">Out of use: it can't be borrowed or issued. Dispose of it, or remove the tag to put it back in Property stock.</div>
+                }
+            </div>
+        }
+        @if (canManage && ViewBag.LastCount is SchoolInventoryManagement.BLL.DTOs.AssetLastCountDTO lastCount)
+        {
+            var countMissing = lastCount.Result == AssetCountResult.Missing;
+            <div class="asset-card asset-side-card mb-3 @(countMissing ? "redtag-card" : "")">
+                <div class="asset-card-title asset-side-title">Last count</div>
+                <div class="fw-semibold">
+                    @(lastCount.Result switch
+                    {
+                        AssetCountResult.Missing => "Missing from " + lastCount.LocationName,
+                        AssetCountResult.FoundElsewhere => "Found in " + lastCount.LocationName + " (recorded elsewhere)",
+                        _ => "Found in " + lastCount.LocationName
+                    })
+                </div>
+                <div class="text-muted small"><a asp-controller="AssetCounts" asp-action="Details" asp-route-id="@lastCount.AssetCountID">Count of @lastCount.CountedAt.ToString("MMM d, yyyy")</a></div>
+            </div>
+        }
+        @if (isInTransit && Model.NewItemRequestID is int boughtFor && string.IsNullOrWhiteSpace(Model.AssignedUserName))
+        {
+            <div class="asset-card asset-side-card mb-3">
+                <div class="asset-card-title asset-side-title">Bought for a request</div>
+                <div class="fw-semibold"><a asp-controller="NewItemRequests" asp-action="Details" asp-route-id="@boughtFor">New-item request #@boughtFor</a></div>
+                <div class="text-muted small mt-2">Held by the Property Department until the requester confirms receipt. Then it is their department's.</div>
+            </div>
+        }
         @if (withDepartment)
         {
             <div class="asset-card asset-side-card mb-3">

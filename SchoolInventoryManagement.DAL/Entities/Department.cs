@@ -18,6 +18,12 @@ namespace SchoolInventoryManagement.DAL.Entities
         [MaxLength(255)]
         public string? Description { get; set; }
 
+        // The Property Department of its branch (Scripts/024). It keeps
+        // every asset that is not issued to another department: that stock
+        // is the only one anyone can borrow from. One per branch; it cannot
+        // be deleted or moved to another branch.
+        public bool IsProperty { get; set; }
+
         // Upward Navigation Property
         [ForeignKey("BranchID")]
         public Branch Branch { get; set; } = null!;

@@ -184,7 +184,7 @@
                 <thead>
                     <tr>
                         <th>Item</th>
-                        <th>In stock</th>
+                        <th>In stock <span class="asset-muted small fw-normal">· Property</span></th>
                         <th>Status</th>
                         <th>Kept in</th>
                     </tr>
@@ -197,7 +197,14 @@
                                 <a asp-action="Details" asp-route-id="@s.SupplyID" class="asset-name" title="@s.Description">@s.SupplyName</a>
                                 <div class="asset-muted small">@s.CategoryName</div>
                             </td>
-                            <td><strong>@s.TotalQuantity</strong> @SupplyText.Unit(s.TotalQuantity, s.Unit)</td>
+                            <td>
+                                <strong>@s.TotalQuantity</strong> @SupplyText.Unit(s.TotalQuantity, s.Unit)
+                                @if (s.DepartmentQuantity > 0)
+                                {
+                                    @* Other departments' own stock: not requestable. *@
+                                    <div class="asset-muted small">+ @s.DepartmentQuantity with departments</div>
+                                }
+                            </td>
                             <td><span class="asset-pill asset-status @StatusClass(s.Status)">@StatusLabel(s.Status)</span></td>
                             <td class="asset-muted">@(s.LocationNames.Count == 0 ? "—" : string.Join(", ", s.LocationNames))</td>
                         </tr>

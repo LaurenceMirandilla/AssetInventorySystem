@@ -60,5 +60,32 @@ namespace SchoolInventoryManagement.Web.ViewModels
 
         [Display(Name = "Add barcode")]
         public bool CreateBarcode { get; set; }
+
+        // Registering the units bought for this new-item request.
+        public int? NewItemRequestID { get; set; }
+    }
+
+    // The new-item request whose units are being registered: shown at the
+    // top of Bulk register, with what is still to be registered.
+    public class BulkTicketInfo
+    {
+        public int RequestID { get; set; }
+        public string RequesterName { get; set; } = null!;
+        public string DepartmentName { get; set; } = null!;
+        public int BranchID { get; set; }
+        public string BranchName { get; set; } = null!;
+        public int PropertyDepartmentID { get; set; }
+        public int Ordered { get; set; }
+        public int Registered { get; set; }
+        public List<BulkTicketLine> Lines { get; set; } = new();
+    }
+
+    public class BulkTicketLine
+    {
+        public string ItemName { get; set; } = null!;
+        public int? ModelID { get; set; }
+        public int Quantity { get; set; }
+        public decimal? EstimatedUnitPrice { get; set; }
+        public int Registered { get; set; }
     }
 }

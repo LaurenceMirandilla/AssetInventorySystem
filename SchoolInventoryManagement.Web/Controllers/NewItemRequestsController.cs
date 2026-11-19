@@ -160,7 +160,9 @@ namespace SchoolInventoryManagement.Web.Controllers
         // GET /NewItemRequests/Create
         // itemName lets a link pre-fill the first item box; kind opens the
         // Supplies version.
-        public async Task<IActionResult> Create(string? itemName, CategoryKind kind = CategoryKind.Asset)
+        // ?itemName= and ?modelId= fill in the first row: the borrow form
+        // and Browse items send them for a model with none in stock.
+        public async Task<IActionResult> Create(string? itemName, CategoryKind kind = CategoryKind.Asset, int? modelId = null)
         {
             // Not one of the chosen requesters: back to their list, which
             // says who to ask.
@@ -175,7 +177,7 @@ namespace SchoolInventoryManagement.Web.Controllers
                 Quantities = new() { 1 },
                 Units = new() { "" },
                 Descriptions = new() { "" },
-                ModelIds = new() { null },
+                ModelIds = new() { kind == CategoryKind.Asset ? modelId : null },
                 SupplyIds = new() { null }
             });
         }
@@ -275,9 +277,18 @@ namespace SchoolInventoryManagement.Web.Controllers
                     NewItemStatus.Procuring => $"Request #{id} approved and sent for procurement. The requester has been told.",
                     NewItemStatus.AwaitingArrival => $"Request #{id} marked procured. It now waits for the item to arrive.",
                     NewItemStatus.Arrived => $"Request #{id} marked arrived. Next, deliver it to the requester's location.",
-                    NewItemStatus.Delivered => $"Request #{id} marked delivered. The request is complete.",
+                    NewItemStatus.Delivered => $"Request #{id} marked delivered.",
                     _ => $"Request #{id} moved on."
                 };
+
+                // Assets wait for the requester to confirm receipt.
+                if (stage == NewItemStatus.Delivered)
+                {
+                    var delivered = await _requestService.GetRequestAsync(id, CurrentUserId);
+                    TempData["StatusMessage"] += delivered.ItemKind == CategoryKind.Asset && delivered.RegisteredUnits.Count > 0
+                        ? $" {delivered.RequestedByUserName} now confirms receipt; then the items are {delivered.DepartmentName}'s."
+                        : " The request is complete.";
+                }
             }
             catch (Exception ex)
             {
@@ -326,6 +337,29 @@ namespace SchoolInventoryManagement.Web.Controllers
             }
 
             return BackTo(id, returnTo);
+        }
+
+        // POST /NewItemRequests/Acknowledge/5 : the requester confirms
+        // receiving the delivered assets; they become the department's.
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        [OneTimeSubmit]
+        public async Task<IActionResult> Acknowledge(int id, string rowVersionBase64, string? returnTo)
+        {
+            try
+            {
+                await _requestService.AcknowledgeReceiptAsync(id, RowVersionHelper.FromBase64(rowVersionBase64), CurrentUserId);
+                var done = await _requestService.GetRequestAsync(id, CurrentUserId);
+                TempData["StatusMessage"] = $"Thank you. The items on request #{id} are now {done.DepartmentName}'s.";
+            }
+            catch (Exception ex)
+            {
+                TempData["ErrorMessage"] = UserMessageFor(ex);
+            }
+
+            return returnTo == "mine"
+                ? RedirectToAction(nameof(MyRequests))
+                : RedirectToAction(nameof(Details), new { id });
         }
 
         private IActionResult BackTo(int id, string? returnTo) =>

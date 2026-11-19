@@ -78,11 +78,18 @@ namespace SchoolInventoryManagement.BLL.Services
                     s.LowStockLevel,
                     s.Description,
                     Levels = s.BranchLevels.Select(l => new { l.BranchID, l.LowStockLevel }).ToList(),
+                    // Only the Property Department's stock counts as in stock.
                     Stock = s.Stock
                         .Where(k => (locationId == null || k.LocationID == locationId) &&
-                                    (branchId == null || k.Location.BranchID == branchId))
+                                    (branchId == null || k.Location.BranchID == branchId) &&
+                                    k.Department.IsProperty)
                         .Select(k => new { k.Location.LocationName, k.Location.BranchID, k.Quantity })
-                        .ToList()
+                        .ToList(),
+                    DepartmentQuantity = s.Stock
+                        .Where(k => (locationId == null || k.LocationID == locationId) &&
+                                    (branchId == null || k.Location.BranchID == branchId) &&
+                                    !k.Department.IsProperty)
+                        .Sum(k => (int?)k.Quantity) ?? 0
                 })
                 .ToListAsync();
 
@@ -97,6 +104,7 @@ namespace SchoolInventoryManagement.BLL.Services
                 LowStockLevel = s.LowStockLevel,
                 Description = s.Description,
                 TotalQuantity = s.Stock.Sum(k => k.Quantity),
+                DepartmentQuantity = s.DepartmentQuantity,
                 // The low-stock level is per branch: the worst-off branch decides.
                 LowestBranchQuantity = s.Stock.GroupBy(k => k.BranchID).Select(g => g.Sum(k => k.Quantity))
                     .DefaultIfEmpty(0).Min(),
@@ -104,7 +112,7 @@ namespace SchoolInventoryManagement.BLL.Services
                 AnyBranchLow = s.Stock.GroupBy(k => k.BranchID).Any(g => SupplyAlerts.IsLow(
                     g.Sum(k => k.Quantity),
                     s.Levels.Where(l => l.BranchID == g.Key).Select(l => (int?)l.LowStockLevel).FirstOrDefault() ?? s.LowStockLevel)),
-                LocationNames = s.Stock.Select(k => k.LocationName).OrderBy(n => n).ToList()
+                LocationNames = s.Stock.Select(k => k.LocationName.Trim()).Distinct().OrderBy(n => n).ToList()
             });
 
             // The status is worked out from the total, so it is filtered
@@ -148,6 +156,9 @@ namespace SchoolInventoryManagement.BLL.Services
             if (!locationExists)
                 throw new KeyNotFoundException("Location not found.");
 
+            // The Property Department's unless another department is picked.
+            var holder = await SupplyHolders.ForRoomAsync(_context, dto.LocationID!.Value, dto.DepartmentID);
+
             var nameTaken = await _context.Supplies.AnyAsync(s => s.SupplyName == name);
             if (nameTaken)
                 throw new InvalidOperationException("A supply with this name already exists.");
@@ -167,6 +178,7 @@ namespace SchoolInventoryManagement.BLL.Services
             supply.Stock.Add(new SupplyStock
             {
                 LocationID = dto.LocationID!.Value,
+                DepartmentID = holder,
                 Quantity = dto.OpeningQuantity
             });
 
@@ -175,6 +187,7 @@ namespace SchoolInventoryManagement.BLL.Services
                 supply.Transactions.Add(new SupplyTransaction
                 {
                     LocationID = dto.LocationID.Value,
+                    DepartmentID = holder,
                     Type = SupplyTransactionType.Opening,
                     QuantityChange = dto.OpeningQuantity,
                     QuantityAfter = dto.OpeningQuantity,
@@ -208,8 +221,9 @@ namespace SchoolInventoryManagement.BLL.Services
                     SupplyID = s.SupplyID,
                     SupplyName = s.SupplyName,
                     Unit = s.Unit,
-                    TotalQuantity = s.Stock.Sum(k => (int?)k.Quantity) ?? 0,
-                    DefaultLocationID = s.Stock.OrderBy(k => k.SupplyStockID).Select(k => (int?)k.LocationID).FirstOrDefault()
+                    TotalQuantity = s.Stock.Where(k => k.Department.IsProperty).Sum(k => (int?)k.Quantity) ?? 0,
+                    DefaultLocationID = s.Stock.Where(k => k.Department.IsProperty)
+                        .OrderBy(k => k.SupplyStockID).Select(k => (int?)k.LocationID).FirstOrDefault()
                 })
                 .ToListAsync();
         }
@@ -262,14 +276,25 @@ namespace SchoolInventoryManagement.BLL.Services
             if (note.Length > 255) note = note[..255];
 
             var now = PhilippineTime.Now;
+            var names = await _context.Supplies.Where(s => supplyIds.Contains(s.SupplyID))
+                .ToDictionaryAsync(s => s.SupplyID, s => s.SupplyName);
             foreach (var line in lines)
             {
+                // Whose it becomes: the Property Department of the room's
+                // branch, or the department picked on the form.
+                var holder = await SupplyHolders.ForRoomAsync(_context, line.LocationID!.Value, dto.DepartmentID);
+
                 var row = stock.FirstOrDefault(k => k.SupplyID == line.SupplyID && k.LocationID == line.LocationID);
                 if (row is null)
                 {
-                    row = new SupplyStock { SupplyID = line.SupplyID!.Value, LocationID = line.LocationID!.Value, Quantity = 0 };
+                    row = new SupplyStock { SupplyID = line.SupplyID!.Value, LocationID = line.LocationID!.Value, DepartmentID = holder, Quantity = 0 };
                     _context.SupplyStock.Add(row);
                     stock.Add(row);
+                }
+                else if (row.DepartmentID != holder)
+                {
+                    throw new InvalidOperationException(
+                        await SupplyHolders.ClashMessageAsync(_context, names[row.SupplyID], row.LocationID, row.DepartmentID));
                 }
 
                 row.Quantity += line.Quantity;
@@ -278,6 +303,7 @@ namespace SchoolInventoryManagement.BLL.Services
                 {
                     SupplyID = row.SupplyID,
                     LocationID = row.LocationID,
+                    DepartmentID = row.DepartmentID,
                     Type = SupplyTransactionType.Received,
                     QuantityChange = line.Quantity,
                     QuantityAfter = row.Quantity,
@@ -352,15 +378,21 @@ namespace SchoolInventoryManagement.BLL.Services
                     LocationName = k.Location.LocationName,
                     BranchID = k.Location.BranchID,
                     BranchName = k.Location.Branch.BranchName,
-                    Quantity = k.Quantity
+                    Quantity = k.Quantity,
+                    DepartmentName = k.Department.DepartmentName,
+                    IsProperty = k.Department.IsProperty
                 })
                 .ToListAsync();
-            supply.TotalQuantity = supply.Stock.Sum(k => k.Quantity);
+            // In stock is the Property Department's; other departments'
+            // is shown apart and never requested.
+            supply.TotalQuantity = supply.Stock.Where(k => k.IsProperty).Sum(k => k.Quantity);
+            supply.DepartmentQuantity = supply.Stock.Where(k => !k.IsProperty).Sum(k => k.Quantity);
             // The low-stock level is checked for each branch on its own.
             var ownLevels = await _context.SupplyBranchLevels.AsNoTracking()
                 .Where(l => l.SupplyID == supplyId)
                 .ToDictionaryAsync(l => l.BranchID, l => l.LowStockLevel);
             supply.Branches = supply.Stock
+                .Where(k => k.IsProperty)
                 .GroupBy(k => new { k.BranchID, k.BranchName })
                 .Select(g =>
                 {
@@ -380,7 +412,7 @@ namespace SchoolInventoryManagement.BLL.Services
             supply.AnyBranchLow = supply.Branches.Any(b => b.IsLow);
             // Every branch, for the edit form.
             var allStock = await _context.SupplyStock.AsNoTracking()
-                .Where(k => k.SupplyID == supplyId)
+                .Where(k => k.SupplyID == supplyId && k.Department.IsProperty)
                 .Select(k => new { k.Location.BranchID, k.Quantity })
                 .ToListAsync();
             supply.BranchLevels = (await _context.Branches.AsNoTracking()

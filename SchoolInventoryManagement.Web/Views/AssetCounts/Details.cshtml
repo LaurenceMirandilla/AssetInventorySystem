@@ -1,0 +1,115 @@
+﻿@model SchoolInventoryManagement.BLL.DTOs.AssetCountDetailDTO
+@using SchoolInventoryManagement.DAL.Entities.Enums
+@{
+    ViewData["Title"] = $"Count of {Model.LocationName}";
+    var missing = Model.Lines.Where(l => l.Result == AssetCountResult.Missing).ToList();
+    var elsewhere = Model.Lines.Where(l => l.Result == AssetCountResult.FoundElsewhere).ToList();
+    var found = Model.Lines.Where(l => l.Result == AssetCountResult.Found).ToList();
+    var canCount = User.IsInRole("Asset Officer") || User.IsInRole("Administrator");
+}
+
+<div class="asset-detail-head">
+    <div>
+        <nav class="asset-crumbs" aria-label="Breadcrumb">
+            <a asp-controller="Assets" asp-action="Index">Items</a>
+            <span aria-hidden="true">&rsaquo;</span>
+            <a asp-action="Index">Counts</a>
+            <span aria-hidden="true">&rsaquo;</span>
+            <span>#@Model.AssetCountID</span>
+        </nav>
+        <h2 class="asset-detail-title">Count of @Model.LocationName</h2>
+        <div class="asset-detail-sub">@Model.BranchName · counted by @Model.CountedByName on @Model.CountedAt.ToString("MMM d, yyyy · h:mm tt")</div>
+    </div>
+    @if (canCount)
+    {
+        <div class="asset-detail-actions">
+            <a asp-action="Create" asp-route-locationId="@Model.LocationID" class="btn btn-outline-secondary">Count this room again</a>
+        </div>
+    }
+</div>
+
+<div class="myassets-stats lk-stats-4 mb-3 count-tiles">
+    <div><span>On record</span><strong>@Model.Expected</strong></div>
+    <div><span>Found</span><strong>@Model.Found</strong></div>
+    <div class="@(Model.Missing > 0 ? "is-late" : "")"><span>Missing</span><strong>@Model.Missing</strong></div>
+    <div><span>Found here, not on record</span><strong>@Model.FoundElsewhere</strong></div>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(Model.Notes))
+{
+    <div class="rq-remarks"><span>Notes</span>@Model.Notes</div>
+}
+
+<div class="asset-card mb-3">
+    <div class="rq-card-head">
+        <h3>Missing</h3>
+        <span>@(missing.Count == 0 ? "everything on record was there" : $"{missing.Count} not found in the room")</span>
+    </div>
+    @if (missing.Any())
+    {
+        <div class="table-responsive">
+            <table class="table asset-table mb-0">
+                <thead><tr><th>Code</th><th>Asset</th><th class="d-none d-md-table-cell">Now</th></tr></thead>
+                <tbody>
+                    @foreach (var l in missing)
+                    {
+                        <tr>
+                            <td><a asp-controller="Assets" asp-action="Details" asp-route-id="@l.AssetID" class="asset-code-chip">@l.AssetCode</a></td>
+                            <td><span class="fw-semibold">@l.AssetName</span><span class="asset-muted small d-block">@l.ModelName</span></td>
+                            <td class="d-none d-md-table-cell">
+                                <span class="asset-pill asset-status st-@l.CurrentStatus.ToString().ToLowerInvariant()">@(l.CurrentStatus == AssetStatus.UnderMaintenance ? "Maintenance" : DisplayText.AssetStatusLabel(l.CurrentStatus))</span>
+                                <span class="asset-muted small">@DisplayText.Or(l.CurrentLocationName, "no room")</span>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@if (elsewhere.Any())
+{
+    <div class="asset-card mb-3">
+        <div class="rq-card-head">
+            <h3>Found here, recorded somewhere else</h3>
+            <span>@elsewhere.Count unit@(elsewhere.Count == 1 ? "" : "s")</span>
+        </div>
+        <div class="table-responsive">
+            <table class="table asset-table mb-0">
+                <thead><tr><th>Code</th><th>Asset</th><th>Was recorded in</th><th class="d-none d-md-table-cell">Now</th></tr></thead>
+                <tbody>
+                    @foreach (var l in elsewhere)
+                    {
+                        <tr>
+                            <td><a asp-controller="Assets" asp-action="Details" asp-route-id="@l.AssetID" class="asset-code-chip">@l.AssetCode</a></td>
+                            <td><span class="fw-semibold">@l.AssetName</span><span class="asset-muted small d-block">@l.ModelName</span></td>
+                            <td>@DisplayText.Or(l.RecordedLocationName, "no room")</td>
+                            <td class="d-none d-md-table-cell asset-muted">@DisplayText.Or(l.CurrentLocationName, "no room")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+<details class="asset-card mb-3 count-found">
+    <summary class="rq-card-head"><h3>Found</h3><span>@found.Count unit@(found.Count == 1 ? "" : "s") · show</span></summary>
+    @if (found.Any())
+    {
+        <div class="rq-units">
+            @foreach (var l in found)
+            {
+                <div class="rq-unit">
+                    <a asp-controller="Assets" asp-action="Details" asp-route-id="@l.AssetID" class="asset-code-chip">@l.AssetCode</a>
+                    <span class="rq-unit-name">@l.AssetName</span>
+                </div>
+            }
+        </div>
+    }
+</details>
+
+<div class="register-footer">
+    <a asp-action="Index" class="btn btn-outline-secondary">&larr; Past counts</a>
+</div>

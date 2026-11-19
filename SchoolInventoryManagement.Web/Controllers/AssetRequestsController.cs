@@ -22,8 +22,10 @@ namespace SchoolInventoryManagement.Web.Controllers
     [Authorize]
     public class AssetRequestsController : BaseController
     {
+        // Borrow and transfer requests are decided by the Property
+        // Department's Asset Officers, with Administrators as a backup.
         private const string ApproverRoles =
-            RoleNames.AssetOfficer + "," + RoleNames.Administrator + "," + RoleNames.Principal;
+            RoleNames.AssetOfficer + "," + RoleNames.Administrator;
 
         // Handing over and recording returns is asset work: Officers and
         // Administrators, not the wider approver group.
@@ -61,18 +63,16 @@ namespace SchoolInventoryManagement.Web.Controllers
 
         private bool IsApprover =>
             User.IsInRole(RoleNames.AssetOfficer) ||
-            User.IsInRole(RoleNames.Administrator) ||
-            User.IsInRole(RoleNames.Principal);
+            User.IsInRole(RoleNames.Administrator);
+
+        // Who may open anyone's request: the approvers, and the Principal
+        // (to read, not to decide).
+        private bool CanViewAnyRequest =>
+            IsApprover || User.IsInRole(RoleNames.Principal);
 
         private bool IsAssetManager =>
             User.IsInRole(RoleNames.AssetOfficer) ||
             User.IsInRole(RoleNames.Administrator);
-
-        // Teachers and Staff ask for what they need without seeing stock
-        // levels; the approver works out what is free. AssetRequestService
-        // applies the same rule when the request is saved.
-        private bool SeesAvailability =>
-            !User.IsInRole(RoleNames.Teacher) && !User.IsInRole(RoleNames.Staff);
 
         // GET /AssetRequests
         public IActionResult Index() => RedirectToAction(nameof(MyRequests));
@@ -174,7 +174,7 @@ namespace SchoolInventoryManagement.Web.Controllers
             // "View own submitted requests" is everyone's; viewing anyone
             // else's is an approver's. GetRequestByIdAsync has no permission
             // check of its own, so this is the gate.
-            if (request.RequestedByUser.UserID != CurrentUserId && !IsApprover)
+            if (request.RequestedByUser.UserID != CurrentUserId && !CanViewAnyRequest)
                 return Forbid();
 
             // Status changes, the ticket's lines and the units handed out.
@@ -184,7 +184,7 @@ namespace SchoolInventoryManagement.Web.Controllers
             var section = from is "mine" or "approvals" or "history" ? from
                 : request.RequestedByUser.UserID == CurrentUserId ? "mine" : "approvals";
             if (section == "history" && !IsAssetManager) section = IsApprover ? "approvals" : "mine";
-            if (section == "approvals" && !IsApprover) section = "mine";
+            if (section == "approvals" && !IsApprover) section = request.RequestedByUser.UserID == CurrentUserId ? "mine" : "history";
             ViewData["NavSection"] = section;
 
             return View(request);
@@ -193,7 +193,8 @@ namespace SchoolInventoryManagement.Web.Controllers
         // GET /AssetRequests/Create
         // ?modelId= comes from the Request button on Browse items and fills
         // in the first row. An id that is not on the list just leaves the
-        // row empty.
+        // row empty; one with none in stock is left out too, and the page
+        // offers to request a purchase of it instead.
         // ?type=Transfer opens with Transfer chosen (the Supplies form's
         // Borrow and Transfer cards link here).
         public async Task<IActionResult> Create(int? modelId, RequestType? type = null)
@@ -202,7 +203,13 @@ namespace SchoolInventoryManagement.Web.Controllers
             var model = new CreateAssetRequestViewModel();
             if (type.HasValue)
                 model.RequestType = type.Value;
-            model.Items[0].ModelID = modelId;
+
+            var preset = (ViewBag.ModelOptions as List<RequestModelOption>)?
+                .FirstOrDefault(m => m.ModelID == modelId);
+            if (preset is { Available: 0 })
+                ViewBag.NoneInStock = preset;
+            else
+                model.Items[0].ModelID = modelId;
             return View(model);
         }
 
@@ -437,6 +444,33 @@ namespace SchoolInventoryManagement.Web.Controllers
             // In progress tab, so the next one to hand over is right there.
             return fromApprovals
                 ? RedirectToAction(nameof(Pending), new { tab = "progress" })
+                : RedirectToAction(nameof(Details), new { id });
+        }
+
+        // POST /AssetRequests/Acknowledge/5
+        // The requester confirms they received the units. On a permanent
+        // Transfer that hands them to their department.
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        [OneTimeSubmit]
+        public async Task<IActionResult> Acknowledge(int id, string rowVersionBase64, string? from)
+        {
+            try
+            {
+                await _fulfillmentService.AcknowledgeReceiptAsync(
+                    id, RowVersionHelper.FromBase64(rowVersionBase64), CurrentUserId);
+                var done = await _requestService.GetRequestByIdAsync(id);
+                TempData["StatusMessage"] = done is not null && done.IsPermanent
+                    ? $"Thank you. The items on request #{id} are now {done.DepartmentName}'s."
+                    : $"Thank you. Receipt of request #{id} is confirmed.";
+            }
+            catch (Exception ex)
+            {
+                TempData["ErrorMessage"] = UserMessageFor(ex);
+            }
+
+            return from == "mine"
+                ? RedirectToAction(nameof(MyRequests))
                 : RedirectToAction(nameof(Details), new { id });
         }
 
@@ -697,18 +731,14 @@ namespace SchoolInventoryManagement.Web.Controllers
 
         private async Task PopulateRequestDropdownsAsync()
         {
-            // Every model, grouped under its category. Except for Teachers
-            // and Staff, each shows how many units are on the shelf, which
-            // is also the most a row can ask for; a model with none is
-            // greyed out. The service enforces both anyway.
+            // Every model, grouped under its category, with how many units
+            // the Property Department has in stock -- also the most a row
+            // can ask for. A model with none is greyed out: it has to be
+            // bought instead. The service enforces both anyway.
             var models = await _modelService.GetAllModelsAsync();
-            var showAvailability = SeesAvailability;
-            ViewBag.ShowAvailability = showAvailability;
 
-            var available = showAvailability
-                ? await _assetService.SearchAssetsAsync(
-                    null, null, null, null, null, AssetStatus.Available, null)
-                : new List<AssetResponseDTO>();
+            var available = await _assetService.SearchAssetsAsync(
+                null, null, null, null, null, AssetStatus.Available, null);
             var availableByModel = available
                 .GroupBy(a => a.ModelID)
                 .ToDictionary(g => g.Key, g => g.ToList());

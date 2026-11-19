@@ -21,6 +21,10 @@ namespace SchoolInventoryManagement.Web.ViewModels
 
         public int PendingRequestCount { get; set; }
 
+        // Where "View all" goes: borrow and transfer approvals for Property,
+        // supply approvals for the Principal.
+        public string PendingRequestsController { get; set; } = "AssetRequests";
+
         // The other half of the dashboard, for everyone IsReportsViewer
         // excludes. Those roles cannot see inventory-wide figures, so their
         // panel reports only what is theirs: what they are holding and what

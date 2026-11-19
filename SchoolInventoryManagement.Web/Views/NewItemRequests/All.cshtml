@@ -118,7 +118,7 @@ else
                                 <span class="myassets-item-sub">@r.RequestedByUserName · @r.DepartmentName</span>
                                 <span class="myassets-item-sub">@NewItemProgress.Kind(r) · @r.RequestDate.ToString("MMM d")</span>
                             </span>
-                            <span class="asset-pill asset-status md-pill @NewItemProgress.Pill(r.RequestStatus)">@NewItemProgress.Short(r.RequestStatus)</span>
+                            <span class="asset-pill asset-status md-pill @(r.AwaitsAcknowledgment ? "st-intransit" : NewItemProgress.Pill(r.RequestStatus))">@NewItemProgress.Short(r)</span>
                         </button>
                     }
                 </div>

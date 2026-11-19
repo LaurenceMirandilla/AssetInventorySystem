@@ -22,9 +22,11 @@ namespace SchoolInventoryManagement.BLL.Services
                 {
                     SupplyID = k.SupplyID,
                     LocationID = k.LocationID,
-                    LocationName = k.Location.LocationName,
+                    LocationName = k.Location.LocationName.Trim(),
                     BranchName = k.Location.Branch.BranchName,
-                    Quantity = k.Quantity
+                    Quantity = k.Quantity,
+                    DepartmentName = k.Department.DepartmentName,
+                    IsProperty = k.Department.IsProperty
                 })
                 .ToListAsync();
         }
@@ -48,6 +50,7 @@ namespace SchoolInventoryManagement.BLL.Services
 
             var rows = await _context.SupplyStock
                 .Include(k => k.Location).ThenInclude(l => l.Branch)
+                .Include(k => k.Department)
                 .Where(k => k.SupplyID == supply.SupplyID
                             && (k.LocationID == dto.FromLocationID || k.LocationID == dto.ToLocationID))
                 .ToListAsync();
@@ -59,11 +62,28 @@ namespace SchoolInventoryManagement.BLL.Services
                 throw new InvalidOperationException(
                     $"{from.Location.LocationName} only has {from.Quantity}. Lower the quantity.");
 
+            // It stays the same department's. The Property Department's
+            // stock moved to another branch becomes that branch's Property
+            // stock; another department's stays in its own branch.
+            int holder;
+            if (to.BranchID == from.Location.BranchID)
+                holder = from.DepartmentID;
+            else if (from.Department.IsProperty)
+                holder = await PropertyStock.DepartmentIdAsync(_context, to.BranchID);
+            else
+                throw new InvalidOperationException(
+                    $"This is the {from.Department.DepartmentName}'s stock, and it stays in its own branch.");
+
             var target = rows.FirstOrDefault(k => k.LocationID == dto.ToLocationID);
             if (target is null)
             {
-                target = new SupplyStock { SupplyID = supply.SupplyID, LocationID = to.LocationID, Quantity = 0 };
+                target = new SupplyStock { SupplyID = supply.SupplyID, LocationID = to.LocationID, DepartmentID = holder, Quantity = 0 };
                 _context.SupplyStock.Add(target);
+            }
+            else if (target.DepartmentID != holder)
+            {
+                throw new InvalidOperationException(
+                    await SupplyHolders.ClashMessageAsync(_context, supply.SupplyName, target.LocationID, target.DepartmentID));
             }
 
             from.Quantity -= dto.Quantity;
@@ -75,7 +95,7 @@ namespace SchoolInventoryManagement.BLL.Services
 
             _context.SupplyTransactions.Add(new SupplyTransaction
             {
-                SupplyID = supply.SupplyID, LocationID = from.LocationID,
+                SupplyID = supply.SupplyID, LocationID = from.LocationID, DepartmentID = from.DepartmentID,
                 Type = SupplyTransactionType.MovedOut,
                 QuantityChange = -dto.Quantity, QuantityAfter = from.Quantity,
                 Note = Cut($"To {Where(to)}{extra}"),
@@ -83,7 +103,7 @@ namespace SchoolInventoryManagement.BLL.Services
             });
             _context.SupplyTransactions.Add(new SupplyTransaction
             {
-                SupplyID = supply.SupplyID, LocationID = to.LocationID,
+                SupplyID = supply.SupplyID, LocationID = to.LocationID, DepartmentID = target.DepartmentID,
                 Type = SupplyTransactionType.MovedIn,
                 QuantityChange = dto.Quantity, QuantityAfter = target.Quantity,
                 Note = Cut($"From {Where(from.Location)}{extra}"),
@@ -124,7 +144,7 @@ namespace SchoolInventoryManagement.BLL.Services
             row.Quantity -= dto.Quantity;
             _context.SupplyTransactions.Add(new SupplyTransaction
             {
-                SupplyID = row.SupplyID, LocationID = row.LocationID,
+                SupplyID = row.SupplyID, LocationID = row.LocationID, DepartmentID = row.DepartmentID,
                 Type = SupplyTransactionType.Removed,
                 QuantityChange = -dto.Quantity, QuantityAfter = row.Quantity,
                 Note = Cut(reason + (note is null ? "" : " · " + note)),
@@ -144,6 +164,8 @@ namespace SchoolInventoryManagement.BLL.Services
                 .OrderBy(k => k.Supply.Category.CategoryName).ThenBy(k => k.Supply.SupplyName)
                 .Select(k => new SupplyCountLineDTO
                 {
+                    DepartmentName = k.Department.DepartmentName,
+                    IsProperty = k.Department.IsProperty,
                     SupplyID = k.SupplyID,
                     SupplyName = k.Supply.SupplyName,
                     CategoryName = k.Supply.Category.CategoryName,
@@ -202,7 +224,7 @@ namespace SchoolInventoryManagement.BLL.Services
 
                 _context.SupplyTransactions.Add(new SupplyTransaction
                 {
-                    SupplyID = row.SupplyID, LocationID = row.LocationID,
+                    SupplyID = row.SupplyID, LocationID = row.LocationID, DepartmentID = row.DepartmentID,
                     Type = SupplyTransactionType.Adjusted,
                     QuantityChange = difference, QuantityAfter = row.Quantity,
                     Note = Cut("Count: " + reason),
@@ -275,7 +297,7 @@ namespace SchoolInventoryManagement.BLL.Services
                 {
                     s.SupplyID, s.SupplyName, s.Unit, s.LowStockLevel,
                     Levels = s.BranchLevels.Select(l => new { l.BranchID, l.LowStockLevel }).ToList(),
-                    Stock = s.Stock.Where(k => branchId == null || k.Location.BranchID == branchId)
+                    Stock = s.Stock.Where(k => (branchId == null || k.Location.BranchID == branchId) && k.Department.IsProperty)
                         .Select(k => new { k.Location.BranchID, k.Quantity }).ToList()
                 })
                 .ToListAsync();
@@ -314,6 +336,7 @@ namespace SchoolInventoryManagement.BLL.Services
         {
             // One line per supply and branch: the level is per branch.
             var rows = await _context.SupplyStock.AsNoTracking()
+                .Where(k => k.Department.IsProperty)
                 .Select(k => new
                 {
                     k.SupplyID, k.Supply.SupplyName, k.Supply.Unit,

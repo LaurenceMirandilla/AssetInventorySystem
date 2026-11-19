@@ -17,8 +17,8 @@
     Dictionary<int, string> deptBranches = (ViewBag.DepartmentBranches as Dictionary<int, string>) ?? new Dictionary<int, string>();
     string BranchOf(AssetRequestResponseDTO r) => deptBranches.TryGetValue(r.DepartmentID, out var b) ? b : "";
 
-    // Principals see the In progress list but cannot act on it: handing
-    // over and recording returns is Officers' and Administrators' work.
+    // Only Asset Officers and Administrators reach this page (borrow and
+    // transfer requests are the Property Department's).
     var canManageAssets = User.IsInRole(RoleNames.AssetOfficer) || User.IsInRole(RoleNames.Administrator);
 
     var now = PhilippineTime.Now;
@@ -26,13 +26,24 @@
     bool IsOverdue(AssetRequestResponseDTO r) =>
         r.RequestStatus == RequestStatus.Assigned && r.ReturnBy is not null && r.ReturnBy.Value < now;
 
+    // Delivered for good, until the requester confirms receipt.
+    bool AwaitsConfirm(AssetRequestResponseDTO r) =>
+        r.RequestStatus == RequestStatus.Assigned && r.IsPermanent;
+
     var overdue = inProgress.Where(IsOverdue).OrderBy(r => r.ReturnBy).ToList();
     var transit = inProgress.Where(r => r.RequestStatus == RequestStatus.InTransit).ToList();
-    var outNow = inProgress.Where(r => r.RequestStatus != RequestStatus.InTransit && !IsOverdue(r))
+    var confirming = inProgress.Where(AwaitsConfirm).ToList();
+    var outNow = inProgress.Where(r => r.RequestStatus != RequestStatus.InTransit && !IsOverdue(r) && !AwaitsConfirm(r))
         .OrderBy(r => r.ReturnBy ?? DateTime.MaxValue).ToList();
     // The tabs split the approved requests: In progress is what still has to
-    // be picked up or delivered; Waiting to be returned is what is out.
-    var transitGroups = new[] { (Key: "transit", Label: "Ready for pickup or delivery", Items: transit) };
+    // be picked up, delivered or confirmed; Waiting to be returned is what
+    // is out.
+    var progressList = transit.Concat(confirming).ToList();
+    var transitGroups = new[]
+    {
+        (Key: "transit", Label: "Ready for pickup or delivery", Items: transit),
+        (Key: "confirm", Label: "Delivered, waiting for the requester to confirm", Items: confirming)
+    };
     var returnList = overdue.Concat(outNow).ToList();
     var returnGroups = new[]
     {
@@ -103,7 +114,7 @@
         Waiting for approval <span class="history-tab-count">@Model.Count</span>
     </button>
     <button type="button" class="@(openTab == "tabProgress" ? "active" : "")" role="tab" aria-selected="@(openTab == "tabProgress" ? "true" : "false")" data-md-tab="tabProgress">
-        In progress <span class="history-tab-count">@transit.Count</span>
+        In progress <span class="history-tab-count">@progressList.Count</span>
     </button>
     <button type="button" class="@(openTab == "tabReturn" ? "active" : "")" role="tab" aria-selected="@(openTab == "tabReturn" ? "true" : "false")" data-md-tab="tabReturn">
         Waiting to be returned <span class="history-tab-count">@returnList.Count</span>
@@ -393,6 +404,10 @@
                                         {
                                             @(isBorrow ? "pick up at " + (r.PickupLocationName ?? "the pickup point") : "to " + (r.RequestedLocationName ?? "the destination"))
                                         }
+                                        else if (g.Key == "confirm")
+                                        {
+                                            @("delivered to " + (r.RequestedLocationName ?? "the destination"))
+                                        }
                                         else
                                         {
                                             @(r.ReturnBy is not null ? "due " + r.ReturnBy.Value.ToString("MMM d") : "no due date")
@@ -400,7 +415,7 @@
                                     </span>
                                 </span>
                                 <span class="md-age @(late ? "is-late" : g.Key == "transit" ? "is-transit" : "is-soon")">
-                                    @(g.Key == "transit" ? DisplayText.InTransitLabel(r.RequestType) : DueNote(r.ReturnBy, today))
+                                    @(g.Key == "transit" ? DisplayText.InTransitLabel(r.RequestType) : g.Key == "confirm" ? "to confirm" : DueNote(r.ReturnBy, today))
                                 </span>
                             </button>
                         }
@@ -420,6 +435,7 @@
                     var isBorrow = r.RequestType == RequestType.Borrow;
                     var late = IsOverdue(r);
                     var inTransit = r.RequestStatus == RequestStatus.InTransit;
+                    var toConfirm = AwaitsConfirm(r);
                     var daysLate = late ? (today - r.ReturnBy!.Value.Date).Days : 0;
                     var unitsOverdue = r.Units.Count(u => u.AssetStatus == AssetStatus.Overdue);
                     var steps = new List<RequestStep>
@@ -429,8 +445,11 @@
                         new(isBorrow ? "Picked up" : "Delivered",
                             inTransit ? (isBorrow ? "at " + (r.PickupLocationName ?? "the pickup point") : "to " + (r.RequestedLocationName ?? "the destination")) : r.AssignedDate?.ToString("MMM d"),
                             inTransit ? RequestStepState.Current : RequestStepState.Done),
-                        new("Returned", r.ReturnBy is not null ? "due " + r.ReturnBy.Value.ToString("MMM d") : null,
-                            late ? RequestStepState.Late : inTransit ? RequestStepState.Todo : RequestStepState.Current)
+                        r.IsPermanent
+                            ? new RequestStep("Receipt confirmed", "by the requester",
+                                inTransit ? RequestStepState.Todo : RequestStepState.Current)
+                            : new RequestStep("Returned", r.ReturnBy is not null ? "due " + r.ReturnBy.Value.ToString("MMM d") : null,
+                                late ? RequestStepState.Late : inTransit ? RequestStepState.Todo : RequestStepState.Current)
                     };
 
                     <article class="myassets-panel" data-panel="@prefix-@r.RequestID" hidden>
@@ -455,6 +474,10 @@
                                 else if (inTransit)
                                 {
                                     <span class="asset-pill asset-status st-intransit">@DisplayText.InTransitLabel(r.RequestType)</span>
+                                }
+                                else if (toConfirm)
+                                {
+                                    <span class="asset-pill asset-status st-intransit">To confirm</span>
                                 }
                                 else
                                 {
@@ -545,13 +568,19 @@
                                         {
                                             @(isBorrow ? "Waiting to be picked up" : "On its way")
                                         }
+                                        else if (toConfirm)
+                                        {
+                                            @("Waiting for " + r.RequestedByUser.FullName + " to confirm receipt")
+                                        }
                                         else
                                         {
                                             @(r.ReturnBy is null ? "Kept for good" : "Due back " + r.ReturnBy.Value.ToString("MMM d"))
                                         }
                                     </div>
                                     <div class="req-action-note">
-                                        @(inTransit ? "Not handed over yet: mark it done, or cancel to put the units back." : "Record the return when the units come back.")
+                                        @(inTransit ? "Not handed over yet: mark it done, or cancel to put the units back."
+                                            : toConfirm ? $"Delivered for good. The items become {r.DepartmentName}'s once the requester confirms. If something was wrong, record a return to take them back."
+                                            : "Record the return when the units come back.")
                                     </div>
                                 </div>
                                 <div class="req-action-buttons">
@@ -581,7 +610,7 @@
 
 @* ---- In progress: to pick up or deliver ---------------------------------- *@
 <section id="tabProgress" role="tabpanel" hidden="@(openTab != "tabProgress")">
-    @if (!transit.Any())
+    @if (!progressList.Any())
     {
         <div class="sab-table-card">
             <div class="sab-empty">
@@ -592,7 +621,7 @@
     }
     else
     {
-        await ProgressList(transit, transitGroups, "p", "Requests to pick up or deliver", false);
+        await ProgressList(progressList, transitGroups, "p", "Requests to pick up, deliver or confirm", false);
     }
 </section>
 

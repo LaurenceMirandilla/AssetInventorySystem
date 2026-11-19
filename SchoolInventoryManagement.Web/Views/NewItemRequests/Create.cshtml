@@ -218,7 +218,16 @@
                         </li>
                         <li>
                             <span class="ni-step-num">3</span>
-                            <span><strong>Arrived</strong><small>checked against your description, then brought to the location you chose</small></span>
+                            <span><strong>Arrived</strong><small>checked against your description and put on record; assets get their control numbers</small></span>
+                        </li>
+                        <li>
+                            <span class="ni-step-num">4</span>
+                            <span><strong>Delivered</strong><small>brought to the location you chose</small></span>
+                        </li>
+                        @* Assets only: shown or hidden with the kind (applyKind). *@
+                        <li id="nextReceipt" hidden="@isSupplies">
+                            <span class="ni-step-num">5</span>
+                            <span><strong>You confirm receipt</strong><small>then the items are your department's to look after</small></span>
                         </li>
                     </ol>
                 </div>
@@ -427,6 +436,7 @@
                 box.classList.toggle('is-supplies', supplies);
                 document.getElementById('itemsTitle').textContent = supplies ? 'Supplies to be bought' : 'Assets to be bought';
                 document.getElementById('sumKind').textContent = supplies ? 'Supplies' : 'Assets';
+                document.getElementById('nextReceipt').hidden = supplies;
                 document.getElementById('searchHint').textContent = supplies
                     ? 'Start typing in the Item box: matching supplies appear, or keep what you typed as a new item.'
                     : 'Start typing in the Item box: matching models appear, or keep what you typed as a new item.';

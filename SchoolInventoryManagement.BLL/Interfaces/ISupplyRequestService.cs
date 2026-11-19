@@ -13,6 +13,10 @@ namespace SchoolInventoryManagement.BLL.Interfaces
         // The name of the user's branch, for the form's wording.
         Task<string> GetBranchNameAsync(int actingUserId);
 
+        // Where the requester's supplies come from: their branch's Property
+        // Department and the rooms it keeps supplies in.
+        Task<SupplySourceDTO> GetSourceAsync(int actingUserId);
+
         // The locations in the user's own branch, for "Deliver to".
         Task<List<SupplyRoomDTO>> GetDeliveryLocationsAsync(int actingUserId);
 

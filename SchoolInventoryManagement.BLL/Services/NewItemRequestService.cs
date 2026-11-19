@@ -475,7 +475,38 @@ namespace SchoolInventoryManagement.BLL.Services
                 .OrderByDescending(n => n.RequestDate)
                 .ToListAsync();
 
-            return requests.Select(n => n.ToResponseDTO()).ToList();
+            var dtos = requests.Select(n => n.ToResponseDTO()).ToList();
+            await FillRegisteredUnitsAsync(dtos);
+            return dtos;
+        }
+
+        // The units registered for each asset request in the list.
+        private async Task FillRegisteredUnitsAsync(IEnumerable<NewItemRequestResponseDTO> dtos)
+        {
+            var assetTickets = dtos.Where(d => d.ItemKind == CategoryKind.Asset).ToList();
+            if (assetTickets.Count == 0)
+                return;
+
+            var ids = assetTickets.Select(d => d.NewItemRequestID).ToList();
+            var units = await _context.Assets
+                .Where(a => a.NewItemRequestID != null && ids.Contains(a.NewItemRequestID.Value))
+                .OrderBy(a => a.AssetCode)
+                .Select(a => new
+                {
+                    TicketId = a.NewItemRequestID!.Value,
+                    Unit = new RegisteredUnitDTO
+                    {
+                        AssetID = a.AssetID,
+                        AssetCode = a.AssetCode,
+                        AssetName = a.AssetName,
+                        ModelID = a.ModelID,
+                        Status = a.Status
+                    }
+                })
+                .ToListAsync();
+
+            foreach (var dto in assetTickets)
+                dto.RegisteredUnits = units.Where(u => u.TicketId == dto.NewItemRequestID).Select(u => u.Unit).ToList();
         }
 
         public async Task<List<NewItemRequestResponseDTO>> GetAllRequestsAsync(
@@ -509,7 +540,9 @@ namespace SchoolInventoryManagement.BLL.Services
 
             var requests = await query.ToListAsync();
 
-            return requests.Select(n => n.ToResponseDTO()).ToList();
+            var all = requests.Select(n => n.ToResponseDTO()).ToList();
+            await FillRegisteredUnitsAsync(all);
+            return all;
         }
 
         public async Task<List<NewItemRequestResponseDTO>> GetPendingRequestsAsync(int actingUserId)
@@ -540,7 +573,7 @@ namespace SchoolInventoryManagement.BLL.Services
             var requests = await query.ToListAsync();
 
             // Earliest stage first, then soonest needed.
-            return requests
+            var pending = requests
                 .OrderBy(n => Array.IndexOf(StageOrder, n.RequestStatus))
                 .ThenBy(n => n.NeededBy ?? DateTime.MaxValue)
                 .ThenBy(n => n.RequestDate)
@@ -551,6 +584,8 @@ namespace SchoolInventoryManagement.BLL.Services
                     return dto;
                 })
                 .ToList();
+            await FillRegisteredUnitsAsync(pending);
+            return pending;
         }
 
         // Open tickets the acting user can see that are not waiting on them:
@@ -606,6 +641,7 @@ namespace SchoolInventoryManagement.BLL.Services
 
             var dto = request.ToResponseDTO();
             dto.CanAct = CanActOn(request, actor);
+            await FillRegisteredUnitsAsync(new[] { dto });
             return dto;
         }
 
@@ -647,6 +683,27 @@ namespace SchoolInventoryManagement.BLL.Services
             var to = NextStage[from];
             var now = PhilippineTime.Now;
 
+            // Assets are delivered as registered units, each with its
+            // control number, held by Property for this request until the
+            // requester confirms receipt (AcknowledgeReceiptAsync).
+            var units = new List<Asset>();
+            if (to == NewItemStatus.Delivered && request.ItemKind == CategoryKind.Asset)
+            {
+                units = await _context.Assets
+                    .Where(a => a.NewItemRequestID == requestId)
+                    .ToListAsync();
+                var ordered = request.Items.Sum(i => i.Quantity);
+                if (units.Count < ordered)
+                    throw new InvalidOperationException(
+                        $"Register all {ordered} unit{(ordered == 1 ? "" : "s")} first, so each gets its control number " +
+                        $"({units.Count} registered so far). Use \"Register the assets\" on this request.");
+
+                if (request.DeliverToLocationID is int roomId)
+                    foreach (var unit in units.Where(u => u.Status == AssetStatus.InTransit))
+                        MovementHelper.Record(_context, unit, roomId, actor.UserID,
+                            $"New-item request #{requestId}: delivered");
+            }
+
             request.RequestStatus = to;
             request.ReviewedByUserID = actor.UserID;
             request.ReviewDate = now;
@@ -684,7 +741,8 @@ namespace SchoolInventoryManagement.BLL.Services
                 case NewItemStatus.Delivered:
                     var deliveredTo = await DeliverToNameAsync(request);
                     NotificationHelper.Queue(_context, request.RequestedByUserID,
-                        $"Your request #{requestId} was delivered: {item}" + (deliveredTo is null ? "." : $" was brought to {deliveredTo}."), url);
+                        $"Your request #{requestId} was delivered: {item}" + (deliveredTo is null ? "." : $" was brought to {deliveredTo}.")
+                        + (units.Count > 0 ? " Please confirm you received it; it then becomes your department's." : ""), url);
                     break;
             }
 
@@ -767,6 +825,55 @@ namespace SchoolInventoryManagement.BLL.Services
                 request.RequestedByUserID,
                 $"Your request #{requestId} ({ItemText(request)}) could not be delivered" + (where is null ? "" : $" to {where}") + $": {reason} It will be tried again.",
                 DetailsUrl(requestId));
+
+            await SaveWithConcurrencyGuardAsync();
+        }
+
+        public async Task AcknowledgeReceiptAsync(int requestId, byte[] rowVersion, int actingUserId)
+        {
+            var actor = await PermissionHelper.GetUserOrThrowAsync(_context, actingUserId);
+            PermissionHelper.EnsureIsActive(actor);
+
+            var request = await _context.NewItemRequests
+                .Include(n => n.Items)
+                .Include(n => n.Department)
+                .FirstOrDefaultAsync(n => n.NewItemRequestID == requestId);
+
+            if (request is null)
+                throw new KeyNotFoundException("Request not found.");
+
+            if (request.RequestedByUserID != actingUserId)
+                throw new UnauthorizedAccessException("Only the person who made the request can confirm receiving it.");
+
+            if (request.ItemKind != CategoryKind.Asset)
+                throw new InvalidOperationException("Supplies go into stock; there is nothing to confirm on this request.");
+
+            if (request.AcknowledgedAt is not null)
+                throw new InvalidOperationException("You already confirmed receiving this request.");
+
+            if (request.RequestStatus != NewItemStatus.Delivered)
+                throw new InvalidOperationException("It has not been delivered yet. Confirm once you have it.");
+
+            _context.Entry(request).Property(n => n.RowVersion).OriginalValue = rowVersion;
+
+            // Held by Property for this request until now: the department's
+            // from here on.
+            var units = await _context.Assets
+                .Where(a => a.NewItemRequestID == requestId && a.Status == AssetStatus.InTransit)
+                .ToListAsync();
+            foreach (var unit in units)
+                await PropertyStock.IssueToDepartmentAsync(_context, unit, request.DepartmentID);
+
+            request.AcknowledgedAt = PhilippineTime.Now;
+            request.AcknowledgedByUserID = actingUserId;
+
+            // Whoever delivered it hears that it arrived.
+            if (request.ReviewedByUserID is int deliveredBy && deliveredBy != actingUserId)
+                NotificationHelper.Queue(
+                    _context, deliveredBy,
+                    $"{actor.FirstName} {actor.LastName} confirmed receiving request #{requestId} ({ItemText(request)}). " +
+                    $"{(units.Count == 1 ? "It is" : "They are")} now {request.Department.DepartmentName}'s.",
+                    DetailsUrl(requestId));
 
             await SaveWithConcurrencyGuardAsync();
         }

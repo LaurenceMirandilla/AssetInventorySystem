@@ -9,6 +9,7 @@
     var sources = ViewBag.Sources as string[] ?? Array.Empty<string>();
     var backId = ViewBag.BackToSupplyId as int?;
     var newSupplyLines = ViewBag.NewSupplyLines as List<string> ?? new();
+    var departments = ViewBag.Departments as List<SupplyDepartmentOption> ?? new();
 }
 
 <form asp-action="AddStock" method="post" class="register-form page-fill" id="addStockForm">
@@ -77,6 +78,34 @@
         </div>
     </div>
 
+    @* Whose stock it becomes. Supplies are requested from the Property
+       Department; another department's stock is its own. *@
+    <div class="asset-card register-step mb-3">
+        <div class="register-step-head"><div class="register-step-title">Belongs to</div></div>
+        <div class="register-step-body">
+            <div class="row g-3 align-items-end">
+                <div class="col-md-6">
+                    <label asp-for="DepartmentID" class="form-label">Department</label>
+                    <select asp-for="DepartmentID" class="form-select" id="stockDepartment">
+                        <option value="">Property Department (in stock, can be requested)</option>
+                        @foreach (var g in departments.GroupBy(d => d.BranchName))
+                        {
+                            <optgroup label="@g.Key">
+                                @foreach (var d in g)
+                                {
+                                    <option value="@d.Id">@d.Name (its own, not requested)</option>
+                                }
+                            </optgroup>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <div class="form-text mb-2">The Property Department of each room's branch keeps it, and people request it from there. Pick another department only for stock it keeps for itself, put in rooms of its own branch.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="asset-card register-step">
         <div class="register-step-head">
             <div class="register-step-title flex-grow-1">What to add</div>
@@ -99,7 +128,7 @@
                                             selected="@(s.SupplyID == line.SupplyID)">@s.SupplyName</option>
                                 }
                             </select>
-                            <div class="asset-muted small mt-1">In stock now: <span data-now-out>&mdash;</span></div>
+                            <div class="asset-muted small mt-1">In stock now (Property): <span data-now-out>&mdash;</span></div>
                         </div>
                         <div class="col-4 col-md-2">
                             <label class="form-label small asset-muted mb-1">Add</label>
@@ -140,7 +169,7 @@
         </div>
         <div class="register-step-body">
             <button type="button" class="btn btn-outline-secondary btn-sm" id="addLine">+ Add another supply</button>
-            <div class="form-text mt-2">Only supplies already on the list can be picked. For something new, use New item &rsaquo; Supply first. "In stock now" is the total across every location.</div>
+            <div class="form-text mt-2">Only supplies already on the list can be picked. For something new, use New item &rsaquo; Supply first. "In stock now" is the Property Department's, across every room.</div>
         </div>
     </div>
 
@@ -199,12 +228,15 @@
                     var now = row.querySelector('[data-now-out]'), after = row.querySelector('[data-after-out]');
                     if (supply.value) {
                         var total = parseInt(opt.dataset.total, 10) || 0, u = opt.dataset.unit;
+                        // Another department's stock does not add to Property's.
+                        var own = !!document.getElementById('stockDepartment').value;
+                        var end = own ? total : total + q;
                         now.textContent = total + ' ' + plural(u, total);
                         after.innerHTML = '';
                         var strong = document.createElement('strong');
-                        strong.textContent = (total + q);
+                        strong.textContent = end;
                         after.appendChild(strong);
-                        after.appendChild(document.createTextNode(' ' + plural(u, total + q)));
+                        after.appendChild(document.createTextNode(' ' + plural(u, end) + (own ? ' (its own stock is apart)' : '')));
                         filled++; units += q;
                     } else {
                         now.textContent = '\u2014'; after.textContent = '\u2014';
@@ -212,6 +244,8 @@
                 });
                 summary.textContent = filled + ' suppl' + (filled === 1 ? 'y' : 'ies') + ' \u00B7 ' + units + ' unit' + (units === 1 ? '' : 's');
             }
+
+            document.getElementById('stockDepartment').addEventListener('change', function () { sync(); });
 
             // Picking a supply offers the room it is already kept in.
             function offerRoom(row) {

@@ -200,6 +200,7 @@ namespace SchoolInventoryManagement.Web.Controllers
         {
             ViewBag.SupplyChoices = await _supplyService.GetSupplyChoicesAsync();
             ViewBag.Locations = await LocationOptionsAsync();
+            ViewBag.Departments = await DepartmentOptionsAsync();
             ViewBag.Sources = SchoolInventoryManagement.BLL.Services.SupplyService.StockSources;
         }
 
@@ -406,10 +407,19 @@ namespace SchoolInventoryManagement.Web.Controllers
                 .Select(c => new SupplyOption(c.CategoryID, c.CategoryName))
                 .ToListAsync();
             ViewBag.Locations = await LocationOptionsAsync();
+            ViewBag.Departments = await DepartmentOptionsAsync();
             // Units already in use, offered as suggestions.
             ViewBag.Units = await _context.Supplies
                 .Select(s => s.Unit).Distinct().OrderBy(u => u).ToListAsync();
         }
+
+        // Every department but the Property ones, for "Belongs to".
+        private Task<System.Collections.Generic.List<SupplyDepartmentOption>> DepartmentOptionsAsync() =>
+            _context.Departments
+                .Where(d => !d.IsProperty)
+                .OrderBy(d => d.Branch.BranchName).ThenBy(d => d.DepartmentName)
+                .Select(d => new SupplyDepartmentOption(d.DepartmentID, d.DepartmentName, d.BranchID, d.Branch.BranchName))
+                .ToListAsync();
 
         private Task<System.Collections.Generic.List<SupplyLocationOption>> LocationOptionsAsync() =>
             _context.Locations

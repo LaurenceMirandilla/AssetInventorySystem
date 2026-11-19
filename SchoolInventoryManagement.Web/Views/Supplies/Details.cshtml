@@ -75,8 +75,12 @@
 
 <div class="myassets-stats">
     <div>
-        <span>In stock</span>
+        <span>In stock · Property</span>
         <strong>@Model.TotalQuantity @SupplyText.Unit(Model.TotalQuantity, Model.Unit)</strong>
+        @if (Model.DepartmentQuantity > 0)
+        {
+            <small class="asset-muted d-block">+ @Model.DepartmentQuantity with departments</small>
+        }
     </div>
     <div>
         <span>General low-stock level</span>
@@ -124,7 +128,7 @@
         <div class="table-responsive">
             <table class="table asset-table mb-0">
                 <thead>
-                    <tr><th>Location</th><th>Branch</th><th class="text-end">In stock</th></tr>
+                    <tr><th>Location</th><th>Branch</th><th>Belongs to</th><th class="text-end">Quantity</th></tr>
                 </thead>
                 <tbody>
                     @foreach (var k in Model.Stock)
@@ -132,6 +136,10 @@
                         <tr data-branch-row="@k.BranchName">
                             <td>@k.LocationName</td>
                             <td class="asset-muted">@k.BranchName</td>
+                            <td>
+                                @k.DepartmentName
+                                <div class="asset-muted small">@(k.IsProperty ? "in stock, can be requested" : "its own, not requested")</div>
+                            </td>
                             <td class="text-end"><strong>@k.Quantity</strong> @SupplyText.Unit(k.Quantity, Model.Unit)</td>
                         </tr>
                     }

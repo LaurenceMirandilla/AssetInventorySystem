@@ -9,9 +9,10 @@
     // What this page shows, for the live updates (_Layout, site.js).
     ViewData["LiveScope"] = "assetrequest:" + Model.RequestID;
 
+    // Borrow and transfer requests are decided by the Property
+    // Department's Asset Officers (Administrators as a backup).
     var isApprover = User.IsInRole(RoleNames.AssetOfficer)
-        || User.IsInRole(RoleNames.Administrator)
-        || User.IsInRole(RoleNames.Principal);
+        || User.IsInRole(RoleNames.Administrator);
 
     // Handing over and recording returns is narrower than approving:
     // Officers and Administrators only. The controller and service check it
@@ -57,11 +58,12 @@
         RequestStatus.InTransit => isBorrow
             ? $"Approved · {Model.UnitsOut} unit{(Model.UnitsOut == 1 ? "" : "s")} waiting to be collected at {Model.PickupLocationName ?? "the pickup point"}"
             : $"Approved · {Model.UnitsOut} unit{(Model.UnitsOut == 1 ? "" : "s")} on the way to {Model.RequestedLocationName}",
+        RequestStatus.Assigned when isPermanent => $"Delivered to {Model.RequestedLocationName} · waiting for {Model.RequestedByUser.FullName} to confirm receipt",
         RequestStatus.Assigned => overdue
             ? $"Overdue · {Model.UnitsOut} unit{(Model.UnitsOut == 1 ? "" : "s")} still out, due back {Model.ReturnBy:MMM d}"
             : $"{(isBorrow ? "With the requester" : "Delivered")} · due back {Model.ReturnBy:MMM d}",
         RequestStatus.Returned => "Everything has come back",
-        RequestStatus.Fulfilled when isPermanent => $"Delivered to {Model.RequestedLocationName} for good",
+        RequestStatus.Fulfilled when isPermanent => $"Delivered to {Model.RequestedLocationName} for good · now {Model.DepartmentName}'s",
         RequestStatus.Rejected => "Rejected",
         RequestStatus.Cancelled => "Cancelled",
         _ => DisplayText.Humanize(Model.RequestStatus.ToString())
@@ -96,6 +98,10 @@
                     ? $"{(handedOver ? "Handed over" : "Returned")} {row.TargetAssetCode ?? "a unit"}"
                     : $"Updated {row.TargetAssetCode ?? "a unit"}";
             case "AssetRequest Updated":
+                if (raw.Contains("AcknowledgedAt"))
+                    return !isBorrow && r.ReturnBy is null
+                        ? $"Confirmed receiving the items — now {r.DepartmentName}'s"
+                        : "Confirmed receiving the items";
                 var s = Regex.Match(raw, @"RequestStatus: '\w*' -> '(\w+)'");
                 if (!s.Success) return "Updated the request";
                 return s.Groups[1].Value switch
@@ -159,8 +165,48 @@
         <div><dt>Decided by</dt><dd class="@(Model.ApprovedByUser is null ? "is-empty" : "")">@(Model.ApprovedByUser?.FullName ?? "Not yet")</dd></div>
         <div><dt>Decided on</dt><dd class="@(Model.ApprovalDate is null ? "is-empty" : "")">@(Model.ApprovalDate?.ToString("MMM d, yyyy · h:mm tt") ?? "Not yet")</dd></div>
         <div><dt>@(isBorrow ? "Collected on" : "Delivered on")</dt><dd class="@(Model.AssignedDate is null ? "is-empty" : "")">@(Model.AssignedDate?.ToString("MMM d, yyyy · h:mm tt") ?? "Not yet")</dd></div>
-        <div><dt>Returned on</dt><dd class="@(Model.ReturnedDate is null ? "is-empty" : "")">@(Model.ReturnedDate?.ToString("MMM d, yyyy · h:mm tt") ?? "Not yet")</dd></div>
+        @if (isPermanent)
+        {
+            @* Never comes back: what is left is the requester's confirmation. *@
+            <div><dt>Received on</dt><dd class="@(Model.AcknowledgedAt is null ? "is-empty" : "")">@(Model.AcknowledgedAt?.ToString("MMM d, yyyy · h:mm tt") ?? "Not confirmed yet")</dd></div>
+        }
+        else
+        {
+            <div><dt>Returned on</dt><dd class="@(Model.ReturnedDate is null ? "is-empty" : "")">@(Model.ReturnedDate?.ToString("MMM d, yyyy · h:mm tt") ?? "Not yet")</dd></div>
+        }
     </dl>
+    @* Receipt: the requester confirms they have the items. On a permanent
+       Transfer that is what makes them the department's. *@
+    @if (Model.AcknowledgedAt is not null)
+    {
+        <div class="rq-remarks">
+            <span>Receipt confirmed</span>
+            @Model.RequestedByUser.FullName confirmed receiving the items on @Model.AcknowledgedAt.Value.ToString("MMM d, yyyy · h:mm tt").
+        </div>
+    }
+    else if (Model.AwaitsAcknowledgment && isMine)
+    {
+        <form asp-action="Acknowledge" asp-route-id="@Model.RequestID" method="post" class="sab-callout sab-callout-warn rq-ack"
+              onsubmit="return confirm('Confirm you received every item on this request?');">
+            @Html.AntiForgeryToken()
+            @Html.FormTicket()
+            <input type="hidden" name="rowVersionBase64" value="@Convert.ToBase64String(Model.RowVersion)" />
+            <div>
+                <span class="sab-callout-label">Did you get @(Model.UnitsOut == 1 ? "it" : "them")?</span>
+                @(isPermanent
+                    ? $"Confirm you received the items. They then become {Model.DepartmentName}'s, and your department answers for them."
+                    : "Confirm you received the items. You answer for them until they are returned.")
+            </div>
+            <button type="submit" class="btn btn-primary">Confirm receipt</button>
+        </form>
+    }
+    else if (Model.AwaitsAcknowledgment)
+    {
+        <div class="rq-remarks">
+            <span>Receipt</span>
+            Not confirmed by @Model.RequestedByUser.FullName yet.@(isPermanent ? $" The items become {Model.DepartmentName}'s once they confirm." : "")
+        </div>
+    }
     @if (!string.IsNullOrWhiteSpace(Model.Remarks))
     {
         <div class="rq-remarks @(isRejected || isCancelled ? "is-red" : "")">

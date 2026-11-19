@@ -37,6 +37,12 @@ namespace SchoolInventoryManagement.BLL.Mappings
                     : $"{asset.AssignedUser.FirstName} {asset.AssignedUser.LastName}",
                 DepartmentID = asset.DepartmentID,
                 DepartmentName = asset.Department?.DepartmentName,
+                NewItemRequestID = asset.NewItemRequestID,
+                RedTagReason = asset.RedTagReason,
+                RedTaggedAt = asset.RedTaggedAt,
+                RedTaggedByName = asset.RedTaggedByUser is null
+                    ? null
+                    : $"{asset.RedTaggedByUser.FirstName} {asset.RedTaggedByUser.LastName}",
                 BranchID = asset.BranchID,
                 BranchName = asset.Branch.BranchName,
                 ActiveAssignmentID = asset.AssetAssignments

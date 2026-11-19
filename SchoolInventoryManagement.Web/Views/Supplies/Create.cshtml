@@ -8,6 +8,7 @@
     var locations = ViewBag.Locations as List<SupplyLocationOption> ?? new();
     var units = ViewBag.Units as List<string> ?? new();
     var commonUnits = new[] { "piece", "box", "ream", "bottle", "pack", "roll", "set", "gallon" };
+    var departments = ViewBag.Departments as List<SupplyDepartmentOption> ?? new();
 }
 
 <form asp-action="Create" method="post" class="register-form page-fill" id="supplyForm">
@@ -108,7 +109,7 @@
                                     <optgroup label="@g.Key">
                                         @foreach (var l in g)
                                         {
-                                            <option value="@l.Id">@l.Name</option>
+                                            <option value="@l.Id" data-branch="@l.BranchId">@l.Name</option>
                                         }
                                     </optgroup>
                                 }
@@ -121,6 +122,22 @@
                             <input asp-for="LowStockLevel" class="form-control" id="supplyLow" type="number" min="0" step="1" inputmode="numeric" />
                             <div class="form-text">At or below this it reads "Running low". 0 turns the warning off.</div>
                             <span asp-validation-for="LowStockLevel" class="text-danger small"></span>
+                        </div>
+                        <div class="col-md-8">
+                            <label asp-for="DepartmentID" class="form-label">Belongs to</label>
+                            <select asp-for="DepartmentID" class="form-select" id="supplyDepartment">
+                                <option value="">Property Department (in stock, can be requested)</option>
+                                @foreach (var g in departments.GroupBy(d => d.BranchName))
+                                {
+                                    <optgroup label="@g.Key">
+                                        @foreach (var d in g)
+                                        {
+                                            <option value="@d.Id" data-branch="@d.BranchId">@d.Name (its own, not requested)</option>
+                                        }
+                                    </optgroup>
+                                }
+                            </select>
+                            <div class="form-text">Supplies are requested from the Property Department. Pick another department only for stock it keeps for itself, in a room of its branch.</div>
                         </div>
                     </div>
                 </div>
@@ -161,6 +178,22 @@
             var el = function (id) { return document.getElementById(id); };
             var name = el('supplyName'), unit = el('supplyUnit'), qty = el('supplyQty'),
                 low = el('supplyLow'), price = el('supplyPrice'), where = el('supplyLocation');
+
+            // Belongs to: only departments of the room's branch.
+            var dept = el('supplyDepartment');
+            function followRoom() {
+                var opt = where.options[where.selectedIndex];
+                var branch = opt ? opt.getAttribute('data-branch') : null;
+                Array.from(dept.querySelectorAll('option[data-branch]')).forEach(function (o) {
+                    o.hidden = o.disabled = !branch || o.getAttribute('data-branch') !== branch;
+                });
+                Array.from(dept.querySelectorAll('optgroup')).forEach(function (g) {
+                    g.hidden = !Array.from(g.children).some(function (o) { return !o.hidden; });
+                });
+                if (dept.selectedOptions[0] && dept.selectedOptions[0].disabled) dept.value = '';
+            }
+            where.addEventListener('change', followRoom);
+            followRoom();
             // Same rule as SupplyText.Unit: 1 box, 6 boxes, 42 reams.
             function plural(u, q) {
                 if (q === 1) return u;

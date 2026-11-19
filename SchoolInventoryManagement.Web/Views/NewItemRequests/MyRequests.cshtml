@@ -9,11 +9,12 @@
     // What this page shows, for the live updates (_Layout, site.js).
     ViewData["LiveScope"] = "mine";
 
-    var open = NewItemProgress.Active;
+    // In progress includes delivered assets still waiting for you to
+    // confirm receipt.
     var groups = new[]
     {
-        (Key: "transit", Label: "In progress", Items: Model.Where(r => open.Contains(r.RequestStatus)).ToList()),
-        (Key: "use", Label: "Done", Items: Model.Where(r => !open.Contains(r.RequestStatus)).ToList())
+        (Key: "transit", Label: "In progress", Items: Model.Where(NewItemProgress.IsActive).ToList()),
+        (Key: "use", Label: "Done", Items: Model.Where(r => !NewItemProgress.IsActive(r)).ToList())
     };
     var ordered = groups.SelectMany(g => g.Items).ToList();
 
@@ -21,16 +22,6 @@
     // are told who in their department to ask.
     var canRequest = ViewBag.CanRequest is true;
     var askThese = ViewBag.DepartmentRequesters as List<string> ?? new List<string>();
-    var stageCount = NewItemProgress.StageCount;
-
-    // The four stages, and the step status that completes each one.
-    var stages = new[]
-    {
-        (Label: "Principal", DoneBy: NewItemStatus.Procuring),
-        (Label: "Procurement", DoneBy: NewItemStatus.AwaitingArrival),
-        (Label: "Arrival", DoneBy: NewItemStatus.Arrived),
-        (Label: "Delivery", DoneBy: NewItemStatus.Delivered)
-    };
 }
 
 @functions {
@@ -40,7 +31,8 @@
         return initials.Length > 2 ? initials[..2] : initials;
     }
 
-    // How many of the four stages are behind it.
+    // How many of its stages are behind it (assets have a fifth,
+    // Received).
     static int StagesDone(NewItemRequestResponseDTO r) => NewItemProgress.StagesDone(r);
 
     static bool IsStopped(NewItemRequestResponseDTO r) =>
@@ -152,6 +144,7 @@ else
                     {
                         var done = StagesDone(r);
                         var stopped = IsStopped(r);
+                        var stageCount = NewItemProgress.StageCountFor(r);
                         <button type="button" class="myassets-item @(stopped ? "item-late" : g.Key == "transit" ? "item-transit" : "")"
                                 data-entry="n-@r.NewItemRequestID" data-stage="@((r.RequestStatus == NewItemStatus.AwaitingDeptHead ? NewItemStatus.AwaitingBudget : r.RequestStatus).ToString().ToLowerInvariant())"
                                 data-search="@($"#{r.NewItemRequestID} {r.NewItemRequestID} {string.Join(' ', r.Items.Select(i => i.ItemName))} {r.Reason} {DisplayText.Stage(r.RequestStatus)}".ToLowerInvariant())">
@@ -167,11 +160,11 @@ else
                                 <span class="nir-progress @(stopped ? "is-stopped" : "")" aria-hidden="true">
                                     @for (var i = 0; i < stageCount; i++)
                                     {
-                                        <span class="@(i < done ? "on" : i == done && (open.Contains(r.RequestStatus) || stopped) ? "now" : "")"></span>
+                                        <span class="@(i < done ? "on" : i == done && (NewItemProgress.IsActive(r) || stopped) ? "now" : "")"></span>
                                     }
                                 </span>
                             </span>
-                            <span class="myassets-item-due">@DisplayText.Stage(r.RequestStatus)</span>
+                            <span class="myassets-item-due">@(r.AwaitsAcknowledgment ? "To confirm" : DisplayText.Stage(r.RequestStatus))</span>
                         </button>
                     }
                 </div>
@@ -187,36 +180,11 @@ else
         <section class="myassets-detail">
             @foreach (var r in ordered)
             {
-                var done = StagesDone(r);
                 var stopped = IsStopped(r);
                 var lastStep = r.Steps.LastOrDefault();
-                var steps = new List<RequestStep>();
-                for (var i = 0; i < stages.Length; i++)
-                {
-                    var doneStep = r.Steps.LastOrDefault(s => s.Status == stages[i].DoneBy);
-                    if (i < done)
-                    {
-                        steps.Add(new RequestStep(stages[i].Label, doneStep?.ActedAt.ToString("MMM d"), RequestStepState.Done));
-                    }
-                    else if (i == done && stopped)
-                    {
-                        steps.Add(new RequestStep(r.RequestStatus == NewItemStatus.Rejected ? "Rejected" : "Cancelled",
-                            lastStep?.ActedAt.ToString("MMM d"), RequestStepState.Stopped));
-                    }
-                    else if (i == done && NewItemProgress.DeliveryProblem(r) is not null)
-                    {
-                        steps.Add(new RequestStep(stages[i].Label, "not delivered yet", RequestStepState.Late));
-                    }
-                    else if (i == done)
-                    {
-                        steps.Add(new RequestStep(stages[i].Label, "now", RequestStepState.Current));
-                    }
-                    else
-                    {
-                        steps.Add(new RequestStep(stages[i].Label, null, RequestStepState.Todo));
-                    }
-                }
-                var pillCss = stopped ? "st-overdue" : r.RequestStatus == NewItemStatus.Delivered ? "st-available" : "st-intransit";
+                // The stages, Received included for assets.
+                var steps = NewItemProgress.Steps(r, "now");
+                var pillCss = stopped ? "st-overdue" : r.RequestStatus == NewItemStatus.Delivered && !r.AwaitsAcknowledgment ? "st-available" : "st-intransit";
 
                 <article class="myassets-panel" data-panel="n-@r.NewItemRequestID" hidden>
                     <button type="button" class="myassets-back" data-back>&larr; All my requests</button>
@@ -242,6 +210,27 @@ else
                         <div><span>Needed by</span><strong>@DisplayText.Or(r.NeededBy?.ToString("MMM d, yyyy"), "No date given")</strong></div>
                         <div><span>Last action</span><strong>@((lastStep?.ActedAt ?? r.RequestDate).ToString("MMM d"))</strong></div>
                     </div>
+
+                    @if (r.AwaitsAcknowledgment)
+                    {
+                        <form asp-action="Acknowledge" asp-route-id="@r.NewItemRequestID" asp-route-returnTo="mine" method="post" class="req-action mt-3"
+                              onsubmit="return confirm('Confirm you received every item on request #@r.NewItemRequestID?');">
+                            @Html.AntiForgeryToken()
+                            @Html.FormTicket()
+                            <input type="hidden" name="rowVersionBase64" value="@RowVersionHelper.ToBase64(r.RowVersion)" />
+                            <div>
+                                <div class="req-action-title">Did you get @(r.RegisteredUnits.Count == 1 ? "it" : "them")?</div>
+                                <div class="req-action-note">Confirm you received the items. They then become @(r.DepartmentName)'s.</div>
+                            </div>
+                            <div class="req-action-buttons">
+                                <button type="submit" class="btn btn-primary">Confirm receipt</button>
+                            </div>
+                        </form>
+                    }
+                    else if (r.AcknowledgedAt is not null)
+                    {
+                        <div class="req-note"><strong>Received:</strong> you confirmed it on @r.AcknowledgedAt.Value.ToString("MMM d, yyyy"). The items are @(r.DepartmentName)'s.</div>
+                    }
 
                     <h4 class="md-section-title">What you asked for</h4>
                     <partial name="_NewItemTicketItems" model="r" />

@@ -121,15 +121,10 @@ namespace SchoolInventoryManagement.BLL.Services
             if (dto.Items.Any(i => !modelNames.ContainsKey(i.ModelID)))
                 throw new KeyNotFoundException("Model not found.");
 
-            // Teachers and Staff are not shown stock levels and may ask for
-            // anything, even when none is free; the approver sees what is
-            // available and approves, waits or rejects. Everyone else is
-            // shown the counts, and this is the check a hand-built post
-            // cannot skip.
-            var roleName = requestingUser.Role.RoleName;
-            var checkStock = roleName != RoleNames.Teacher && roleName != RoleNames.Staff;
-
-            if (checkStock)
+            // Everyone borrows from the Property Department's stock, and
+            // nothing can be asked for when none is in stock: it has to be
+            // bought instead (a new-item request). The form shows the
+            // counts; this is the check a hand-built post cannot skip.
             {
                 // Pending requests do not hold units -- approval reserves
                 // them -- so the Available count is the whole story. A
@@ -161,7 +156,8 @@ namespace SchoolInventoryManagement.BLL.Services
                     {
                         if (available == 0)
                             throw new InvalidOperationException(
-                                $"No units of {modelName} are available right now, so it cannot be requested.");
+                                $"None of {modelName} are in stock right now, so it cannot be borrowed. " +
+                                "Request a purchase instead (New-Item Requests).");
                         if (item.Quantity > available)
                             throw new InvalidOperationException(
                                 $"You asked for {item.Quantity} of {modelName}, but only {available} " +
@@ -209,7 +205,8 @@ namespace SchoolInventoryManagement.BLL.Services
                 requestingUser.RoleID,
                 $"New {request.RequestType} request from {requestingUser.FirstName} " +
                 $"{requestingUser.LastName} ({totalUnits} item{(totalUnits == 1 ? "" : "s")}) is awaiting approval.",
-                $"/AssetRequests/Details/{request.RequestID}");
+                $"/AssetRequests/Details/{request.RequestID}",
+                roles: PermissionHelper.AssetRequestApproverRoles);
 
             await _context.SaveChangesAsync();
 
@@ -235,7 +232,7 @@ namespace SchoolInventoryManagement.BLL.Services
 
         public async Task<List<AssetRequestResponseDTO>> GetPendingRequestsAsync(int actingUserId)
         {
-            var approver = await PermissionHelper.EnsureIsApproverAsync(_context, actingUserId);
+            var approver = await PermissionHelper.EnsureCanApproveAssetRequestsAsync(_context, actingUserId);
 
             // Only what this person may decide: nobody decides a request from
             // someone with their own role, themselves included (the same rule
@@ -258,7 +255,7 @@ namespace SchoolInventoryManagement.BLL.Services
         // order as the pending list.
         public async Task<List<AssetRequestResponseDTO>> GetInProgressRequestsAsync(int actingUserId)
         {
-            await PermissionHelper.EnsureIsApproverAsync(_context, actingUserId);
+            await PermissionHelper.EnsureCanApproveAssetRequestsAsync(_context, actingUserId);
 
             var requests = await RequestQueryWithIncludes()
                 .Where(r => r.RequestStatus == RequestStatus.InTransit
@@ -415,7 +412,7 @@ namespace SchoolInventoryManagement.BLL.Services
         private async Task<(AssetRequest request, User approver)> ValidateApproverActionAsync(
             int requestId, byte[] rowVersion, int actingUserId)
         {
-            var approver = await PermissionHelper.EnsureIsApproverAsync(_context, actingUserId);
+            var approver = await PermissionHelper.EnsureCanApproveAssetRequestsAsync(_context, actingUserId);
 
             var request = await _context.AssetRequests
                 .Include(r => r.RequestedByUser)

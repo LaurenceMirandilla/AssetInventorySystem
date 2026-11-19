@@ -4,9 +4,14 @@
     var open = await SupplyRequests.CountOpenAsync();
 }
 @* Approvals: asset requests (borrow and transfer) or supply requests. *@
+@* Borrow and transfer requests are the Property Department's: the
+   Principal only approves supplies here. *@
 <nav class="sab-seg mb-3" aria-label="Kind of request">
-    <a asp-controller="AssetRequests" asp-action="Pending" class="@(Model == "Assets" ? "active" : "")"
-       aria-current="@(Model == "Assets" ? "page" : null)">Borrow and transfer</a>
+    @if (User.IsInRole("Asset Officer") || User.IsInRole("Administrator"))
+    {
+        <a asp-controller="AssetRequests" asp-action="Pending" class="@(Model == "Assets" ? "active" : "")"
+           aria-current="@(Model == "Assets" ? "page" : null)">Borrow and transfer</a>
+    }
     <a asp-controller="SupplyRequests" asp-action="Pending" class="@(Model == "Supplies" ? "active" : "")"
        aria-current="@(Model == "Supplies" ? "page" : null)">Supplies@(open > 0 ? " · " + open : "")</a>
 </nav>

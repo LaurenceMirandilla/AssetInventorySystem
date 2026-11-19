@@ -5,6 +5,8 @@
     ViewData["Title"] = "New Request";
     var choices = ViewBag.Choices as List<SupplyRequestChoiceDTO> ?? new();
     var branchName = ViewBag.BranchName as string ?? "your branch";
+    // Where it comes from: the branch's Property Department and its rooms.
+    var source = ViewBag.Source as SupplySourceDTO;
     var deliveryLocations = ViewBag.DeliveryLocations as List<SupplyRoomDTO> ?? new();
     var minDate = PhilippineTime.Today.ToString("yyyy-MM-dd");
 }
@@ -61,13 +63,29 @@
 
             @if (!choices.Any())
             {
-                <div class="alert alert-warning">No supplies are kept at @branchName yet.</div>
+                <div class="alert alert-warning">The Property Department has no supplies at @branchName yet.</div>
             }
+
+            @* Supplies come from the Property Department, like borrowed
+               assets: only its stock can be requested. *@
+            <div class="asset-card register-step mb-3">
+                <div class="register-step-head"><div class="register-step-title flex-grow-1">Comes from</div></div>
+                <div class="register-step-body">
+                    <div class="fw-semibold">@(source?.DepartmentName ?? "Property Department") · @branchName</div>
+                    <p class="asset-muted small mb-0" style="white-space:normal;">
+                        @if (source is not null && source.Rooms.Any())
+                        {
+                            <text>Kept in @string.Join(", ", source.Rooms). </text>
+                        }
+                        Only its stock can be requested.
+                    </p>
+                </div>
+            </div>
 
             <div class="asset-card register-step mb-3">
                 <div class="register-step-head">
                     <div class="register-step-title flex-grow-1">What do you need?</div>
-                    <span class="nr-head-note" id="itemsNote">supplies kept at @branchName</span>
+                    <span class="nr-head-note" id="itemsNote">from the Property Department at @branchName</span>
                 </div>
                 <div class="register-step-body pb-0">
                     <div id="itemRows">
@@ -100,7 +118,7 @@
                                            class="form-control" data-field="Quantity" aria-label="How many" />
                                 </div>
                                 <div class="col-6 col-md-4">
-                                    <div class="form-label small asset-muted mb-1">In stock at your branch</div>
+                                    <div class="form-label small asset-muted mb-1">In stock at Property</div>
                                     <div data-stock-out>&mdash;</div>
                                     <div class="asset-muted small" data-stock-note></div>
                                 </div>
@@ -160,7 +178,7 @@
                     <div><dt>Type</dt><dd>Supplies</dd></div>
                     <div><dt>Items</dt><dd id="sumItems" class="is-empty">None yet</dd></div>
                     <div><dt>Needed by</dt><dd id="sumNeeded" class="is-empty">Not chosen yet</dd></div>
-                    <div><dt>Taken from</dt><dd>@branchName</dd></div>
+                    <div><dt>Taken from</dt><dd>@(source?.DepartmentName ?? "Property Department") · @branchName</dd></div>
                     <div class="nr-summary-wide"><dt>Deliver to</dt><dd id="sumWhere" class="is-empty">Not chosen yet</dd></div>
                 </dl>
                 <ul class="nr-summary-list" id="sumList" hidden></ul>
@@ -226,7 +244,7 @@
                     note.textContent = parts.join(' ');
                 });
                 var note = document.getElementById('itemsNote');
-                if (note) note.textContent = picked ? picked + ' item' + (picked === 1 ? '' : 's') + ' \u00B7 kept at ' + branch : 'supplies kept at ' + branch;
+                if (note) note.textContent = picked ? picked + ' item' + (picked === 1 ? '' : 's') + ' \u00B7 from the Property Department at ' + branch : 'from the Property Department at ' + branch;
                 summary();
             }
 

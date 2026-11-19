@@ -142,8 +142,8 @@ html, body {
 .st-available, .st-assigned, .status-active, .status-approved, .status-fulfilled, .status-assigned,
 .cond-new, .cond-excellent, .cond-good, .rq-badge.is-green, .rq-kind.is-created, .md-tag:not(.is-transfer):not(.is-newitem),
 .md-age.is-soon, .nr-badge { background: var(--tag-green) !important; }
-/* red */
-.st-overdue, .status-rejected, .status-overdue, .cond-damaged, .rq-badge.is-red, .rq-kind.is-deleted,
+/* red (.st-redtagged: red tagged for disposal) */
+.st-redtagged, .st-overdue, .status-rejected, .status-overdue, .cond-damaged, .rq-badge.is-red, .rq-kind.is-deleted,
 .md-age.is-late, .md-wait:not(.is-calm) { background: var(--tag-red) !important; }
 /* grey */
 .st-disposed, .status-pending, .status-cancelled, .cond-fair, .rq-badge.is-gray, .rq-kind.is-updated,

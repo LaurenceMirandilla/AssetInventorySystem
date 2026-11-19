@@ -7,8 +7,8 @@ using SchoolInventoryManagement.Web.ViewModels;
 
 namespace SchoolInventoryManagement.Web.Helpers
 {
-    // A new-item request's place in its four stages (Principal,
-    // Procurement, Arrival, Delivery), for the request lists
+    // A new-item request's place in its stages (Principal, Procurement,
+    // Arrival, Delivery, and for assets Received), for the request lists
     // (All New-Item Requests, New-Item Approvals): the progress strip, the
     // short stage label, and who it waits on.
     public static class NewItemProgress
@@ -52,7 +52,30 @@ namespace SchoolInventoryManagement.Web.Helpers
 
         public const int StageCount = 4;
 
-        // How many of the four stages are behind it.
+        // Assets have a fifth stage: the requester confirms receipt, and
+        // the units become their department's. Not on requests delivered
+        // before units were registered against them (nothing to confirm).
+        // Needs RegisteredUnits filled (NewItemRequestService does).
+        public static bool HasReceipt(NewItemRequestResponseDTO r) =>
+            r.ItemKind == CategoryKind.Asset
+            && !(r.RequestStatus == NewItemStatus.Delivered && r.RegisteredUnits.Count == 0 && r.AcknowledgedAt is null);
+
+        public static int StageCountFor(NewItemRequestResponseDTO r) => StageCount + (HasReceipt(r) ? 1 : 0);
+
+        // Still going: an open stage, or delivered and waiting for the
+        // requester to confirm receipt.
+        public static bool IsActive(NewItemRequestResponseDTO r) =>
+            Active.Contains(r.RequestStatus) || r.AwaitsAcknowledgment;
+
+        // Who it waits on, the receipt included.
+        public static string WaitingOn(NewItemRequestResponseDTO r) =>
+            r.AwaitsAcknowledgment ? $"{r.RequestedByUserName} to confirm receipt" : WaitingOn(r.RequestStatus);
+
+        // The list pill, the receipt included.
+        public static string Short(NewItemRequestResponseDTO r) =>
+            r.AwaitsAcknowledgment ? "To confirm" : Short(r.RequestStatus);
+
+        // How many of its stages are behind it.
         public static int StagesDone(NewItemRequestResponseDTO r) => r.RequestStatus switch
         {
             NewItemStatus.AwaitingDeptHead => 0,
@@ -60,7 +83,7 @@ namespace SchoolInventoryManagement.Web.Helpers
             NewItemStatus.Procuring => 1,
             NewItemStatus.AwaitingArrival => 2,
             NewItemStatus.Arrived => 3,
-            NewItemStatus.Delivered => StageCount,
+            NewItemStatus.Delivered => StageCount + (HasReceipt(r) && r.AcknowledgedAt is not null ? 1 : 0),
             // Rejected or cancelled: as far as its steps got before that.
             _ => r.Steps.Select(s => s.Status).Distinct().Count(s =>
                     s is NewItemStatus.Procuring or NewItemStatus.AwaitingArrival
@@ -162,6 +185,14 @@ namespace SchoolInventoryManagement.Web.Helpers
                 else
                     steps.Add(new RequestStep(Stages[i].Label, null, RequestStepState.Todo));
             }
+
+            // Assets: Received, once the requester confirms.
+            if (HasReceipt(r))
+                steps.Add(r.AcknowledgedAt is not null
+                    ? new RequestStep("Received", r.AcknowledgedAt.Value.ToString("MMM d"), RequestStepState.Done)
+                    : r.AwaitsAcknowledgment
+                        ? new RequestStep("Received", "requester confirms", RequestStepState.Current)
+                        : new RequestStep("Received", null, RequestStepState.Todo));
             return steps;
         }
 

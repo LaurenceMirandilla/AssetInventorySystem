@@ -19,15 +19,18 @@ namespace SchoolInventoryManagement.Web.Controllers
         private readonly IReportService _reportService;
         private readonly IAssetRequestService _requestService;
         private readonly IAssetAssignmentService _assignmentService;
+        private readonly ILiveStatusService _live;
 
         public HomeController(
             IReportService reportService,
             IAssetRequestService requestService,
-            IAssetAssignmentService assignmentService)
+            IAssetAssignmentService assignmentService,
+            ILiveStatusService live)
         {
             _reportService = reportService;
             _requestService = requestService;
             _assignmentService = assignmentService;
+            _live = live;
         }
 
         private int CurrentUserId =>
@@ -58,8 +61,11 @@ namespace SchoolInventoryManagement.Web.Controllers
                 model.ValueInService = summary.TotalValue;
                 model.ByCategory = summary.ByCategory;
 
-                var pending = await _requestService.GetPendingRequestsAsync(CurrentUserId);
-                model.PendingRequestCount = pending.Count;
+                // What this person can decide: the same number as the
+                // Approvals badge (borrow and transfer only for Property).
+                model.PendingRequestCount = await _live.CountApprovalsAsync(CurrentUserId);
+                model.PendingRequestsController = User.IsInRole(RoleNames.AssetOfficer) || User.IsInRole(RoleNames.Administrator)
+                    ? "AssetRequests" : "SupplyRequests";
 
                 var recent = await _reportService.GetAuditTrailAsync(
                     fromDate: null, toDate: null, userId: null, actionContains: null,

@@ -30,11 +30,15 @@ namespace SchoolInventoryManagement.BLL.Interfaces
 
         // InTransit -> Assigned for every unit on the ticket. Borrow: the
         // requester collected them. Transfer: they arrived at the
-        // destination. A permanent Transfer (no ReturnBy) goes straight to
-        // Fulfilled instead: its units are left Available at the
-        // destination and no longer held by the requester. Asset Officers
-        // and Administrators only.
+        // destination. Asset Officers and Administrators only.
         Task MarkAssignedAsync(int requestId, byte[] requestRowVersion, int actingUserId);
+
+        // The requester confirms they received the units (handed over, not
+        // yet confirmed). Recorded on every request. A permanent Transfer
+        // then becomes Fulfilled: its units are their department's, no
+        // longer held by the requester and not borrowable. Only the
+        // requester.
+        Task AcknowledgeReceiptAsync(int requestId, byte[] requestRowVersion, int actingUserId);
 
         // Assigned -> Overdue for every unit past its request's ReturnBy,
         // with alerts to the holder, Asset Officers and Administrators.

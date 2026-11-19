@@ -29,6 +29,7 @@ namespace SchoolInventoryManagement.BLL.Services
                 .Include(a => a.CurrentLocation)
                 .Include(a => a.Department)
                 .Include(a => a.AssignedUser)
+                .Include(a => a.RedTaggedByUser)
                 .Include(a => a.Branch)
                 .Include(a => a.AssetAssignments); // needed for ActiveAssignmentID
         }
@@ -109,6 +110,8 @@ namespace SchoolInventoryManagement.BLL.Services
 
             await EnsureLocationInBranchAsync(dto.BranchID, dto.CurrentLocationID);
             await EnsureDepartmentInBranchAsync(dto.BranchID, dto.DepartmentID);
+            // Property Department: in stock. Any other: issued to it.
+            var issued = !await PropertyStock.IsPropertyAsync(_context, dto.DepartmentID);
 
             EnsureUploadedFile(dto.ImageURL, PhotoFolder, current: null);
             EnsureUploadedFile(dto.WarrantyFileURL, WarrantyFolder, current: null);
@@ -137,7 +140,7 @@ namespace SchoolInventoryManagement.BLL.Services
                 ImageURL = dto.ImageURL,
                 BarcodeData = barcode,
                 Condition = dto.Condition,
-                Status = AssetStatus.Available,
+                Status = issued ? AssetStatus.Assigned : AssetStatus.Available,
                 CurrentLocationID = dto.CurrentLocationID,
                 BranchID = dto.BranchID,
                 DepartmentID = dto.DepartmentID
@@ -169,7 +172,49 @@ namespace SchoolInventoryManagement.BLL.Services
                 throw new KeyNotFoundException("Branch not found.");
 
             await EnsureLocationInBranchAsync(dto.BranchID, dto.CurrentLocationID);
-            await EnsureDepartmentInBranchAsync(dto.BranchID, dto.DepartmentID);
+
+            // Bought for a new-item request: held by Property for it.
+            // Otherwise the department decides: Property = in stock,
+            // any other = issued to it.
+            var status = AssetStatus.Available;
+            var departmentId = dto.DepartmentID;
+            if (dto.NewItemRequestID is int ticketId)
+            {
+                var ticket = await _context.NewItemRequests
+                    .Where(n => n.NewItemRequestID == ticketId)
+                    .Select(n => new
+                    {
+                        n.RequestStatus,
+                        n.ItemKind,
+                        n.Department.BranchID,
+                        n.Department.Branch.BranchName,
+                        Ordered = n.Items.Sum(i => (int?)i.Quantity) ?? 0,
+                        Registered = n.RegisteredAssets.Count()
+                    })
+                    .FirstOrDefaultAsync();
+                if (ticket is null)
+                    throw new KeyNotFoundException("New-item request not found.");
+                if (ticket.ItemKind != CategoryKind.Asset)
+                    throw new InvalidOperationException("That request is for supplies; add them to supplies stock instead.");
+                if (ticket.RequestStatus != NewItemStatus.Arrived)
+                    throw new InvalidOperationException("Units are registered for a request once it has arrived and before it is delivered.");
+                if (dto.BranchID != ticket.BranchID)
+                    throw new ArgumentException(
+                        $"Register them in {ticket.BranchName}, the branch of the department that asked for them.");
+                if (ticket.Registered + dto.Quantity > ticket.Ordered)
+                    throw new InvalidOperationException(
+                        $"Request #{ticketId} is for {ticket.Ordered} unit{(ticket.Ordered == 1 ? "" : "s")} and {ticket.Registered} " +
+                        $"{(ticket.Registered == 1 ? "is" : "are")} already registered. Register at most {Math.Max(0, ticket.Ordered - ticket.Registered)}.");
+
+                departmentId = await PropertyStock.DepartmentIdAsync(_context, dto.BranchID);
+                status = AssetStatus.InTransit;
+            }
+            else
+            {
+                await EnsureDepartmentInBranchAsync(dto.BranchID, dto.DepartmentID);
+                if (!await PropertyStock.IsPropertyAsync(_context, dto.DepartmentID))
+                    status = AssetStatus.Assigned;
+            }
 
             EnsureUploadedFile(dto.WarrantyFileURL, WarrantyFolder, current: null);
 
@@ -254,10 +299,11 @@ namespace SchoolInventoryManagement.BLL.Services
                 WarrantyFileURL = dto.WarrantyFileURL,
                 BarcodeData = barcodeStart is null ? null : barcodeStart + u.Code,
                 Condition = dto.Condition,
-                Status = AssetStatus.Available,
+                Status = status,
                 CurrentLocationID = dto.CurrentLocationID,
                 BranchID = dto.BranchID,
-                DepartmentID = dto.DepartmentID
+                DepartmentID = departmentId,
+                NewItemRequestID = dto.NewItemRequestID
             }).ToList();
 
             _context.Assets.AddRange(assets);
@@ -404,9 +450,12 @@ namespace SchoolInventoryManagement.BLL.Services
                 throw new KeyNotFoundException("Asset not found.");
 
             // Out on a request -- reserved and waiting (InTransit) or with
-            // someone (Assigned, or Overdue once late). Editing it now would
-            // pull it out from under the request.
-            if (asset.Status == AssetStatus.Assigned || asset.Status == AssetStatus.InTransit ||
+            // someone (Assigned to a person, or Overdue once late). Editing it
+            // now would pull it out from under the request. An asset issued
+            // to a department (Assigned, nobody holding it) can be edited.
+            var withDepartment = asset.Status == AssetStatus.Assigned && asset.AssignedUserID == null
+                && !await _context.AssetAssignments.AnyAsync(a => a.AssetID == assetId && a.ReturnDate == null);
+            if ((asset.Status == AssetStatus.Assigned && !withDepartment) || asset.Status == AssetStatus.InTransit ||
                 asset.Status == AssetStatus.Overdue)
                 throw new InvalidOperationException(
                     "This asset is out on a request and cannot be edited until it's returned.");
@@ -415,6 +464,11 @@ namespace SchoolInventoryManagement.BLL.Services
             EnsureUploadedFile(dto.WarrantyFileURL, WarrantyFolder, current: asset.WarrantyFileURL);
 
             await EnsureDepartmentInBranchAsync(dto.BranchID, dto.DepartmentID);
+
+            // Red tagged: the Property Department's until it is disposed of
+            // or the tag is taken off.
+            if (asset.Status == AssetStatus.RedTagged && dto.DepartmentID != asset.DepartmentID)
+                throw new InvalidOperationException("This asset is red tagged. Remove the red tag before giving it to a department.");
 
             if (dto.AcquisitionCost < 0)
                 throw new ArgumentException("The cost cannot be negative.");
@@ -432,6 +486,14 @@ namespace SchoolInventoryManagement.BLL.Services
             asset.BranchID = dto.BranchID;
             asset.DepartmentID = dto.DepartmentID;
             asset.AcquisitionCost = dto.AcquisitionCost;
+
+            // In stock or issued: the department decides. The Property
+            // Department means in stock (can be borrowed); any other means
+            // issued to it. Under maintenance or disposed stays as it is.
+            if (asset.Status == AssetStatus.Available || withDepartment)
+                asset.Status = await PropertyStock.IsPropertyAsync(_context, dto.DepartmentID)
+                    ? AssetStatus.Available
+                    : AssetStatus.Assigned;
 
             try
             {
@@ -497,6 +559,13 @@ namespace SchoolInventoryManagement.BLL.Services
                 throw new InvalidOperationException(
                     "This asset is out on a request. Return it, or cancel the request, before changing its status.");
 
+            // A red tag has its own steps: a reason to give, and taking it
+            // off puts the unit back in stock.
+            if (newStatus == AssetStatus.RedTagged)
+                throw new InvalidOperationException("Use Red tag on the asset's page; it asks for the reason.");
+            if (asset.Status == AssetStatus.RedTagged)
+                throw new InvalidOperationException("This asset is red tagged. Remove the red tag, or dispose of it.");
+
             // Overdue is worked out from the request's return time, and a
             // return clears it. Setting it by hand would skip the alerts.
             if (newStatus == AssetStatus.Overdue)
@@ -505,7 +574,10 @@ namespace SchoolInventoryManagement.BLL.Services
 
             _context.Entry(asset).Property(a => a.RowVersion).OriginalValue = rowVersion;
 
-            asset.Status = newStatus;
+            if (newStatus == AssetStatus.Available)
+                await PropertyStock.ReturnToStockAsync(_context, asset);
+            else
+                asset.Status = newStatus;
 
             try
             {
@@ -535,7 +607,8 @@ namespace SchoolInventoryManagement.BLL.Services
 
             _context.Entry(asset).Property(a => a.RowVersion).OriginalValue = rowVersion;
 
-            asset.Status = AssetStatus.Available;
+            // Fixed: back in the Property Department's stock.
+            await PropertyStock.ReturnToStockAsync(_context, asset);
             asset.Condition = ConditionStatus.Repaired;
 
             try

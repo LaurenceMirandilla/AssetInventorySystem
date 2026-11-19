@@ -56,6 +56,30 @@ namespace SchoolInventoryManagement.BLL.Services
             RoleNames.Principal
         };
 
+        // Borrow and transfer requests are the Property Department's: its
+        // Asset Officers decide them, with Administrators as a backup. The
+        // Principal decides supplies and purchases (ApproverRoles), not
+        // borrows.
+        public static readonly string[] AssetRequestApproverRoles =
+        {
+            RoleNames.AssetOfficer,
+            RoleNames.Administrator
+        };
+
+        public static async Task<User> EnsureCanApproveAssetRequestsAsync(ApplicationDbContext context, int userId)
+        {
+            var user = await GetUserOrThrowAsync(context, userId);
+            EnsureIsActive(user);
+
+            if (Array.IndexOf(AssetRequestApproverRoles, user.Role.RoleName) < 0)
+            {
+                throw new UnauthorizedAccessException(
+                    "Borrow and transfer requests are approved by the Property Department's Asset Officers.");
+            }
+
+            return user;
+        }
+
         public static async Task<User> EnsureIsApproverAsync(ApplicationDbContext context, int userId)
         {
             var user = await GetUserOrThrowAsync(context, userId);

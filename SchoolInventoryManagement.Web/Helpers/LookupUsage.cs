@@ -168,7 +168,9 @@ namespace SchoolInventoryManagement.Web.Helpers
         }
 
         // ---- Departments ------------------------------------------------
-        public record DepartmentUsage(int Users, int AssetsIssued, int OpenRequests, string? Head, string? Blocked);
+        // InStock: Available units filed under it -- what the Property
+        // Department has to lend (other departments have none).
+        public record DepartmentUsage(int Users, int AssetsIssued, int OpenRequests, string? Head, string? Blocked, int InStock = 0);
 
         public async Task<Dictionary<int, DepartmentUsage>> DepartmentsAsync()
         {
@@ -178,6 +180,8 @@ namespace SchoolInventoryManagement.Web.Helpers
                 .Select(u => new { u.DepartmentID, Name = u.FirstName + " " + u.LastName })
                 .ToListAsync();
             var assets = await _context.Assets.Where(a => a.DepartmentID != null && a.Status != AssetStatus.Disposed)
+                .GroupBy(a => a.DepartmentID!.Value).Select(g => new { Id = g.Key, N = g.Count() }).ToDictionaryAsync(x => x.Id, x => x.N);
+            var inStock = await _context.Assets.Where(a => a.DepartmentID != null && a.Status == AssetStatus.Available)
                 .GroupBy(a => a.DepartmentID!.Value).Select(g => new { Id = g.Key, N = g.Count() }).ToDictionaryAsync(x => x.Id, x => x.N);
             var open = await _context.AssetRequests.Where(r => OpenRequest.Contains(r.RequestStatus))
                 .GroupBy(r => r.DepartmentID).Select(g => new { Id = g.Key, N = g.Count() }).ToDictionaryAsync(x => x.Id, x => x.N);
@@ -195,7 +199,7 @@ namespace SchoolInventoryManagement.Web.Helpers
                     : everRequested.Contains(id) ? "Can't delete: requests are filed under it."
                     : owedBack.Contains(id) ? "Can't delete: loaned-out units go back to it." : null;
                 return new DepartmentUsage(u, assets.GetValueOrDefault(id), open.GetValueOrDefault(id),
-                    heads.FirstOrDefault(h => h.DepartmentID == id)?.Name, blocked);
+                    heads.FirstOrDefault(h => h.DepartmentID == id)?.Name, blocked, inStock.GetValueOrDefault(id));
             });
         }
     }

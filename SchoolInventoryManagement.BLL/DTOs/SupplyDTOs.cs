@@ -24,11 +24,15 @@ namespace SchoolInventoryManagement.BLL.DTOs
         public int LowStockLevel { get; set; }
         public string? Description { get; set; }
 
-        // Every room added together (or only the rooms the list was
-        // filtered to).
+        // In stock: the Property Department's rooms added together (or
+        // only the rooms the list was filtered to). This is what can be
+        // requested.
         public int TotalQuantity { get; set; }
 
-        // The rooms it is kept in, by name.
+        // Held by other departments: their own, not requestable.
+        public int DepartmentQuantity { get; set; }
+
+        // The Property Department's rooms it is kept in, by name.
         public List<string> LocationNames { get; set; } = new();
 
         // The smallest amount any one branch that keeps it has. The
@@ -55,7 +59,10 @@ namespace SchoolInventoryManagement.BLL.DTOs
         public int LowStockLevel { get; set; }
         public string? Description { get; set; }
 
+        // In stock: the Property Department's, which can be requested.
         public int TotalQuantity { get; set; }
+        // Held by other departments.
+        public int DepartmentQuantity { get; set; }
         public List<SupplyStockRowDTO> Stock { get; set; } = new();
 
         // The smallest amount any one branch that keeps it has. The
@@ -116,6 +123,8 @@ namespace SchoolInventoryManagement.BLL.DTOs
         public int BranchID { get; set; }
         public string BranchName { get; set; } = null!;
         public int Quantity { get; set; }
+        public string DepartmentName { get; set; } = null!;
+        public bool IsProperty { get; set; }
     }
 
     public class SupplyHistoryRowDTO
@@ -179,6 +188,12 @@ namespace SchoolInventoryManagement.BLL.DTOs
         [Display(Name = "Receipt or reference no.")]
         public string? Reference { get; set; }
 
+        // Whose stock it becomes. Empty: the Property Department of each
+        // room's branch, so it can be requested. A department: that
+        // department's own, in rooms of its branch, not requestable.
+        [Display(Name = "Belongs to")]
+        public int? DepartmentID { get; set; }
+
         public List<AddStockLineDTO> Lines { get; set; } = new();
     }
 
@@ -200,8 +215,9 @@ namespace SchoolInventoryManagement.BLL.DTOs
         public int SupplyID { get; set; }
         public string SupplyName { get; set; } = null!;
         public string Unit { get; set; } = null!;
+        // The Property Department's stock of it.
         public int TotalQuantity { get; set; }
-        // The first room it is already kept in, offered as the default.
+        // The first Property room it is already kept in, offered as the default.
         public int? DefaultLocationID { get; set; }
     }
 
@@ -235,6 +251,11 @@ namespace SchoolInventoryManagement.BLL.DTOs
         [Required(ErrorMessage = "Pick where it is kept.")]
         [Display(Name = "Kept in")]
         public int? LocationID { get; set; }
+
+        // Whose stock it is. Empty: the Property Department of the room's
+        // branch (it can be requested).
+        [Display(Name = "Belongs to")]
+        public int? DepartmentID { get; set; }
 
         [Range(0, 1000000, ErrorMessage = "Enter a level of 0 or more.")]
         [Display(Name = "Low-stock level")]

@@ -97,6 +97,7 @@
 
         @if (canManage)
         {
+            <partial name="_InventoryMenu" model="@(ViewBag.RedTagCount is int n ? n : 0)" />
             <a asp-controller="AssetAssignments" asp-action="Department" class="btn btn-outline-secondary">Assign to department</a>
             <a asp-action="BulkCreate" class="btn btn-outline-secondary">+ Bulk register</a>
             <partial name="_NewItemMenu" />
@@ -358,7 +359,7 @@
                                 }
                                 else
                                 {
-                                    <span class="asset-none">On the shelf</span>
+                                    <span class="asset-none">Property stock</span>
                                 }
                             </td>
                             <td class="text-end">
@@ -373,9 +374,17 @@
                                         {
                                             <li><a class="dropdown-item" asp-action="History" asp-route-id="@asset.AssetID">History</a></li>
                                         }
-                                        @if (canManage && !isOut)
+                                        @if (canManage && (!isOut || asset.IsWithDepartment))
                                         {
                                             <li><a class="dropdown-item" asp-action="Edit" asp-route-id="@asset.AssetID">Edit</a></li>
+                                        }
+                                        @if (canManage && asset.CanBeRedTagged)
+                                        {
+                                            <li><a class="dropdown-item text-danger" asp-action="RedTag" asp-route-id="@asset.AssetID">Red tag</a></li>
+                                        }
+                                        @if (canManage && asset.Status == AssetStatus.RedTagged)
+                                        {
+                                            <li><a class="dropdown-item text-danger" asp-action="Dispose" asp-route-id="@asset.AssetID">Dispose</a></li>
                                         }
                                         @if (!string.IsNullOrEmpty(asset.BarcodeData))
                                         {

@@ -212,10 +212,10 @@ else
                         <div class="dash-attention-title">Requests awaiting your decision</div>
                         <div class="dash-attention-sub">
                             @Model.PendingRequestCount pending &middot;
-                            <a asp-controller="AssetRequests" asp-action="Pending" class="fw-semibold">View all</a>
+                            <a asp-controller="@Model.PendingRequestsController" asp-action="Pending" class="fw-semibold">View all</a>
                         </div>
                     </div>
-                    <a asp-controller="AssetRequests" asp-action="Pending" class="dash-btn">Review now &rarr;</a>
+                    <a asp-controller="@Model.PendingRequestsController" asp-action="Pending" class="dash-btn">Review now &rarr;</a>
                 }
                 else
                 {

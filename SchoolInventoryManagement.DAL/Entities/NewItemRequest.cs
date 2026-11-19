@@ -70,6 +70,12 @@ namespace SchoolInventoryManagement.DAL.Entities
         [MaxLength(500)]
         public string? Remarks { get; set; }
 
+        // For assets: the requester's confirmation that the delivered units
+        // reached them (Scripts/024). Only then do the units registered for
+        // this ticket become the department's.
+        public DateTime? AcknowledgedAt { get; set; }
+        public int? AcknowledgedByUserID { get; set; }
+
         // Optimistic Concurrency Token
         [Timestamp]
         public byte[] RowVersion { get; set; } = null!;
@@ -89,6 +95,12 @@ namespace SchoolInventoryManagement.DAL.Entities
 
         [ForeignKey(nameof(DeliverToLocationID))]
         public Location? DeliverToLocation { get; set; }
+
+        [ForeignKey(nameof(AcknowledgedByUserID))]
+        public User? AcknowledgedByUser { get; set; }
+
+        // The units registered for this ticket when it arrived.
+        public ICollection<Asset> RegisteredAssets { get; set; } = new List<Asset>();
 
         // Every stage it has been through, oldest first.
         public ICollection<NewItemRequestStep> Steps { get; set; } = new List<NewItemRequestStep>();

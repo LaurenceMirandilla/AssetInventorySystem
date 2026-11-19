@@ -45,13 +45,17 @@ namespace SchoolInventoryManagement.BLL.Services
         // from deciding it, so notifying them would invite an action the
         // service is guaranteed to refuse. Inactive users are skipped —
         // they cannot sign in to read it.
+        // roles: who decides this kind of request (PermissionHelper.ApproverRoles
+        // when not given).
         public static async Task QueueForApproversAsync(
-            ApplicationDbContext context, int requesterRoleId, string message, string? actionUrl = null)
+            ApplicationDbContext context, int requesterRoleId, string message, string? actionUrl = null,
+            string[]? roles = null)
         {
+            var deciders = roles ?? PermissionHelper.ApproverRoles;
             var approverIds = await context.Users
                 .Where(u => u.Status == "Active"
                             && u.RoleID != requesterRoleId
-                            && PermissionHelper.ApproverRoles.Contains(u.Role.RoleName))
+                            && deciders.Contains(u.Role.RoleName))
                 .Select(u => u.UserID)
                 .ToListAsync();
 

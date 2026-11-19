@@ -15,6 +15,7 @@ namespace SchoolInventoryManagement.BLL.Services
     // is done:
     //
     //   Pending --approve--> InTransit --mark assigned--> Assigned --return--> Returned
+    //   permanent Transfer:  ... --> Assigned --requester confirms--> Fulfilled
     //
     // A ticket has one line per model, each with an amount. Every unit that
     // goes out on it is one AssetAssignment carrying its RequestID.
@@ -27,6 +28,9 @@ namespace SchoolInventoryManagement.BLL.Services
     // Mark assigned (Asset Officer / Administrator): every unit on the
     //          ticket now reads Assigned. Borrow -- collected. Transfer --
     //          delivered, and recorded at the destination.
+    // Confirm  (the requester): they received the units. Recorded on any
+    //          request; on a permanent Transfer it is what hands the units
+    //          to their department for good.
     // Return   (Asset Officer / Administrator): some or all of the units
     //          come back to a location staff choose. The ticket is Returned
     //          when the last one is back.
@@ -282,8 +286,8 @@ namespace SchoolInventoryManagement.BLL.Services
             if (openUnits.Count == 0)
                 throw new InvalidOperationException("This request has no units out.");
 
-            // A Transfer with no ReturnBy is permanent: the units now belong
-            // to the destination, not to the person who asked for them.
+            // A Transfer with no ReturnBy is permanent: once the requester
+            // confirms receipt, the units belong to their department.
             var permanent = request.RequestType == RequestType.Transfer && request.ReturnBy is null;
             var now = PhilippineTime.Now;
 
@@ -310,40 +314,31 @@ namespace SchoolInventoryManagement.BLL.Services
                             : $"Transfer request #{requestId}: delivered");
                 }
 
-                if (permanent)
-                {
-                    // Handed over for good: the unit now belongs to the
-                    // requester's department (set at approval) and lives in
-                    // the destination room, so its branch is that room's
-                    // (the request form keeps the room in the department's
-                    // branch). Closing the assignment takes it off the
-                    // requester's My Assets, and with no holder it can never
-                    // go overdue. The asset's history labels this closing
-                    // "Transferred permanently", not "Returned".
-                    assignment.ReturnDate = now;
-                    assignment.ConditionOnReturn = unit.Condition;
-                    unit.AssignedUserID = null;
-                    unit.Status = AssetStatus.Available;
-                    if (destinationBranchId is int branchId)
-                        unit.BranchID = branchId;
-                }
-                else
-                {
-                    unit.Status = AssetStatus.Assigned;
-                }
+                // Delivered for good: the unit lives in the destination
+                // room now, so its branch is that room's (the request form
+                // keeps the room in the department's branch). It stays with
+                // the requester until they confirm receipt
+                // (AcknowledgeReceiptAsync); with no ReturnBy it can never
+                // go overdue meanwhile.
+                if (permanent && destinationBranchId is int branchId)
+                    unit.BranchID = branchId;
+
+                unit.Status = AssetStatus.Assigned;
             }
 
-            // A permanent Transfer is finished once delivered: nothing is
-            // out, so there is nothing to return. Fulfilled is the status
-            // Request History already counts as done.
-            request.RequestStatus = permanent ? RequestStatus.Fulfilled : RequestStatus.Assigned;
+            // Every request waits at Assigned now. A permanent Transfer
+            // finishes when the requester confirms receipt.
+            request.RequestStatus = RequestStatus.Assigned;
             request.AssignedDate = now;
 
             var count = $"{openUnits.Count} item{(openUnits.Count == 1 ? "" : "s")}";
             var message = request.RequestType == RequestType.Borrow
-                ? $"You collected {count} on request #{requestId}."
+                ? $"You collected {count} on request #{requestId}. Please confirm you received {(openUnits.Count == 1 ? "it" : "them")}."
                 : $"{count} on request #{requestId} {(openUnits.Count == 1 ? "was" : "were")} delivered " +
-                  $"to {request.RequestedLocation?.LocationName}{(permanent ? " for good" : "")}.";
+                  $"to {request.RequestedLocation?.LocationName}{(permanent ? " for good" : "")}. " +
+                  (permanent
+                      ? $"Please confirm you received {(openUnits.Count == 1 ? "it" : "them")}: {(openUnits.Count == 1 ? "it" : "they")} then become your department's."
+                      : $"Please confirm you received {(openUnits.Count == 1 ? "it" : "them")}.");
 
             NotificationHelper.Queue(
                 _context, request.RequestedByUserID, message, $"/AssetRequests/Details/{requestId}");
@@ -395,14 +390,13 @@ namespace SchoolInventoryManagement.BLL.Services
 
                 var unit = assignment.Asset;
                 unit.Condition = conditionOnReturn;
-                unit.Status = AssetStatus.Available;
-                unit.AssignedUserID = null;
-                AssignmentDepartment.Restore(assignment);
 
-                // Back on a shelf, where staff said.
+                // Back on a shelf, where staff said, and back in the
+                // Property Department's stock.
                 MovementHelper.Record(
                     _context, unit, returnLocationId, actingUser.UserID,
                     $"Returned from request #{requestId}", conditionOnReturn);
+                await PropertyStock.ReturnToStockAsync(_context, unit);
             }
 
             var allBack = returning.Count == open.Count;
@@ -428,6 +422,71 @@ namespace SchoolInventoryManagement.BLL.Services
                     : $"{returning.Count} item{(returning.Count == 1 ? "" : "s")} on request #{requestId} " +
                       $"returned; {stillOut} still out.",
                 $"/AssetRequests/Details/{requestId}");
+
+            await SaveWithConcurrencyGuardAsync();
+        }
+
+        public async Task AcknowledgeReceiptAsync(int requestId, byte[] requestRowVersion, int actingUserId)
+        {
+            var actor = await PermissionHelper.GetUserOrThrowAsync(_context, actingUserId);
+            PermissionHelper.EnsureIsActive(actor);
+
+            var request = await _context.AssetRequests
+                .Include(r => r.Department)
+                .Include(r => r.Assignments)
+                    .ThenInclude(a => a.Asset)
+                .FirstOrDefaultAsync(r => r.RequestID == requestId);
+
+            if (request is null)
+                throw new KeyNotFoundException("Request not found.");
+
+            if (request.RequestedByUserID != actingUserId)
+                throw new UnauthorizedAccessException("Only the person who made the request can confirm receiving it.");
+
+            if (request.AcknowledgedAt is not null)
+                throw new InvalidOperationException("You already confirmed receiving this request.");
+
+            if (request.RequestStatus != RequestStatus.Assigned)
+                throw new InvalidOperationException(request.RequestStatus == RequestStatus.InTransit
+                    ? "It has not been handed over yet. Confirm once you have it."
+                    : "There is nothing on this request to confirm.");
+
+            _context.Entry(request).Property(r => r.RowVersion).OriginalValue = requestRowVersion;
+
+            var now = PhilippineTime.Now;
+            request.AcknowledgedAt = now;
+            request.AcknowledgedByUserID = actingUserId;
+
+            var open = request.Assignments.Where(a => a.ReturnDate == null).ToList();
+            var permanent = request.RequestType == RequestType.Transfer && request.ReturnBy is null;
+
+            if (permanent)
+            {
+                // Handed over for good: the units are the department's now,
+                // not the requester's. Closing the assignment takes them off
+                // the requester's My Assets; the asset's history labels this
+                // closing "Transferred permanently", not "Returned".
+                foreach (var assignment in open)
+                {
+                    assignment.ReturnDate = now;
+                    assignment.ConditionOnReturn = assignment.Asset.Condition;
+                    await PropertyStock.IssueToDepartmentAsync(_context, assignment.Asset, request.DepartmentID);
+                }
+
+                // Nothing is out any more, so there is nothing to return.
+                // Fulfilled is the status Request History counts as done.
+                request.RequestStatus = RequestStatus.Fulfilled;
+            }
+
+            // Whoever approved it hears that it arrived.
+            var who = $"{actor.FirstName} {actor.LastName}";
+            if (request.ApprovedByUserID is int approverId && approverId != actingUserId)
+                NotificationHelper.Queue(
+                    _context, approverId,
+                    permanent
+                        ? $"{who} confirmed receiving request #{requestId}. The items are now {request.Department.DepartmentName}'s."
+                        : $"{who} confirmed receiving the items on request #{requestId}.",
+                    $"/AssetRequests/Details/{requestId}");
 
             await SaveWithConcurrencyGuardAsync();
         }
@@ -522,14 +581,12 @@ namespace SchoolInventoryManagement.BLL.Services
                 assignment.ReturnDate = now;
                 assignment.ConditionOnReturn = assignment.Asset.Condition;
 
-                assignment.Asset.Status = AssetStatus.Available;
-                assignment.Asset.AssignedUserID = null;
-                AssignmentDepartment.Restore(assignment);
-
                 if (isBorrow)
                     MovementHelper.Record(
                         _context, assignment.Asset, putBackLocations![assignment.AssetID], actingUserId,
                         $"Borrow request #{requestId} cancelled: put back");
+                // Never handed over: straight back to the Property stock.
+                await PropertyStock.ReturnToStockAsync(_context, assignment.Asset);
             }
 
             request.RequestStatus = RequestStatus.Cancelled;

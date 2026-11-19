@@ -70,6 +70,7 @@ namespace SchoolInventoryManagement.BLL.Mappings
                 ReturnBy = request.ReturnBy,
                 AssignedDate = request.AssignedDate,
                 ReturnedDate = request.ReturnedDate,
+                AcknowledgedAt = request.AcknowledgedAt,
                 ApprovedByUser = request.ApprovedByUser?.ToSummaryDTO(),
                 ApprovalDate = request.ApprovalDate,
                 Remarks = request.Remarks,

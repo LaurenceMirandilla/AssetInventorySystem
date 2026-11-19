@@ -58,6 +58,12 @@ namespace SchoolInventoryManagement.DAL.Entities
         public string? Remarks { get; set; }
 
         // Optimistic Concurrency Token
+        // The requester's own confirmation that they received the units
+        // (Scripts/024). Until then the request shows "not yet confirmed";
+        // a permanent Transfer becomes the department's only once confirmed.
+        public DateTime? AcknowledgedAt { get; set; }
+        public int? AcknowledgedByUserID { get; set; }
+
         [Timestamp]
         public byte[] RowVersion { get; set; } = null!;
 
@@ -82,6 +88,9 @@ namespace SchoolInventoryManagement.DAL.Entities
 
         [ForeignKey("ApprovedByUserID")]
         public User? ApprovedByUser { get; set; }
+
+        [ForeignKey(nameof(AcknowledgedByUserID))]
+        public User? AcknowledgedByUser { get; set; }
 
         // The lines of the ticket: which models, how many of each.
         public ICollection<AssetRequestItem> Items { get; set; } = new List<AssetRequestItem>();

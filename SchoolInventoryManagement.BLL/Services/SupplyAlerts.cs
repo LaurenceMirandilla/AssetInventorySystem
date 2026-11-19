@@ -33,7 +33,7 @@ namespace SchoolInventoryManagement.BLL.Services
         public static async Task<Dictionary<int, int>> TotalsAsync(ApplicationDbContext context, List<int> supplyIds)
         {
             return await context.SupplyStock.AsNoTracking()
-                .Where(k => supplyIds.Contains(k.SupplyID))
+                .Where(k => supplyIds.Contains(k.SupplyID) && k.Department.IsProperty)
                 .GroupBy(k => k.SupplyID)
                 .Select(g => new { SupplyID = g.Key, Total = g.Sum(k => k.Quantity) })
                 .ToDictionaryAsync(x => x.SupplyID, x => x.Total);
@@ -56,8 +56,12 @@ namespace SchoolInventoryManagement.BLL.Services
         // it. Call it after changing the stock rows and before saving.
         public static async Task QueueLowStockAsync(ApplicationDbContext context)
         {
+            // Only the Property Department's stock has a low-stock level:
+            // another department's is its own.
+            var propertyIds = await SupplyHolders.PropertyIdsAsync(context);
             var changes = context.ChangeTracker.Entries<SupplyStock>()
-                .Where(e => e.State == EntityState.Modified || e.State == EntityState.Added)
+                .Where(e => (e.State == EntityState.Modified || e.State == EntityState.Added)
+                            && propertyIds.Contains(e.Entity.DepartmentID))
                 .Select(e => new
                 {
                     e.Entity.SupplyID,
@@ -90,7 +94,7 @@ namespace SchoolInventoryManagement.BLL.Services
 
             // What each branch holds in the database now, before this save.
             var held = await context.SupplyStock.AsNoTracking()
-                .Where(k => supplyIds.Contains(k.SupplyID))
+                .Where(k => supplyIds.Contains(k.SupplyID) && k.Department.IsProperty)
                 .Select(k => new { k.SupplyID, k.Location.BranchID, k.Quantity })
                 .ToListAsync();
 

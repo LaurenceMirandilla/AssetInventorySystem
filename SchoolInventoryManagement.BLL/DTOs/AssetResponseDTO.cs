@@ -33,11 +33,27 @@ namespace SchoolInventoryManagement.BLL.DTOs
         public string BranchName { get; set; } = null!;
         public int? ActiveAssignmentID { get; set; }
 
+        // The new-item request it was bought for, if any. While it is In
+        // transit with no holder it is held by Property for that request,
+        // until the requester confirms receipt.
+        public int? NewItemRequestID { get; set; }
+
         // Assigned to a department with no person holding it
         // (AssetAssignmentService.AssignToDepartmentAsync): it belongs to
         // that department and cannot be borrowed.
         public bool IsWithDepartment =>
             Status == AssetStatus.Assigned && AssignedUserID == null && ActiveAssignmentID == null;
+
+        // The red tag: why it was marked for disposal, by whom, when.
+        public string? RedTagReason { get; set; }
+        public DateTime? RedTaggedAt { get; set; }
+        public string? RedTaggedByName { get; set; }
+
+        // What the Property Department can red-tag: its own stock, a unit
+        // under maintenance, or one issued to a department (taken back).
+        // Not one that is out with a person or on a request.
+        public bool CanBeRedTagged =>
+            Status is AssetStatus.Available or AssetStatus.UnderMaintenance || IsWithDepartment;
 
         public byte[] RowVersion { get; set; } = null!;
     }

@@ -39,7 +39,7 @@
 <div class="sab-page-head">
     <div>
         <h2>Browse items</h2>
-        <p class="sab-page-sub">See what the school has. Request the item you need; staff choose the unit when they approve.</p>
+        <p class="sab-page-sub">See what the Property Department has in stock. Request the item you need; staff choose the unit when they approve. If none is in stock, ask for it to be bought.</p>
     </div>
     <div class="sab-page-actions">
         <a asp-controller="AssetRequests" asp-action="MyRequests" class="btn btn-outline-secondary">My Requests</a>
@@ -114,6 +114,7 @@
                         <th>Item</th>
                         @* On phones the category moves under the item name. *@
                         <th class="d-none d-sm-table-cell">Category</th>
+                        <th>In stock</th>
                         <th><span class="visually-hidden">Request</span></th>
                     </tr>
                 </thead>
@@ -130,9 +131,28 @@
                                 <div class="catalog-item-sub d-sm-none">@m.CategoryName</div>
                             </td>
                             <td class="asset-muted d-none d-sm-table-cell">@m.CategoryName</td>
-                            <td class="text-end">
-                                <a asp-controller="AssetRequests" asp-action="Create" asp-route-modelId="@m.ModelID"
-                                   class="btn btn-primary btn-sm catalog-request">Request</a>
+                            <td class="text-nowrap">
+                                @if (m.AvailableCount > 0)
+                                {
+                                    <span class="asset-pill asset-status st-available">@m.AvailableCount in stock</span>
+                                }
+                                else
+                                {
+                                    <span class="asset-muted">None in stock</span>
+                                }
+                            </td>
+                            <td class="text-end text-nowrap">
+                                @if (m.AvailableCount > 0)
+                                {
+                                    <a asp-controller="AssetRequests" asp-action="Create" asp-route-modelId="@m.ModelID"
+                                       class="btn btn-primary btn-sm catalog-request">Request</a>
+                                }
+                                else
+                                {
+                                    <a asp-controller="NewItemRequests" asp-action="Create" asp-route-kind="Asset"
+                                       asp-route-itemName="@m.ModelName" asp-route-modelId="@m.ModelID"
+                                       class="btn btn-outline-secondary btn-sm">Request to purchase</a>
+                                }
                             </td>
                         </tr>
                     }
@@ -211,7 +231,7 @@
             </div>
             <p>
                 Need something that is not listed?
-                <a asp-controller="NewItemRequests" asp-action="Create">Request a new item</a>
+                <a asp-controller="NewItemRequests" asp-action="Create" asp-route-kind="Asset">Request a purchase</a>
             </p>
             @if (Model.HasFilters)
             {

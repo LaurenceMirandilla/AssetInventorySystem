@@ -63,6 +63,19 @@ namespace SchoolInventoryManagement.DAL.Entities
         public int? DepartmentID { get; set; }
         public int? BranchID { get; set; }
 
+        // The new-item request it was bought for, when it was registered
+        // from one (Scripts/024). Held for that request until the requester
+        // confirms receipt; then it is their department's.
+        public int? NewItemRequestID { get; set; }
+
+        // The red tag (Scripts/025): why the Property Department marked it
+        // for disposal, who did and when. Kept after disposal as the record
+        // of why; cleared when the tag is taken off or the unit restored.
+        [MaxLength(500)]
+        public string? RedTagReason { get; set; }
+        public DateTime? RedTaggedAt { get; set; }
+        public int? RedTaggedByUserID { get; set; }
+
         // Optimistic Concurrency Token
         [Timestamp]
         public byte[] RowVersion { get; set; } = null!;
@@ -82,6 +95,12 @@ namespace SchoolInventoryManagement.DAL.Entities
 
         [ForeignKey("BranchID")]
         public Branch Branch { get; set; } = null!;
+
+        [ForeignKey(nameof(NewItemRequestID))]
+        public NewItemRequest? NewItemRequest { get; set; }
+
+        [ForeignKey(nameof(RedTaggedByUserID))]
+        public User? RedTaggedByUser { get; set; }
 
         // Downward Navigation Properties
 

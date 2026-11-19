@@ -79,7 +79,7 @@ else
                         {
                             var line = Model[i];
                             <tr data-line data-system="@line.SystemQuantity">
-                                <td><strong>@line.SupplyName</strong><div class="asset-muted small">@line.CategoryName</div></td>
+                                <td><strong>@line.SupplyName</strong><div class="asset-muted small">@line.CategoryName@(line.IsProperty ? "" : " · " + line.DepartmentName + "'s own")</div></td>
                                 <td class="text-end">@line.SystemQuantity @SupplyText.Unit(line.SystemQuantity, line.Unit)</td>
                                 <td>
                                     <input type="hidden" name="Lines[@i].SupplyID" value="@line.SupplyID" />

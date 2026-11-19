@@ -260,6 +260,7 @@ namespace SchoolInventoryManagement.Web.Controllers
         {
             ViewBag.Choices = await _requests.GetChoicesAsync(CurrentUserId);
             ViewBag.BranchName = await _requests.GetBranchNameAsync(CurrentUserId);
+            ViewBag.Source = await _requests.GetSourceAsync(CurrentUserId);
             ViewBag.DeliveryLocations = await _requests.GetDeliveryLocationsAsync(CurrentUserId);
         }
     }

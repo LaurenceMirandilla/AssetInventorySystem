@@ -101,8 +101,8 @@ namespace SchoolInventoryManagement.BLL.Services
                 ConditionOnAssignment = conditionOnAssignment,
                 Remarks = remarks,
                 RequestID = requestId,
-                // So a borrow or temporary transfer can hand the unit back
-                // to its own department on return (AssignmentDepartment).
+                // Where it was before. On return every unit goes back to
+                // the Property Department's stock (PropertyStock).
                 PreviousDepartmentID = asset.DepartmentID
             };
 
@@ -184,7 +184,9 @@ namespace SchoolInventoryManagement.BLL.Services
                             .ToList()
                     })
                     .ToList(),
+                // Not the Property Department: its stock is what is left.
                 Departments = await _context.Departments.AsNoTracking()
+                    .Where(d => !d.IsProperty)
                     .OrderBy(d => d.Branch.BranchName).ThenBy(d => d.DepartmentName)
                     .Select(d => new PlacementDepartmentDTO
                     {
@@ -205,6 +207,9 @@ namespace SchoolInventoryManagement.BLL.Services
             var department = await _context.Departments.FindAsync(dto.DepartmentID);
             if (department is null)
                 throw new ArgumentException("Pick a department.");
+            if (department.IsProperty)
+                throw new InvalidOperationException(
+                    "That is the Property Department: unassigned assets are already in its stock. Pick the department the assets are for.");
 
             var location = await _context.Locations.FindAsync(dto.LocationID);
             if (location is null)
@@ -292,6 +297,7 @@ namespace SchoolInventoryManagement.BLL.Services
                     throw new ArgumentException(
                         "The storage location is the same room the assets are placed in. Pick another, or leave the rest where they are.");
 
+                var propertyId = await PropertyStock.DepartmentIdAsync(_context, department.BranchID);
                 var pickedIds = units.Select(u => u.AssetID).ToList();
                 var rest = await _context.Assets
                     .Where(a => a.ModelID == dto.ModelID
@@ -306,6 +312,7 @@ namespace SchoolInventoryManagement.BLL.Services
                     MovementHelper.Record(
                         _context, unit, storageId, actor.UserID,
                         "Placed in storage, not assigned", unit.Condition);
+                    unit.DepartmentID = propertyId;
                     moved++;
                 }
                 storageName = storage.LocationName;
@@ -351,7 +358,8 @@ namespace SchoolInventoryManagement.BLL.Services
                     "Only an asset assigned to a department, with no person holding it, can be released here.");
 
             _context.Entry(asset).Property(a => a.RowVersion).OriginalValue = rowVersion;
-            asset.Status = AssetStatus.Available;
+            // Back in the Property Department's stock, where it is.
+            await PropertyStock.ReturnToStockAsync(_context, asset);
 
             try
             {
@@ -396,15 +404,14 @@ namespace SchoolInventoryManagement.BLL.Services
             assignment.ConditionOnReturn = conditionOnReturn;
 
             assignment.Asset.Condition = conditionOnReturn;
-            assignment.Asset.Status = AssetStatus.Available;
-            assignment.Asset.AssignedUserID = null;
-            AssignmentDepartment.Restore(assignment);
 
             // Back on a shelf, where staff said -- recorded as a movement so
-            // the unit's history shows where it went.
+            // the unit's history shows where it went -- and back in the
+            // Property Department's stock.
             MovementHelper.Record(
                 _context, assignment.Asset, returnLocationId, actingUser.UserID,
                 $"Returned from assignment #{assignmentId}", conditionOnReturn);
+            await PropertyStock.ReturnToStockAsync(_context, assignment.Asset);
 
             // If this unit went out on a request, the request ends when its
             // last unit is back.

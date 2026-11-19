@@ -1,0 +1,101 @@
+﻿@model SchoolInventoryManagement.Web.ViewModels.RedTagViewModel
+@using SchoolInventoryManagement.BLL.DTOs
+@{
+    ViewData["Title"] = "Red Tag Asset";
+    var asset = (AssetResponseDTO)ViewBag.Asset;
+    var reasons = new[] { "Broken beyond repair", "Repair costs more than a new one", "Obsolete", "Unsafe to use", "Parts missing" };
+}
+
+<div class="asset-detail-head">
+    <div>
+        <nav class="asset-crumbs" aria-label="Breadcrumb">
+            <a asp-action="Index">Assets</a>
+            <span aria-hidden="true">&rsaquo;</span>
+            <a asp-action="Details" asp-route-id="@asset.AssetID">@asset.AssetCode</a>
+            <span aria-hidden="true">&rsaquo;</span>
+            <span>Red tag</span>
+        </nav>
+        <h2 class="asset-detail-title">Red tag for disposal</h2>
+        <div class="asset-detail-sub">The Property Department marks the unit as no longer usable. It is disposed of from the red tag.</div>
+    </div>
+</div>
+
+<partial name="_AssetStrip" model="asset" />
+
+<form asp-action="RedTag" asp-route-id="@Model.AssetID" method="post" class="register-form">
+    @Html.AntiForgeryToken()
+    @Html.FormTicket()
+    <input type="hidden" asp-for="AssetID" />
+    <input type="hidden" asp-for="AssetRowVersionBase64" />
+    <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+
+    <div class="row g-3">
+        <div class="col-lg-8">
+            <div class="danger-callout mb-3">
+                <span class="danger-callout-icon" aria-hidden="true">!</span>
+                <div>
+                    <div class="danger-callout-title">This takes the unit out of use</div>
+                    <div>
+                        It can't be borrowed, issued or assigned while it is red tagged, and it shows on the Red tags list until it is disposed of.
+                        @if (asset.IsWithDepartment)
+                        {
+                            <text>It is taken back from @(asset.DepartmentName ?? "its department"), and the department head is told why.</text>
+                        }
+                        If it was a mistake, remove the red tag and it goes back into Property stock.
+                    </div>
+                </div>
+            </div>
+
+            <div class="asset-card register-step">
+                <div class="register-step-head">
+                    <span class="register-step-num">1</span>
+                    <div>
+                        <div class="register-step-title">Why it is being red-tagged</div>
+                        <div class="register-step-sub">Shown on the red tag and filled in on the disposal.</div>
+                    </div>
+                </div>
+                <div class="register-step-body">
+                    <label asp-for="Reason" class="form-label">Reason</label>
+                    @* The chips fill the box; anything else can be typed. *@
+                    <div class="method-chips mb-2">
+                        @foreach (var r in reasons)
+                        {
+                            <button type="button" class="method-chip" data-method="@r">@r</button>
+                        }
+                    </div>
+                    <textarea asp-for="Reason" id="redTagReason" class="form-control" rows="2" placeholder="e.g. Motor burned out; repair costs more than a new unit."></textarea>
+                    <span asp-validation-for="Reason" class="text-danger"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="register-footer">
+        <span>A reason is required.</span>
+        <div class="d-flex" style="gap:8px;">
+            <a asp-action="Details" asp-route-id="@Model.AssetID" class="btn btn-outline-secondary">Cancel</a>
+            <button type="submit" class="btn btn-danger">Red tag it</button>
+        </div>
+    </div>
+</form>
+
+@section Scripts {
+    @{
+        await Html.RenderPartialAsync("_ValidationScriptsPartial");
+    }
+    <script>
+        (function () {
+            var input = document.getElementById('redTagReason');
+            var chips = Array.from(document.querySelectorAll('.method-chip'));
+            function sync() {
+                var value = input.value.trim().toLowerCase();
+                chips.forEach(function (c) { c.classList.toggle('is-picked', c.dataset.method.toLowerCase() === value); });
+            }
+            chips.forEach(function (c) {
+                c.addEventListener('click', function () { input.value = c.dataset.method; sync(); input.dispatchEvent(new Event('change')); });
+            });
+            input.addEventListener('input', sync);
+            sync();
+        })();
+    </script>
+}

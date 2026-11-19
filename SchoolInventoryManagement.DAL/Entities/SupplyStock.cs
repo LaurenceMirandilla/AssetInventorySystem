@@ -14,6 +14,11 @@ namespace SchoolInventoryManagement.DAL.Entities
         public int SupplyID { get; set; }
         public int LocationID { get; set; }
 
+        // Whose stock it is (Scripts/026). Only the Property Department's
+        // stock can be requested; another department's is its own. A room
+        // keeps a supply for one department.
+        public int DepartmentID { get; set; }
+
         // Never negative (CK_SupplyStock_Quantity).
         public int Quantity { get; set; }
 
@@ -28,5 +33,8 @@ namespace SchoolInventoryManagement.DAL.Entities
 
         [ForeignKey("LocationID")]
         public Location Location { get; set; } = null!;
+
+        [ForeignKey("DepartmentID")]
+        public Department Department { get; set; } = null!;
     }
 }

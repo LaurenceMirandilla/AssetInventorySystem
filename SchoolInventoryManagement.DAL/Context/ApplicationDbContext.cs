@@ -41,6 +41,8 @@ namespace SchoolInventoryManagement.DAL.Context
         public DbSet<NewItemRequest> NewItemRequests { get; set; } = null!;
         public DbSet<NewItemRequestStep> NewItemRequestSteps { get; set; } = null!;
         public DbSet<NewItemRequestItem> NewItemRequestItems { get; set; } = null!;
+        public DbSet<AssetCount> AssetCounts { get; set; } = null!;
+        public DbSet<AssetCountLine> AssetCountLines { get; set; } = null!;
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -341,6 +343,16 @@ namespace SchoolInventoryManagement.DAL.Context
             modelBuilder.Entity<SupplyStock>()
                 .HasIndex(s => new { s.SupplyID, s.LocationID })
                 .IsUnique();
+            modelBuilder.Entity<SupplyStock>()
+                .HasOne(s => s.Department)
+                .WithMany()
+                .HasForeignKey(s => s.DepartmentID)
+                .OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<SupplyTransaction>()
+                .HasOne(t => t.Department)
+                .WithMany()
+                .HasForeignKey(t => t.DepartmentID)
+                .OnDelete(DeleteBehavior.Restrict);
 
             modelBuilder.Entity<SupplyTransaction>()
                 .HasOne(t => t.Supply)
@@ -510,6 +522,60 @@ namespace SchoolInventoryManagement.DAL.Context
                 .HasOne(n => n.ReviewedByUser)
                 .WithMany()
                 .HasForeignKey(n => n.ReviewedByUserID)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Who confirmed receiving the units (Scripts/024), and the units
+            // bought for a ticket. Restrict: nothing cascades from these.
+            modelBuilder.Entity<NewItemRequest>()
+                .HasOne(n => n.AcknowledgedByUser)
+                .WithMany()
+                .HasForeignKey(n => n.AcknowledgedByUserID)
+                .OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<Asset>()
+                .HasOne(a => a.NewItemRequest)
+                .WithMany(n => n.RegisteredAssets)
+                .HasForeignKey(a => a.NewItemRequestID)
+                .OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<Asset>()
+                .HasOne(a => a.RedTaggedByUser)
+                .WithMany()
+                .HasForeignKey(a => a.RedTaggedByUserID)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Physical counts (Scripts/025).
+            modelBuilder.Entity<AssetCount>()
+                .HasOne(c => c.Location)
+                .WithMany()
+                .HasForeignKey(c => c.LocationID)
+                .OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<AssetCount>()
+                .HasOne(c => c.CountedByUser)
+                .WithMany()
+                .HasForeignKey(c => c.CountedByUserID)
+                .OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<AssetCountLine>()
+                .HasOne(l => l.Count)
+                .WithMany(c => c.Lines)
+                .HasForeignKey(l => l.AssetCountID)
+                .OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<AssetCountLine>()
+                .HasOne(l => l.Asset)
+                .WithMany()
+                .HasForeignKey(l => l.AssetID)
+                .OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<AssetCountLine>()
+                .HasOne(l => l.RecordedLocation)
+                .WithMany()
+                .HasForeignKey(l => l.RecordedLocationID)
+                .OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<AssetCountLine>()
+                .Property(l => l.Result)
+                .HasConversion<string>()
+                .HasMaxLength(20);
+            modelBuilder.Entity<AssetRequest>()
+                .HasOne(ar => ar.AcknowledgedByUser)
+                .WithMany()
+                .HasForeignKey(ar => ar.AcknowledgedByUserID)
                 .OnDelete(DeleteBehavior.Restrict);
 
             modelBuilder.Entity<NewItemRequest>()

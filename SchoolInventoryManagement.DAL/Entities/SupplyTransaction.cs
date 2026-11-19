@@ -15,6 +15,10 @@ namespace SchoolInventoryManagement.DAL.Entities
         public int SupplyID { get; set; }
         public int LocationID { get; set; }
 
+        // Whose stock the line moved (Scripts/026). Null only if it could
+        // not be told.
+        public int? DepartmentID { get; set; }
+
         public SupplyTransactionType Type { get; set; }
 
         // Plus for stock coming in, minus for stock going out.
@@ -39,6 +43,9 @@ namespace SchoolInventoryManagement.DAL.Entities
 
         [ForeignKey("LocationID")]
         public Location Location { get; set; } = null!;
+
+        [ForeignKey("DepartmentID")]
+        public Department? Department { get; set; }
 
         [ForeignKey("PerformedByUserID")]
         public User PerformedBy { get; set; } = null!;

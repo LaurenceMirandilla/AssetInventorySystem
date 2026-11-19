@@ -66,7 +66,7 @@ else
                     <button type="button" class="myassets-item" data-entry="d-@x.DepartmentID" data-branch="@x.BranchID"
                             data-search="@($"{x.DepartmentName} {x.BranchName} {x.Description}".ToLowerInvariant())">
                         <span class="myassets-item-main">
-                            <span class="myassets-item-title">@x.DepartmentName</span>
+                            <span class="myassets-item-title">@x.DepartmentName@if (x.IsProperty) {<span class="md-tag ms-1">Property</span>}</span>
                             <span class="myassets-item-sub">@x.BranchName</span>
                         </span>
                         <span class="lk-count">@(u?.Users ?? 0) user@(u?.Users == 1 ? "" : "s")</span>
@@ -87,13 +87,28 @@ else
                     <button type="button" class="myassets-back" data-back>&larr; All departments</button>
                     <h3 class="myassets-panel-title mt-0">@x.DepartmentName</h3>
                     <div class="lk-sub">@x.BranchName · head: @DisplayText.Or(u?.Head, "none yet")</div>
+                    @if (x.IsProperty)
+                    {
+                        <div class="sab-callout mt-3">
+                            <span class="sab-callout-label">Property Department</span>
+                            Keeps @x.BranchName's inventory. Every asset not issued to another department is in its stock, and that stock is the only one people borrow from. It can be renamed, but not deleted or moved to another branch.
+                        </div>
+                    }
 
                     <div class="myassets-stats lk-stats-3">
                         <div>
                             <span>Users</span><strong>@(u?.Users ?? 0)</strong>
                             <a asp-controller="Users" asp-action="Index" asp-route-status="All" class="lk-link">View users &rarr;</a>
                         </div>
-                        <div><span>Assets issued</span><strong>@(u?.AssetsIssued ?? 0)</strong></div>
+                        @if (x.IsProperty)
+                        {
+                            @* Property keeps the stock; nothing is issued to it. *@
+                            <div><span>In stock</span><strong>@(u?.InStock ?? 0)</strong></div>
+                        }
+                        else
+                        {
+                            <div><span>Assets issued</span><strong>@(u?.AssetsIssued ?? 0)</strong></div>
+                        }
                         <div><span>Open requests</span><strong>@(u?.OpenRequests ?? 0)</strong></div>
                     </div>
 
@@ -129,9 +144,9 @@ else
                     <div class="lk-foot">
                         <form asp-action="Delete" asp-route-id="@x.DepartmentID" method="post" onsubmit="return confirm('Delete @x.DepartmentName?');">
                             @Html.AntiForgeryToken()
-                            <button type="submit" class="btn btn-outline-danger" disabled="@(u?.Blocked is not null)">Delete</button>
+                            <button type="submit" class="btn btn-outline-danger" disabled="@(x.IsProperty || u?.Blocked is not null)">Delete</button>
                         </form>
-                        <span class="lk-why">@(u?.Blocked ?? "Nothing uses it yet.")</span>
+                        <span class="lk-why">@(x.IsProperty ? "The Property Department cannot be deleted." : u?.Blocked ?? "Nothing uses it yet.")</span>
                         <div class="lk-foot-actions">
                             <button type="reset" form="@formId" class="btn btn-outline-secondary">Discard changes</button>
                             <button type="submit" form="@formId" class="btn btn-primary">Save changes</button>

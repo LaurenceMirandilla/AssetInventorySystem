@@ -29,6 +29,7 @@ namespace SchoolInventoryManagement.Web.Controllers
         private readonly IAssetService _assetService;
         private readonly ApplicationDbContext _context; // dropdown lookups and simple counts
         private readonly IDisposalService _disposalService;
+        private readonly IAssetCountService _countService;
         private readonly IWebHostEnvironment _webHostEnvironment;
 
         // Matches the mockup's default page size. The footer's "per page"
@@ -43,8 +44,10 @@ namespace SchoolInventoryManagement.Web.Controllers
             IAssetAssignmentService assignmentService,
             IAssetMovementService movementService,
             ApplicationDbContext context,
-            IWebHostEnvironment webHostEnvironment)
+            IWebHostEnvironment webHostEnvironment,
+            IAssetCountService countService)
         {
+            _countService = countService;
             _assetService = assetService;
             _disposalService = disposalService;
             _assignmentService = assignmentService;
@@ -120,15 +123,17 @@ namespace SchoolInventoryManagement.Web.Controllers
                 })
                 .ToListAsync();
 
+            // The Property Department first: it is the usual choice (in stock).
             ViewBag.DepartmentsByBranch = await _context.Departments
-                .OrderBy(d => d.DepartmentName)
+                .OrderByDescending(d => d.IsProperty).ThenBy(d => d.DepartmentName)
                 .Select(d => new DepartmentDTO
                 {
                     DepartmentID = d.DepartmentID,
                     DepartmentName = d.DepartmentName,
                     Description = d.Description,
                     BranchID = d.BranchID,
-                    BranchName = d.Branch.BranchName
+                    BranchName = d.Branch.BranchName,
+                    IsProperty = d.IsProperty
                 })
                 .ToListAsync();
 
@@ -222,7 +227,7 @@ namespace SchoolInventoryManagement.Web.Controllers
 
             ViewBag.StatusFilter = new SelectList(
                 Enum.GetValues(typeof(AssetStatus)).Cast<AssetStatus>()
-                    .Select(s => new { Value = s.ToString(), Text = s.ToString() }),
+                    .Select(s => new { Value = s.ToString(), Text = s == AssetStatus.UnderMaintenance ? "Maintenance" : DisplayText.AssetStatusLabel(s) }),
                 "Value", "Text", model.Status?.ToString());
 
             ViewBag.ConditionFilter = new SelectList(
@@ -324,6 +329,8 @@ namespace SchoolInventoryManagement.Web.Controllers
             };
 
             await PopulateFilterOptionsAsync(model);
+            // For the Inventory menu.
+            ViewBag.RedTagCount = await _context.Assets.CountAsync(a => a.Status == AssetStatus.RedTagged);
 
             return View(model);
         }
@@ -399,12 +406,15 @@ namespace SchoolInventoryManagement.Web.Controllers
                 return RedirectToAction(nameof(Index));
             }
 
+            // The last physical count it was on, for the side panel.
+            ViewBag.LastCount = await _countService.GetLastCountForAssetAsync(id);
             return View(asset);
         }
 
         // The Assets page for Teachers and Staff: every model, with its
-        // category and description, and nothing about the units. They
-        // request a model; the approver picks the unit.
+        // category, description and how many the Property Department has
+        // in stock to lend. They request a model; the approver picks the
+        // unit. A model with none in stock can only be asked to be bought.
         private async Task<IActionResult> CatalogAsync(string? keyword, int? categoryId, int page, int pageSize)
         {
             var query = _context.Models.AsQueryable();
@@ -445,7 +455,8 @@ namespace SchoolInventoryManagement.Web.Controllers
                         ModelName = m.ModelName,
                         CategoryID = m.CategoryID,
                         CategoryName = m.Category.CategoryName,
-                        Description = m.Description
+                        Description = m.Description,
+                        AvailableCount = m.Assets.Count(a => a.Status == AssetStatus.Available)
                     })
                     .ToListAsync(),
                 CategoryOptions = await _context.Categories
@@ -521,11 +532,110 @@ namespace SchoolInventoryManagement.Web.Controllers
         }
 
         // GET /Assets/BulkCreate
+        // ?newItemRequestId= registers the units bought for an arrived
+        // new-item request: the first line still short of units is filled
+        // in, in the requesting department's branch. The units are held by
+        // the Property Department for that request until the requester
+        // confirms receipt.
         [Authorize(Roles = RoleNames.AssetOfficer + "," + RoleNames.Administrator)]
-        public async Task<IActionResult> BulkCreate()
+        public async Task<IActionResult> BulkCreate(int? newItemRequestId)
         {
+            var model = new AssetBulkCreateViewModel();
+
+            if (newItemRequestId is int ticketId)
+            {
+                var ticket = await LoadBulkTicketAsync(ticketId);
+                if (ticket is null)
+                    return RedirectToAction("Details", "NewItemRequests", new { id = ticketId });
+
+                if (ticket.Registered >= ticket.Ordered)
+                {
+                    TempData["StatusMessage"] = $"All {ticket.Ordered} units of request #{ticketId} are registered. Mark it delivered when they are brought over.";
+                    return RedirectToAction("Details", "NewItemRequests", new { id = ticketId });
+                }
+
+                var line = ticket.Lines.FirstOrDefault(l => l.ModelID != null && l.Registered < l.Quantity)
+                           ?? ticket.Lines.FirstOrDefault(l => l.ModelID == null)
+                           ?? ticket.Lines.First();
+                var left = ticket.Ordered - ticket.Registered;
+
+                model.NewItemRequestID = ticketId;
+                model.ModelID = line.ModelID;
+                model.Quantity = Math.Min(left, line.ModelID is null ? left : Math.Max(1, line.Quantity - line.Registered));
+                model.BaseName = line.ItemName;
+                model.AcquisitionCost = line.EstimatedUnitPrice;
+                model.AcquisitionDate = PhilippineTime.Today;
+                model.BranchID = ticket.BranchID;
+                model.DepartmentID = ticket.PropertyDepartmentID;
+                ViewBag.Ticket = ticket;
+            }
+
             await PopulateDropdownsAsync();
-            return View(new AssetBulkCreateViewModel());
+            return View(model);
+        }
+
+        // The ticket a bulk registration is for, or null (with the reason in
+        // TempData) when it cannot take units now.
+        private async Task<BulkTicketInfo?> LoadBulkTicketAsync(int ticketId)
+        {
+            var ticket = await _context.NewItemRequests
+                .Where(n => n.NewItemRequestID == ticketId)
+                .Select(n => new
+                {
+                    n.RequestStatus,
+                    n.ItemKind,
+                    Info = new BulkTicketInfo
+                    {
+                        RequestID = n.NewItemRequestID,
+                        RequesterName = n.RequestedByUser.FirstName + " " + n.RequestedByUser.LastName,
+                        DepartmentName = n.Department.DepartmentName,
+                        BranchID = n.Department.BranchID,
+                        BranchName = n.Department.Branch.BranchName,
+                        Registered = n.RegisteredAssets.Count()
+                    },
+                    Lines = n.Items.OrderBy(i => i.NewItemRequestItemID).Select(i => new BulkTicketLine
+                    {
+                        ItemName = i.ItemName,
+                        ModelID = i.ModelID,
+                        Quantity = i.Quantity,
+                        EstimatedUnitPrice = i.EstimatedUnitPrice
+                    }).ToList()
+                })
+                .FirstOrDefaultAsync();
+
+            if (ticket is null)
+            {
+                TempData["ErrorMessage"] = "New-item request not found.";
+                return null;
+            }
+            if (ticket.ItemKind != CategoryKind.Asset)
+            {
+                TempData["ErrorMessage"] = "That request is for supplies; add them to supplies stock instead.";
+                return null;
+            }
+            if (ticket.RequestStatus != NewItemStatus.Arrived)
+            {
+                TempData["ErrorMessage"] = "Units are registered for a request once it has arrived and before it is delivered.";
+                return null;
+            }
+
+            var info = ticket.Info;
+            info.Lines = ticket.Lines;
+            info.Ordered = info.Lines.Sum(l => l.Quantity);
+
+            var byModel = await _context.Assets
+                .Where(a => a.NewItemRequestID == ticketId)
+                .GroupBy(a => a.ModelID)
+                .Select(g => new { ModelID = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.ModelID, x => x.Count);
+            foreach (var line in info.Lines.Where(l => l.ModelID != null))
+                line.Registered = byModel.GetValueOrDefault(line.ModelID!.Value);
+
+            info.PropertyDepartmentID = await _context.Departments
+                .Where(d => d.BranchID == info.BranchID && d.IsProperty)
+                .Select(d => d.DepartmentID)
+                .FirstOrDefaultAsync();
+            return info;
         }
 
         // POST /Assets/BulkCreate
@@ -537,6 +647,14 @@ namespace SchoolInventoryManagement.Web.Controllers
         [OneTimeSubmit]
         public async Task<IActionResult> BulkCreate(AssetBulkCreateViewModel model)
         {
+            if (model.NewItemRequestID is int forTicket)
+            {
+                var ticket = await LoadBulkTicketAsync(forTicket);
+                if (ticket is null)
+                    return RedirectToAction("Details", "NewItemRequests", new { id = forTicket });
+                ViewBag.Ticket = ticket;
+            }
+
             if (!ModelState.IsValid)
             {
                 await PopulateDropdownsAsync();
@@ -563,10 +681,22 @@ namespace SchoolInventoryManagement.Web.Controllers
                     CurrentLocationID = model.CurrentLocationID,
                     BranchID = model.BranchID!.Value,
                     DepartmentID = model.DepartmentID!.Value,
-                    CreateBarcode = model.CreateBarcode
+                    CreateBarcode = model.CreateBarcode,
+                    NewItemRequestID = model.NewItemRequestID
                 };
 
                 var codes = await _assetService.BulkCreateAssetsAsync(dto, CurrentUserId);
+
+                // For a request: back to it, so the next line or the
+                // delivery is right there.
+                if (model.NewItemRequestID is int ticketId)
+                {
+                    TempData["StatusMessage"] = (codes.Count == 1
+                        ? $"Registered 1 unit for request #{ticketId}: {codes[0]}."
+                        : $"Registered {codes.Count} units for request #{ticketId}: {codes[0]} to {codes[^1]}.")
+                        + " They are held by the Property Department until the requester confirms receipt.";
+                    return RedirectToAction("Details", "NewItemRequests", new { id = ticketId });
+                }
 
                 TempData["StatusMessage"] = codes.Count == 1
                     ? $"Registered 1 asset: {codes[0]}."
@@ -595,7 +725,7 @@ namespace SchoolInventoryManagement.Web.Controllers
             // Out on a request -- reserved and waiting (InTransit) or with
             // someone (Assigned, or Overdue once late). Editing its location
             // now would pull it out from under the request.
-            if (asset.Status == AssetStatus.Assigned || asset.Status == AssetStatus.InTransit ||
+            if ((asset.Status == AssetStatus.Assigned && !asset.IsWithDepartment) || asset.Status == AssetStatus.InTransit ||
                 asset.Status == AssetStatus.Overdue)
             {
                 TempData["ErrorMessage"] = "This asset is out on a request and cannot be edited until it's returned.";
@@ -718,8 +848,96 @@ namespace SchoolInventoryManagement.Web.Controllers
                 AssetRowVersionBase64 = RowVersionHelper.ToBase64(asset.RowVersion)
             };
 
+            // Only a red-tagged unit is disposed of; its reason carries over.
+            if (asset.Status != AssetStatus.RedTagged)
+            {
+                TempData["ErrorMessage"] = "Red-tag it first. Only red-tagged assets can be disposed of.";
+                return RedirectToAction(nameof(Details), new { id });
+            }
+            model.ReasonForDisposal = asset.RedTagReason ?? "";
+
             ViewBag.Asset = asset;
             return View(model);
+        }
+
+        // GET /Assets/RedTags
+        // Every red-tagged unit, oldest tag first.
+        [Authorize(Roles = RoleNames.AssetOfficer + "," + RoleNames.Administrator)]
+        public async Task<IActionResult> RedTags()
+        {
+            return View(await _disposalService.GetRedTaggedAsync());
+        }
+
+        // GET /Assets/RedTag/5
+        [Authorize(Roles = RoleNames.AssetOfficer + "," + RoleNames.Administrator)]
+        public async Task<IActionResult> RedTag(int id)
+        {
+            var asset = await _assetService.GetAssetByIdAsync(id);
+            if (asset is null)
+                return NotFound();
+
+            if (!asset.CanBeRedTagged)
+            {
+                TempData["ErrorMessage"] = asset.Status == AssetStatus.RedTagged
+                    ? "This asset is already red tagged."
+                    : "This asset is out on a request or with a person. Record its return first, then red-tag it.";
+                return RedirectToAction(nameof(Details), new { id });
+            }
+
+            ViewBag.Asset = asset;
+            return View(new RedTagViewModel
+            {
+                AssetID = asset.AssetID,
+                AssetRowVersionBase64 = RowVersionHelper.ToBase64(asset.RowVersion)
+            });
+        }
+
+        // POST /Assets/RedTag/5
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        [OneTimeSubmit]
+        [Authorize(Roles = RoleNames.AssetOfficer + "," + RoleNames.Administrator)]
+        public async Task<IActionResult> RedTag(int id, RedTagViewModel model)
+        {
+            var asset = await _assetService.GetAssetByIdAsync(id);
+            if (asset is null)
+                return NotFound();
+            ViewBag.Asset = asset;
+
+            if (!ModelState.IsValid)
+                return View(model);
+
+            try
+            {
+                await _disposalService.RedTagAsync(id, model.Reason,
+                    RowVersionHelper.FromBase64(model.AssetRowVersionBase64), CurrentUserId);
+                TempData["StatusMessage"] = $"{asset.AssetCode} is red tagged for disposal.";
+                return RedirectToAction(nameof(Details), new { id });
+            }
+            catch (Exception ex)
+            {
+                HandleServiceException(ex);
+                return View(model);
+            }
+        }
+
+        // POST /Assets/RemoveRedTag/5 -- back into Property stock.
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        [Authorize(Roles = RoleNames.AssetOfficer + "," + RoleNames.Administrator)]
+        public async Task<IActionResult> RemoveRedTag(int id, string rowVersionBase64)
+        {
+            try
+            {
+                await _disposalService.RemoveRedTagAsync(id, RowVersionHelper.FromBase64(rowVersionBase64), CurrentUserId);
+                TempData["StatusMessage"] = "Red tag removed. The asset is back in Property stock.";
+            }
+            catch (Exception ex)
+            {
+                TempData["ErrorMessage"] = UserMessageFor(ex);
+            }
+
+            return RedirectToAction(nameof(Details), new { id });
         }
 
         // POST /Assets/Dispose/5

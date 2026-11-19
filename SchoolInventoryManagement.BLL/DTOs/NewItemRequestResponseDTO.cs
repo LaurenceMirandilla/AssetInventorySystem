@@ -54,12 +54,36 @@ namespace SchoolInventoryManagement.BLL.DTOs
         // lose the race rather than silently overwriting another reviewer.
         public byte[] RowVersion { get; set; } = null!;
 
+        // When the requester confirmed receiving the assets.
+        public DateTime? AcknowledgedAt { get; set; }
+
+        // The units registered for this request (assets only), filled by
+        // the service where it is shown.
+        public List<RegisteredUnitDTO> RegisteredUnits { get; set; } = new();
+
+        // How many units the ticket's lines ask for.
+        public int OrderedUnits => Items.Sum(i => i.Quantity);
+
+        // Delivered assets the requester has not confirmed yet.
+        public bool AwaitsAcknowledgment =>
+            ItemKind == CategoryKind.Asset && RequestStatus == NewItemStatus.Delivered
+            && AcknowledgedAt is null && RegisteredUnits.Count > 0;
+
         // Every stage so far, oldest first. Filled on the details page only.
         public List<NewItemRequestStepDTO> Steps { get; set; } = new();
 
         // Whether the signed-in user can move this request on (or reject
         // it) at its current stage. Set by the service where it matters.
         public bool CanAct { get; set; }
+    }
+
+    public class RegisteredUnitDTO
+    {
+        public int AssetID { get; set; }
+        public string AssetCode { get; set; } = null!;
+        public string AssetName { get; set; } = null!;
+        public int ModelID { get; set; }
+        public AssetStatus Status { get; set; }
     }
 
     public class NewItemRequestStepDTO

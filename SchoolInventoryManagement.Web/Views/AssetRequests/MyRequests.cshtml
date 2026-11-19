@@ -116,7 +116,8 @@ else
                         var detail = r.RequestStatus switch
                         {
                             RequestStatus.InTransit => r.RequestType == RequestType.Borrow ? "pick up at " + (r.PickupLocationName ?? "the pickup point") : "on its way",
-                            RequestStatus.Assigned => r.ReturnBy is not null ? "due " + r.ReturnBy.Value.ToString("MMM d") : "no due date",
+                            RequestStatus.Assigned => r.ReturnBy is not null ? "due " + r.ReturnBy.Value.ToString("MMM d")
+                                : r.IsPermanent ? "delivered · confirm receipt" : "no due date",
                             _ => When(r)
                         };
                         var sub = $"{units} unit{(units == 1 ? "" : "s")} · {detail}";
@@ -125,6 +126,7 @@ else
                         if (late) { right = dueIn >= 0 ? "late today" : Days(-dueIn) + " late"; }
                         else if (r.RequestStatus == RequestStatus.Assigned && r.ReturnBy is not null)
                         { right = dueIn == 0 ? "due today" : dueIn == 1 ? "tomorrow" : $"in {dueIn} days"; }
+                        else if (r.AwaitsAcknowledgment) { right = "to confirm"; }
                         else { right = Status(r.RequestStatus, r.RequestType); }
                         var tone = late || r.RequestStatus is RequestStatus.Rejected ? "item-late"
                             : r.RequestStatus == RequestStatus.InTransit ? "item-transit" : "";
@@ -171,10 +173,11 @@ else
                     new(isBorrow ? "Pick up" : "Delivery",
                         handedOver ? r.AssignedDate?.ToString("MMM d") : isBorrow ? (r.PickupLocationName ?? r.RequestedLocationName) : r.RequestedLocationName,
                         handedOver ? RequestStepState.Done : st == RequestStatus.InTransit ? RequestStepState.Current : RequestStepState.Todo),
-                    // A permanent Transfer (no return date) never comes back.
-                    !isBorrow && r.ReturnBy is null
-                        ? new RequestStep("Stays there", "permanent",
-                            st == RequestStatus.Fulfilled ? RequestStepState.Done : RequestStepState.Todo)
+                    // A permanent Transfer (no return date) never comes back:
+                    // it is the department's once the requester confirms.
+                    r.IsPermanent
+                        ? new RequestStep("You confirm", r.AcknowledgedAt?.ToString("MMM d") ?? "receipt",
+                            st == RequestStatus.Fulfilled ? RequestStepState.Done : st == RequestStatus.Assigned ? RequestStepState.Current : RequestStepState.Todo)
                         : new RequestStep("Return",
                             st == RequestStatus.Returned ? r.ReturnedDate?.ToString("MMM d") : r.ReturnBy is not null ? "by " + r.ReturnBy.Value.ToString("MMM d") : null,
                             st == RequestStatus.Returned ? RequestStepState.Done : late ? RequestStepState.Late : st == RequestStatus.Assigned ? RequestStepState.Current : RequestStepState.Todo)
@@ -265,7 +268,27 @@ else
                             </div>
                         </div>
                     }
-                    else if (late)
+                    @if (r.AwaitsAcknowledgment)
+                    {
+                        <form asp-action="Acknowledge" asp-route-id="@r.RequestID" asp-route-from="mine" method="post" class="req-action"
+                              onsubmit="return confirm('Confirm you received every item on request #@r.RequestID?');">
+                            @Html.AntiForgeryToken()
+                            @Html.FormTicket()
+                            <input type="hidden" name="rowVersionBase64" value="@Convert.ToBase64String(r.RowVersion)" />
+                            <div>
+                                <div class="req-action-title">Did you get @(units == 1 ? "it" : "them")?</div>
+                                <div class="req-action-note">
+                                    @(r.IsPermanent
+                                        ? $"Confirm you received the items. They then become {r.DepartmentName}'s."
+                                        : "Confirm you received the items. You answer for them until they are returned.")
+                                </div>
+                            </div>
+                            <div class="req-action-buttons">
+                                <button type="submit" class="btn btn-primary">Confirm receipt</button>
+                            </div>
+                        </form>
+                    }
+                    @if (late)
                     {
                         <div class="req-action is-late">
                             <div>

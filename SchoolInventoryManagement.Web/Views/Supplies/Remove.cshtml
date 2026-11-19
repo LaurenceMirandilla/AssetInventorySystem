@@ -8,7 +8,7 @@
     ViewData["Title"] = "Remove Stock";
     var supplies = (List<SupplyChoiceDTO>)ViewBag.SupplyChoices;
     var stock = (List<SupplyStockChoiceDTO>)ViewBag.StockChoices;
-    var stockJson = System.Text.Json.JsonSerializer.Serialize(stock.Select(k => new { s = k.SupplyID, l = k.LocationID, n = k.LocationName + " (" + k.BranchName + ")", q = k.Quantity }));
+    var stockJson = System.Text.Json.JsonSerializer.Serialize(stock.Select(k => new { s = k.SupplyID, l = k.LocationID, n = k.Label, q = k.Quantity }));
 }
 
 <div class="asset-detail-head">

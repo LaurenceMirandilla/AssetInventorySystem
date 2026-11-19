@@ -67,5 +67,10 @@ namespace SchoolInventoryManagement.BLL.Interfaces
         // At the Delivery stage: the delivery could not be made. A reason
         // is required. The ticket stays where it is, to be tried again.
         Task MarkNotDeliveredAsync(int requestId, byte[] rowVersion, int actingUserId, string? remarks);
+
+        // Delivered assets: the requester confirms receiving them. The units
+        // registered for the request become their department's (Property:
+        // into stock). Only the requester.
+        Task AcknowledgeReceiptAsync(int requestId, byte[] rowVersion, int actingUserId);
     }
 }

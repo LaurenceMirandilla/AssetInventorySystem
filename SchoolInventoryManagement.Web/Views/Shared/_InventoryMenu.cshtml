@@ -1,0 +1,30 @@
+﻿@model int
+@* The Property Department's inventory work: physical counts and red tags.
+   Model: how many units are red tagged. Asset Officers and Administrators
+   only (the caller checks). *@
+<div class="dropdown">
+    <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+        Inventory@(Model > 0 ? " · " + Model + " red tagged" : "")
+    </button>
+    <ul class="dropdown-menu dropdown-menu-end">
+        <li>
+            <a class="dropdown-item" asp-controller="AssetCounts" asp-action="Create">
+                <strong>Count a room</strong>
+                <div class="small text-muted">Tick what is there; see what is missing</div>
+            </a>
+        </li>
+        <li>
+            <a class="dropdown-item" asp-controller="AssetCounts" asp-action="Index">
+                <strong>Past counts</strong>
+                <div class="small text-muted">Every count, with what was missing</div>
+            </a>
+        </li>
+        <li><hr class="dropdown-divider" /></li>
+        <li>
+            <a class="dropdown-item" asp-controller="Assets" asp-action="RedTags">
+                <strong>Red tags@(Model > 0 ? " · " + Model : "")</strong>
+                <div class="small text-muted">Units marked for disposal</div>
+            </a>
+        </li>
+    </ul>
+</div>

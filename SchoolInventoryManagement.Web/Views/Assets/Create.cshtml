@@ -143,17 +143,17 @@
                             <div class="form-text">Only this branch's locations.</div>
                         </div>
                         <div class="col-md-4">
-                            <label asp-for="DepartmentID" class="form-label">Department</label>
+                            <label asp-for="DepartmentID" class="form-label">Belongs to</label>
                             <select asp-for="DepartmentID" id="departmentSelect" class="form-select">
                                 <option value="">-- Pick a branch first --</option>
                                 @foreach (var dept in (List<SchoolInventoryManagement.BLL.DTOs.DepartmentDTO>)ViewBag.DepartmentsByBranch)
                                 {
-                                    <option value="@dept.DepartmentID" data-branch="@dept.BranchID"
-                                            selected="@(dept.DepartmentID == Model.DepartmentID)">@dept.DepartmentName</option>
+                                    <option value="@dept.DepartmentID" data-branch="@dept.BranchID" data-property="@(dept.IsProperty ? "true" : null)"
+                                            selected="@(dept.DepartmentID == Model.DepartmentID)">@(dept.IsProperty ? dept.DepartmentName + " (in stock, can be borrowed)" : dept.DepartmentName)</option>
                                 }
                             </select>
                             <span asp-validation-for="DepartmentID" class="text-danger"></span>
-                            <div class="form-text">Only this branch's departments.</div>
+                            <div class="form-text">Property Department: in stock and can be borrowed. Any other department: issued to it, and it cannot be borrowed.</div>
                         </div>
                     </div>
                 </div>
@@ -297,7 +297,7 @@
                 var all = Array.from(select.options)
                     .filter(function (o) { return o.value; })
                     .map(function (o) {
-                        return { value: o.value, text: o.text, branch: o.getAttribute('data-branch'), code: o.getAttribute('data-code') };
+                        return { value: o.value, text: o.text, branch: o.getAttribute('data-branch'), property: o.getAttribute('data-property'), code: o.getAttribute('data-code') };
                     });
                 var selected = select.value;
 
@@ -317,9 +317,16 @@
                             opt.value = x.value;
                             opt.text = x.text;
                             if (x.code) opt.setAttribute('data-code', x.code);
+                            if (x.property) opt.setAttribute('data-property', x.property);
                             if (x.value === selected) opt.selected = true;
                             select.appendChild(opt);
                         });
+
+                    // Nothing picked yet: the Property Department (in stock).
+                    if (select.id === 'departmentSelect' && !select.value) {
+                        var stock = select.querySelector('option[data-property]');
+                        if (stock) stock.selected = true;
+                    }
 
                     select.disabled = !branchId;
                 }

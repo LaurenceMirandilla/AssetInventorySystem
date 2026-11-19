@@ -44,6 +44,14 @@ namespace SchoolInventoryManagement.BLL.Services
             };
 
             _context.Branches.Add(branch);
+            // Every branch has a Property Department to keep its stock.
+            _context.Departments.Add(new Department
+            {
+                Branch = branch,
+                DepartmentName = PropertyStock.DefaultName,
+                Description = PropertyStock.DefaultDescription,
+                IsProperty = true
+            });
             await _context.SaveChangesAsync();
 
             return branch.ToDTO();
@@ -127,7 +135,20 @@ namespace SchoolInventoryManagement.BLL.Services
             // allowed in here — so a Principal can be blocked by locations
             // they cannot remove themselves. That is deliberate; deleting an
             // entire branch should need more than one person's say-so.
-            var inUse = await _context.Departments.AnyAsync(d => d.BranchID == branchId)
+            // Its own Property Department does not count while it is empty;
+            // it goes together with the branch.
+            var property = await _context.Departments
+                .Where(d => d.BranchID == branchId && d.IsProperty)
+                .ToListAsync();
+            var propertyIds = property.Select(d => d.DepartmentID).ToList();
+            var propertyInUse = propertyIds.Count > 0 && (
+                await _context.Users.AnyAsync(u => propertyIds.Contains(u.DepartmentID))
+                || await _context.Assets.AnyAsync(a => a.DepartmentID != null && propertyIds.Contains(a.DepartmentID.Value))
+                || await _context.AssetRequests.AnyAsync(r => propertyIds.Contains(r.DepartmentID))
+                || await _context.NewItemRequests.AnyAsync(r => propertyIds.Contains(r.DepartmentID)));
+
+            var inUse = propertyInUse
+                || await _context.Departments.AnyAsync(d => d.BranchID == branchId && !d.IsProperty)
                 || await _context.Locations.AnyAsync(l => l.BranchID == branchId)
                 || await _context.Users.AnyAsync(u => u.BranchID == branchId)
                 || await _context.Assets.AnyAsync(a => a.BranchID == branchId);
@@ -136,6 +157,7 @@ namespace SchoolInventoryManagement.BLL.Services
                 throw new InvalidOperationException(
                     "This branch cannot be deleted because it has departments, locations, users, or assets under it.");
 
+            _context.Departments.RemoveRange(property);
             _context.Branches.Remove(branch);
             await _context.SaveChangesAsync();
         }

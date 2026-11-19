@@ -41,4 +41,8 @@ namespace SchoolInventoryManagement.Web.ViewModels
 
     public record SupplyOption(int Id, string Name);
     public record SupplyLocationOption(int Id, string Name, int BranchId, string BranchName);
+
+    // A department other than Property, for "Belongs to" on the supply
+    // forms: stock it keeps for itself (not requestable).
+    public record SupplyDepartmentOption(int Id, string Name, int BranchId, string BranchName);
 }

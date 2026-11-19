@@ -1,0 +1,258 @@
+﻿@model SchoolInventoryManagement.BLL.DTOs.AssetCountSheetDTO?
+@using SchoolInventoryManagement.BLL.DTOs
+@using SchoolInventoryManagement.DAL.Entities.Enums
+@using SchoolInventoryManagement.Web.ViewModels
+@{
+    ViewData["Title"] = "Count a Room";
+    var rooms = ViewBag.Rooms as List<AssetCountRoomDTO> ?? new();
+    // After a failed save: what was ticked and entered, so nothing is lost.
+    var posted = ViewBag.Posted as AssetCountFormModel;
+    var ticked = posted?.FoundAssetIDs.ToHashSet() ?? new HashSet<int>();
+
+    static string Ago(DateTime? when)
+    {
+        if (when is null) return "never counted";
+        var days = (PhilippineTime.Today - when.Value.Date).Days;
+        return days == 0 ? "counted today" : days == 1 ? "counted yesterday" : $"counted {when.Value:MMM d, yyyy}";
+    }
+}
+
+<div class="asset-detail-head">
+    <div>
+        <nav class="asset-crumbs" aria-label="Breadcrumb">
+            <a asp-controller="Assets" asp-action="Index">Items</a>
+            <span aria-hidden="true">&rsaquo;</span>
+            <a asp-action="Index">Counts</a>
+            <span aria-hidden="true">&rsaquo;</span>
+            <span>@(Model is null ? "Count a room" : Model.LocationName)</span>
+        </nav>
+        <h2 class="asset-detail-title">@(Model is null ? "Count a room" : "Count " + Model.LocationName)</h2>
+        <div class="asset-detail-sub">Go room by room. Tick each unit you can see, or scan its barcode; what is left unticked is recorded as missing.</div>
+    </div>
+    <div class="asset-detail-actions">
+        <a asp-action="Index" class="btn btn-outline-secondary">Past counts</a>
+    </div>
+</div>
+
+<form method="get" class="rp-filters">
+    <label class="rp-field" style="min-width:300px;">
+        <span>Room</span>
+        <select name="locationId" class="form-select" onchange="this.form.submit()" id="roomPick">
+            <option value="">Pick a room</option>
+            @foreach (var g in rooms.GroupBy(r => r.BranchName))
+            {
+                <optgroup label="@g.Key">
+                    @foreach (var r in g)
+                    {
+                        <option value="@r.LocationID" selected="@(Model?.LocationID == r.LocationID)">@r.LocationName · @r.Units unit@(r.Units == 1 ? "" : "s") · @Ago(r.LastCounted)</option>
+                    }
+                </optgroup>
+            }
+        </select>
+    </label>
+</form>
+
+@if (Model is null)
+{
+    @* Every room, so it is clear which ones still need counting. *@
+    <div class="sab-table-card">
+        <div class="table-responsive">
+            <table class="table asset-table mb-0">
+                <thead>
+                    <tr><th>Room</th><th class="d-none d-md-table-cell">Branch</th><th class="text-end">Units on record</th><th>Last counted</th><th><span class="visually-hidden">Count</span></th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var r in rooms.OrderBy(r => r.LastCounted ?? DateTime.MinValue).ThenBy(r => r.BranchName).ThenBy(r => r.LocationName))
+                    {
+                        <tr>
+                            <td><strong>@r.LocationName</strong><div class="asset-muted small d-md-none">@r.BranchName</div></td>
+                            <td class="d-none d-md-table-cell asset-muted">@r.BranchName</td>
+                            <td class="text-end">@r.Units</td>
+                            <td class="@(r.LastCounted is null ? "asset-muted" : "")">@Ago(r.LastCounted)</td>
+                            <td class="text-end"><a asp-action="Create" asp-route-locationId="@r.LocationID" class="btn btn-sm btn-outline-secondary">Count</a></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+else
+{
+    <form asp-action="Create" method="post" id="countForm" class="register-form">
+        @Html.AntiForgeryToken()
+        @Html.FormTicket()
+        <input type="hidden" name="LocationID" value="@Model.LocationID" />
+        <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+
+        <div class="row g-3">
+            <div class="col-lg-8">
+                <div class="asset-card register-step mb-3">
+                    <div class="register-step-head">
+                        <div class="register-step-title flex-grow-1">On record in @Model.LocationName &middot; @Model.BranchName</div>
+                        <span class="nr-head-note">@Model.Units.Count unit@(Model.Units.Count == 1 ? "" : "s")</span>
+                    </div>
+                    <div class="register-step-body">
+                        <label for="scanBox" class="form-label">Scan or type a code</label>
+                        <div class="d-flex flex-wrap" style="gap:8px;">
+                            <input id="scanBox" class="form-control" style="max-width:320px;" autocomplete="off"
+                                   placeholder="e.g. FAN-0033, then Enter" aria-describedby="scanNote" />
+                            <button type="button" class="btn btn-outline-secondary" id="tickAll">Tick all</button>
+                            <button type="button" class="btn btn-outline-secondary" id="untickAll">Untick all</button>
+                        </div>
+                        <div class="form-text" id="scanNote" aria-live="polite">A code on the list ticks it. Any other code is added below as found here.</div>
+                    </div>
+                    @if (Model.Units.Count == 0)
+                    {
+                        <div class="sab-empty"><p class="mb-0">Nothing is recorded in this room. Scan or type the codes of anything you find here.</p></div>
+                    }
+                    else
+                    {
+                        <div class="table-responsive">
+                            <table class="table asset-table mb-0 align-middle count-table">
+                                <thead>
+                                    <tr><th style="width:56px;">There</th><th>Code</th><th>Asset</th><th class="d-none d-md-table-cell">Whose</th><th class="d-none d-sm-table-cell">Status</th></tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var u in Model.Units)
+                                    {
+                                        <tr data-unit data-code="@u.AssetCode.ToLowerInvariant()" data-barcode="@(u.BarcodeData?.ToLowerInvariant())">
+                                            <td>
+                                                <input type="checkbox" class="form-check-input count-box" name="FoundAssetIDs" value="@u.AssetID"
+                                                       id="u-@u.AssetID" checked="@ticked.Contains(u.AssetID)" aria-label="@u.AssetCode is there" />
+                                            </td>
+                                            <td><label for="u-@u.AssetID" class="asset-code-chip mb-0">@u.AssetCode</label></td>
+                                            <td><label for="u-@u.AssetID" class="mb-0"><span class="fw-semibold">@u.AssetName</span><span class="asset-muted small d-block">@u.ModelName</span></label></td>
+                                            <td class="d-none d-md-table-cell">@u.Holder</td>
+                                            <td class="d-none d-sm-table-cell"><span class="asset-pill asset-status st-@u.Status.ToString().ToLowerInvariant()">@(u.Status == AssetStatus.UnderMaintenance ? "Maintenance" : DisplayText.AssetStatusLabel(u.Status))</span></td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+
+                <div class="asset-card register-step mb-3">
+                    <div class="register-step-head">
+                        <div class="register-step-title flex-grow-1">Found here, recorded somewhere else</div>
+                        <span class="nr-head-note" id="extraCount">none</span>
+                    </div>
+                    <div class="register-step-body">
+                        <ul class="count-extras" id="extraList"></ul>
+                        <textarea name="ExtraCodes" id="extraCodes" hidden>@posted?.ExtraCodes</textarea>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="MoveExtrasHere" value="true" id="moveHere" checked="@(posted is null || posted.MoveExtrasHere)" />
+                            <label class="form-check-label" for="moveHere">Record them as being in @Model.LocationName (a movement is saved for each)</label>
+                        </div>
+                        <div class="form-text">Units out on a request, or issued to a department in another branch, are listed but not moved.</div>
+                    </div>
+                </div>
+
+                <div class="asset-card register-step">
+                    <div class="register-step-body">
+                        <label for="countNotes" class="form-label">Notes <span class="register-optional">(optional)</span></label>
+                        <textarea name="Notes" id="countNotes" class="form-control" rows="2" maxlength="500" placeholder="e.g. Cabinet 2 was locked; checked with the teacher.">@posted?.Notes</textarea>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-4">
+                <div class="asset-card register-side count-summary">
+                    <div class="asset-card-title">This count</div>
+                    <dl class="approve-facts nr-summary-body">
+                        <div><dt>On record</dt><dd>@Model.Units.Count</dd></div>
+                        <div><dt>Ticked</dt><dd id="sumFound">0</dd></div>
+                        <div><dt>Missing</dt><dd id="sumMissing" class="count-missing">@Model.Units.Count</dd></div>
+                        <div><dt>Found here, not on record</dt><dd id="sumExtra">0</dd></div>
+                    </dl>
+                </div>
+            </div>
+        </div>
+
+        <div class="register-footer">
+            <span id="footNote">Unticked units are saved as missing.</span>
+            <div class="d-flex ms-auto" style="gap:8px;">
+                <a asp-action="Create" class="btn btn-outline-secondary">Cancel</a>
+                <button type="submit" class="btn btn-primary" id="saveCount">Save count</button>
+            </div>
+        </div>
+    </form>
+}
+
+@section Scripts {
+    <script>
+        (function () {
+            var form = document.getElementById('countForm');
+            if (!form) return;
+            var rows = Array.from(form.querySelectorAll('[data-unit]'));
+            var box = document.getElementById('scanBox');
+            var note = document.getElementById('scanNote');
+            var extraList = document.getElementById('extraList');
+            var extraField = document.getElementById('extraCodes');
+            var extras = extraField.value.split(/[\r\n,]+/).map(function (s) { return s.trim(); }).filter(Boolean);
+
+            function boxes() { return rows.map(function (r) { return r.querySelector('.count-box'); }); }
+
+            function renderExtras() {
+                extraList.innerHTML = '';
+                extras.forEach(function (code, i) {
+                    var li = document.createElement('li');
+                    var span = document.createElement('span'); span.className = 'asset-code-chip'; span.textContent = code;
+                    var x = document.createElement('button'); x.type = 'button'; x.className = 'count-extra-remove';
+                    x.setAttribute('aria-label', 'Remove ' + code); x.textContent = '×';
+                    x.addEventListener('click', function () { extras.splice(i, 1); renderExtras(); sync(); });
+                    li.appendChild(span); li.appendChild(x); extraList.appendChild(li);
+                });
+                extraField.value = extras.join('\n');
+                document.getElementById('extraCount').textContent = extras.length ? extras.length + ' unit' + (extras.length === 1 ? '' : 's') : 'none';
+            }
+
+            function sync() {
+                var found = boxes().filter(function (b) { return b.checked; }).length;
+                rows.forEach(function (r) { r.classList.toggle('is-found', r.querySelector('.count-box').checked); });
+                document.getElementById('sumFound').textContent = found;
+                document.getElementById('sumMissing').textContent = rows.length - found;
+                document.getElementById('sumExtra').textContent = extras.length;
+                document.getElementById('footNote').textContent = (rows.length - found) + ' missing · ' + extras.length + ' found here, not on record';
+            }
+
+            // A scanner types the code and presses Enter.
+            box.addEventListener('keydown', function (e) {
+                if (e.key !== 'Enter') return;
+                e.preventDefault();
+                var code = box.value.trim();
+                box.value = '';
+                if (!code) return;
+                var key = code.toLowerCase();
+                var row = rows.find(function (r) { return r.dataset.code === key || (r.dataset.barcode && r.dataset.barcode === key); });
+                if (row) {
+                    var cb = row.querySelector('.count-box');
+                    cb.checked = true;
+                    row.classList.remove('is-flash'); void row.offsetWidth; row.classList.add('is-flash');
+                    row.scrollIntoView({ block: 'nearest' });
+                    note.textContent = cb.getAttribute('aria-label').replace(' is there', '') + ' ticked.';
+                } else if (extras.some(function (c) { return c.toLowerCase() === key; })) {
+                    note.textContent = code + ' is already in the list below.';
+                } else {
+                    extras.push(code);
+                    renderExtras();
+                    note.textContent = code + ' is not recorded in this room; added below as found here.';
+                }
+                sync();
+            });
+
+            document.getElementById('tickAll').addEventListener('click', function () { boxes().forEach(function (b) { b.checked = true; }); sync(); });
+            document.getElementById('untickAll').addEventListener('click', function () { boxes().forEach(function (b) { b.checked = false; }); sync(); });
+            form.addEventListener('change', sync);
+            form.addEventListener('submit', function (e) {
+                var missing = rows.length - boxes().filter(function (b) { return b.checked; }).length;
+                if (!confirm('Save this count? ' + missing + ' unit' + (missing === 1 ? '' : 's') + ' will be recorded as missing.')) e.preventDefault();
+            });
+
+            renderExtras();
+            sync();
+            box.focus();
+        })();
+    </script>
+}

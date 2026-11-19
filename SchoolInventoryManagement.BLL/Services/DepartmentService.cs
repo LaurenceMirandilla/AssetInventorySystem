@@ -96,6 +96,12 @@ namespace SchoolInventoryManagement.BLL.Services
             if (nameExists)
                 throw new InvalidOperationException("A department with this name already exists in this branch.");
 
+            // The Property Department keeps its branch's stock: it can be
+            // renamed, not moved.
+            if (department.IsProperty && dto.BranchID != department.BranchID)
+                throw new InvalidOperationException(
+                    "The Property Department keeps this branch's stock, so it cannot be moved to another branch.");
+
             department.DepartmentName = dto.DepartmentName;
             department.Description = dto.Description;
             department.BranchID = dto.BranchID;
@@ -110,12 +116,14 @@ namespace SchoolInventoryManagement.BLL.Services
             var department = await _context.Departments.FindAsync(departmentId);
             if (department is null)
                 throw new KeyNotFoundException("Department not found.");
+            if (department.IsProperty)
+                throw new InvalidOperationException(
+                    "The Property Department keeps this branch's stock and cannot be deleted.");
 
             var inUse = await _context.Users.AnyAsync(u => u.DepartmentID == departmentId)
                 || await _context.Assets.AnyAsync(a => a.DepartmentID == departmentId)
                 || await _context.AssetRequests.AnyAsync(ar => ar.DepartmentID == departmentId)
-                // Units out on a borrow or transfer that go back to this
-                // department when returned (AssignmentDepartment).
+                // Units out on a borrow or transfer that were taken from it.
                 || await _context.AssetAssignments.AnyAsync(a => a.ReturnDate == null && a.PreviousDepartmentID == departmentId);
 
             if (inUse)

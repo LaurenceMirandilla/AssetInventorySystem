@@ -52,6 +52,7 @@ namespace SchoolInventoryManagement.BLL.Mappings
                     : $"{request.ReviewedByUser.FirstName} {request.ReviewedByUser.LastName}",
                 ReviewDate = request.ReviewDate,
                 Remarks = request.Remarks,
+                AcknowledgedAt = request.AcknowledgedAt,
                 RowVersion = request.RowVersion,
                 Steps = request.Steps
                     .OrderBy(s => s.ActedAt).ThenBy(s => s.StepID)

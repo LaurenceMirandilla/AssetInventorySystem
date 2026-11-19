@@ -193,7 +193,9 @@
                     @if (isApprover)
                     {
                         <li class="sab-nav-item">
-                            <a class="sab-nav-link @(onApprovals || onSupplyApprovals ? "active" : "")" asp-controller="AssetRequests" asp-action="Pending">
+                            @* Borrow and transfer approvals are Property's; the
+                               Principal's Approvals are the supply requests. *@
+                            <a class="sab-nav-link @(onApprovals || onSupplyApprovals ? "active" : "")" asp-controller="@(isAssetManager ? "AssetRequests" : "SupplyRequests")" asp-action="Pending">
                                 <span class="sab-nav-label">@Html.Raw(navIcon("approvals"))Approvals</span>
                                 @await Component.InvokeAsync("ApprovalsBadge")
                             </a>

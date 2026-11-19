@@ -38,10 +38,11 @@ namespace SchoolInventoryManagement.BLL.Services
             var user = await GetActiveUserAsync(actingUserId);
             var branchId = user.BranchID;
 
-            // Only supplies kept in the requester's branch: a request is
-            // filled from that branch and nowhere else.
+            // Only supplies the Property Department keeps in the
+            // requester's branch: a request is filled from there and
+            // nowhere else. Other departments' stock is their own.
             return await _context.Supplies.AsNoTracking()
-                .Where(s => s.Stock.Any(k => k.Location.BranchID == branchId))
+                .Where(s => s.Stock.Any(k => k.Location.BranchID == branchId && k.Department.IsProperty))
                 .OrderBy(s => s.Category.CategoryName).ThenBy(s => s.SupplyName)
                 .Select(s => new SupplyRequestChoiceDTO
                 {
@@ -50,10 +51,30 @@ namespace SchoolInventoryManagement.BLL.Services
                     CategoryName = s.Category.CategoryName,
                     Unit = s.Unit,
                     LowStockLevel = s.LowStockLevel,
-                    HereQuantity = s.Stock.Where(k => k.Location.BranchID == branchId).Sum(k => (int?)k.Quantity) ?? 0,
-                    ElsewhereQuantity = s.Stock.Where(k => k.Location.BranchID != branchId).Sum(k => (int?)k.Quantity) ?? 0
+                    HereQuantity = s.Stock.Where(k => k.Location.BranchID == branchId && k.Department.IsProperty).Sum(k => (int?)k.Quantity) ?? 0,
+                    ElsewhereQuantity = s.Stock.Where(k => k.Location.BranchID != branchId && k.Department.IsProperty).Sum(k => (int?)k.Quantity) ?? 0
                 })
                 .ToListAsync();
+        }
+
+        public async Task<SupplySourceDTO> GetSourceAsync(int actingUserId)
+        {
+            var user = await GetActiveUserAsync(actingUserId);
+            var property = await _context.Departments.AsNoTracking()
+                .Where(d => d.BranchID == user.BranchID && d.IsProperty)
+                .Select(d => d.DepartmentName)
+                .FirstOrDefaultAsync() ?? "Property Department";
+            return new SupplySourceDTO
+            {
+                DepartmentName = property,
+                BranchName = user.Branch.BranchName,
+                Rooms = await _context.SupplyStock.AsNoTracking()
+                    .Where(k => k.Location.BranchID == user.BranchID && k.Department.IsProperty)
+                    .Select(k => k.Location.LocationName.Trim())
+                    .Distinct()
+                    .OrderBy(n => n)
+                    .ToListAsync()
+            };
         }
 
         public async Task<string> GetBranchNameAsync(int actingUserId)
@@ -104,8 +125,8 @@ namespace SchoolInventoryManagement.BLL.Services
                 {
                     s.SupplyID,
                     s.SupplyName,
-                    Kept = s.Stock.Any(k => k.Location.BranchID == user.BranchID),
-                    Quantity = s.Stock.Where(k => k.Location.BranchID == user.BranchID).Sum(k => (int?)k.Quantity) ?? 0
+                    Kept = s.Stock.Any(k => k.Location.BranchID == user.BranchID && k.Department.IsProperty),
+                    Quantity = s.Stock.Where(k => k.Location.BranchID == user.BranchID && k.Department.IsProperty).Sum(k => (int?)k.Quantity) ?? 0
                 })
                 .ToListAsync();
             if (here.Count != supplyIds.Count)
@@ -113,7 +134,7 @@ namespace SchoolInventoryManagement.BLL.Services
             // The form does not offer these; this stops a hand-built post.
             var notHere = here.FirstOrDefault(s => !s.Kept);
             if (notHere is not null)
-                throw new InvalidOperationException($"{notHere.SupplyName} is not kept at your branch.");
+                throw new InvalidOperationException($"{notHere.SupplyName} is not kept by the Property Department at your branch.");
             var empty = here.FirstOrDefault(s => s.Quantity <= 0);
             if (empty is not null)
                 throw new InvalidOperationException($"{empty.SupplyName} is out of stock at your branch.");
@@ -252,7 +273,7 @@ namespace SchoolInventoryManagement.BLL.Services
                 var supplyIds = pending.SelectMany(r => r.Items.Select(i => i.SupplyID)).Distinct().ToList();
 
                 var stock = await _context.SupplyStock.AsNoTracking()
-                    .Where(k => supplyIds.Contains(k.SupplyID))
+                    .Where(k => supplyIds.Contains(k.SupplyID) && k.Department.IsProperty)
                     .Select(k => new { k.SupplyID, k.Location.BranchID, k.Quantity })
                     .ToListAsync();
                 var held = await _context.SupplyRequestItems.AsNoTracking()
@@ -347,8 +368,8 @@ namespace SchoolInventoryManagement.BLL.Services
                 {
                     s.SupplyID,
                     s.LowStockLevel,
-                    Here = s.Stock.Where(k => k.Location.BranchID == branchId).Sum(k => (int?)k.Quantity) ?? 0,
-                    Elsewhere = s.Stock.Where(k => k.Location.BranchID != branchId).Sum(k => (int?)k.Quantity) ?? 0
+                    Here = s.Stock.Where(k => k.Location.BranchID == branchId && k.Department.IsProperty).Sum(k => (int?)k.Quantity) ?? 0,
+                    Elsewhere = s.Stock.Where(k => k.Location.BranchID != branchId && k.Department.IsProperty).Sum(k => (int?)k.Quantity) ?? 0
                 })
                 .ToListAsync();
 
@@ -413,7 +434,7 @@ namespace SchoolInventoryManagement.BLL.Services
             var supplyIds = request.Items.Select(i => i.SupplyID).ToList();
             var held = await HeldAsync(request.BranchID, requestId, supplyIds);
             var here = await _context.SupplyStock
-                .Where(k => supplyIds.Contains(k.SupplyID) && k.Location.BranchID == request.BranchID)
+                .Where(k => supplyIds.Contains(k.SupplyID) && k.Location.BranchID == request.BranchID && k.Department.IsProperty)
                 .GroupBy(k => k.SupplyID)
                 .Select(g => new { SupplyID = g.Key, Quantity = g.Sum(k => k.Quantity) })
                 .ToDictionaryAsync(x => x.SupplyID, x => x.Quantity);
@@ -504,7 +525,7 @@ namespace SchoolInventoryManagement.BLL.Services
 
             var supplyIds = request.Items.Select(i => i.SupplyID).ToList();
             var rooms = await _context.SupplyStock.AsNoTracking()
-                .Where(k => supplyIds.Contains(k.SupplyID) && k.Location.BranchID == request.BranchID && k.Quantity > 0)
+                .Where(k => supplyIds.Contains(k.SupplyID) && k.Location.BranchID == request.BranchID && k.Quantity > 0 && k.Department.IsProperty)
                 .OrderByDescending(k => k.LocationID == (request.DeliverToLocationID ?? request.PickupLocationID))
                 .ThenByDescending(k => k.Quantity)
                 .Select(k => new { k.SupplyID, k.LocationID, k.Location.LocationName, k.Quantity })
@@ -552,10 +573,10 @@ namespace SchoolInventoryManagement.BLL.Services
             if (lines.Any(l => !supplyIds.Contains(l.SupplyID)))
                 throw new ArgumentException("A supply that is not on this request was listed.");
 
-            // Only rooms in the requester's branch.
+            // Only the Property Department's rooms in the requester's branch.
             var stock = await _context.SupplyStock
                 .Include(k => k.Location)
-                .Where(k => supplyIds.Contains(k.SupplyID) && k.Location.BranchID == request.BranchID)
+                .Where(k => supplyIds.Contains(k.SupplyID) && k.Location.BranchID == request.BranchID && k.Department.IsProperty)
                 .ToListAsync();
 
             var now = PhilippineTime.Now;
@@ -579,7 +600,7 @@ namespace SchoolInventoryManagement.BLL.Services
                     var row = stock.FirstOrDefault(k => k.SupplyID == line.SupplyID && k.LocationID == line.LocationID);
                     if (row is null)
                         throw new ArgumentException(
-                            $"{item.Supply.SupplyName} is not kept in that room, or the room is in another branch.");
+                            $"{item.Supply.SupplyName} is not kept by the Property Department in that room, or the room is in another branch.");
                     if (line.Quantity > row.Quantity)
                         throw new InvalidOperationException(
                             $"{item.Supply.SupplyName}: {row.Location.LocationName} only has {row.Quantity}. Take the rest from another room.");
@@ -589,6 +610,7 @@ namespace SchoolInventoryManagement.BLL.Services
                     {
                         SupplyID = row.SupplyID,
                         LocationID = row.LocationID,
+                        DepartmentID = row.DepartmentID,
                         Type = SupplyTransactionType.Issued,
                         QuantityChange = -line.Quantity,
                         QuantityAfter = row.Quantity,

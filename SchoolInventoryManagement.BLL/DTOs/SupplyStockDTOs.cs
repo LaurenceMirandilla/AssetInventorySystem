@@ -31,11 +31,19 @@ namespace SchoolInventoryManagement.BLL.DTOs
         public string LocationName { get; set; } = null!;
         public string BranchName { get; set; } = null!;
         public int Quantity { get; set; }
+        public string DepartmentName { get; set; } = null!;
+        public bool IsProperty { get; set; }
+
+        // "Main Storage Room (Annex Campus)", plus whose it is when it is
+        // not the Property Department's.
+        public string Label => $"{LocationName} ({BranchName})" + (IsProperty ? "" : $" · {DepartmentName}'s");
     }
 
     // ---- Count supplies ----
     public class SupplyCountLineDTO
     {
+        public string DepartmentName { get; set; } = null!;
+        public bool IsProperty { get; set; }
         public int SupplyID { get; set; }
         public string SupplyName { get; set; } = null!;
         public string CategoryName { get; set; } = null!;

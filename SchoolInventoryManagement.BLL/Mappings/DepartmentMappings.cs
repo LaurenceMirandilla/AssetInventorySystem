@@ -13,7 +13,8 @@ namespace SchoolInventoryManagement.BLL.Mappings
                 DepartmentName = department.DepartmentName,
                 Description = department.Description,
                 BranchID = department.BranchID,
-                BranchName = department.Branch?.BranchName ?? string.Empty
+                BranchName = department.Branch?.BranchName ?? string.Empty,
+                IsProperty = department.IsProperty
             };
         }
     }

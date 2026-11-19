@@ -68,9 +68,14 @@ namespace SchoolInventoryManagement.BLL.Services
                 return 0;
 
             // Same rule as the Approvals page: nobody decides a request from
-            // someone with their own role, so those are not counted.
-            var pending = await _context.AssetRequests.CountAsync(q =>
-                q.RequestStatus == RequestStatus.Pending && q.RequestedByUser.RoleID != r.RoleID);
+            // someone with their own role, so those are not counted. Borrow
+            // and transfer requests are Property's (Asset Officers, with
+            // Administrators as a backup), so the Principal counts supplies
+            // only.
+            var pending = 0;
+            if (r.RoleName == RoleNames.AssetOfficer || r.RoleName == RoleNames.Administrator)
+                pending += await _context.AssetRequests.CountAsync(q =>
+                    q.RequestStatus == RequestStatus.Pending && q.RequestedByUser.RoleID != r.RoleID);
             pending += await _context.SupplyRequests.CountAsync(q =>
                 q.Status == SupplyRequestStatus.Pending
                 && q.RequestedByUserID != userId

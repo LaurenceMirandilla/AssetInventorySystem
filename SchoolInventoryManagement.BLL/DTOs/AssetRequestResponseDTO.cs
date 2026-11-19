@@ -57,6 +57,17 @@ namespace SchoolInventoryManagement.BLL.DTOs
         public DateTime? AssignedDate { get; set; }
         public DateTime? ReturnedDate { get; set; }
 
+        // When the requester confirmed receiving the units. Null: not yet
+        // (or handed over before this was recorded).
+        public DateTime? AcknowledgedAt { get; set; }
+
+        // A Transfer with no return date: the units become the
+        // department's once the requester confirms receipt.
+        public bool IsPermanent => RequestType == RequestType.Transfer && ReturnBy is null;
+
+        // Handed over and not yet confirmed by the requester.
+        public bool AwaitsAcknowledgment => RequestStatus == RequestStatus.Assigned && AcknowledgedAt is null;
+
         public UserSummaryDTO? ApprovedByUser { get; set; }
         public DateTime? ApprovalDate { get; set; }
         public string? Remarks { get; set; }

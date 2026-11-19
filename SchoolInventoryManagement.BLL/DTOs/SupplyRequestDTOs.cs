@@ -15,8 +15,18 @@ namespace SchoolInventoryManagement.BLL.DTOs
         public string CategoryName { get; set; } = null!;
         public string Unit { get; set; } = null!;
         public int LowStockLevel { get; set; }
+        // The Property Department's stock: what can be requested.
         public int HereQuantity { get; set; }
         public int ElsewhereQuantity { get; set; }
+    }
+
+    // Where a supply request is filled from: the requester's branch's
+    // Property Department, and the rooms it keeps supplies in.
+    public class SupplySourceDTO
+    {
+        public string DepartmentName { get; set; } = null!;
+        public string BranchName { get; set; } = null!;
+        public List<string> Rooms { get; set; } = new();
     }
 
     public class CreateSupplyRequestDTO

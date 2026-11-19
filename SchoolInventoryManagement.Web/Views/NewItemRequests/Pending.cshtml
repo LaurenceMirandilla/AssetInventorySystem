@@ -219,9 +219,13 @@
                                 }
                                 else
                                 {
-                                    <a asp-controller="Assets" asp-action="BulkCreate">register the assets</a>
+                                    <a asp-controller="Assets" asp-action="BulkCreate" asp-route-newItemRequestId="@r.NewItemRequestID">register the assets</a>
+                                    <span>(@r.RegisteredUnits.Count of @r.OrderedUnits registered; all of them are needed before it can be delivered).</span>
                                 }
-                                <span>if that is not done yet.</span>
+                                @if (r.ItemKind == CategoryKind.Supply)
+                                {
+                                    <span>if that is not done yet.</span>
+                                }
                             </div>
                         }
                         @if (problem is not null)
