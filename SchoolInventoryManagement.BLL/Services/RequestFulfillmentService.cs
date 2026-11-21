@@ -348,8 +348,12 @@ namespace SchoolInventoryManagement.BLL.Services
 
         public async Task RecordReturnAsync(
             int requestId, List<int> assignmentIds, ConditionStatus conditionOnReturn,
-            int returnLocationId, byte[] requestRowVersion, int actingUserId)
+            int returnLocationId, byte[] requestRowVersion, int actingUserId,
+            Dictionary<int, ConditionStatus>? unitConditions = null, string? remarks = null)
         {
+            remarks = string.IsNullOrWhiteSpace(remarks) ? null : remarks.Trim();
+            if (remarks is { Length: > 500 })
+                throw new ArgumentException("Remarks can be at most 500 characters.");
             var actingUser = await PermissionHelper.EnsureIsAssetManagerAsync(_context, actingUserId);
 
             var returnLocation = await _context.Locations.FindAsync(returnLocationId);
@@ -385,17 +389,26 @@ namespace SchoolInventoryManagement.BLL.Services
             var now = PhilippineTime.Now;
             foreach (var assignment in returning)
             {
+                // Its own condition tag, or the one for every ticked unit.
+                var condition = unitConditions is not null && unitConditions.TryGetValue(assignment.AssignmentID, out var tagged)
+                    ? tagged : conditionOnReturn;
                 assignment.ReturnDate = now;
-                assignment.ConditionOnReturn = conditionOnReturn;
+                assignment.ConditionOnReturn = condition;
+                if (remarks is not null)
+                {
+                    var note = "Returned: " + remarks;
+                    assignment.Remarks = string.IsNullOrEmpty(assignment.Remarks) ? note : assignment.Remarks + " · " + note;
+                    if (assignment.Remarks.Length > 500) assignment.Remarks = assignment.Remarks[..500];
+                }
 
                 var unit = assignment.Asset;
-                unit.Condition = conditionOnReturn;
+                unit.Condition = condition;
 
                 // Back on a shelf, where staff said, and back in the
                 // Property Department's stock.
                 MovementHelper.Record(
                     _context, unit, returnLocationId, actingUser.UserID,
-                    $"Returned from request #{requestId}", conditionOnReturn);
+                    $"Returned from request #{requestId}" + (remarks is null ? "" : $": {remarks}"), condition);
                 await PropertyStock.ReturnToStockAsync(_context, unit);
             }
 

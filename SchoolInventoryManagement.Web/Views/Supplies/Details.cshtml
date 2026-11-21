@@ -65,8 +65,6 @@
         @if (canManage)
         {
             <a asp-action="Edit" asp-route-id="@Model.SupplyID" class="btn btn-outline-secondary">Edit</a>
-            <a asp-action="Move" asp-route-supplyId="@Model.SupplyID" class="btn btn-outline-secondary">Move stock</a>
-            <a asp-action="Count" class="btn btn-outline-secondary">Count stock</a>
             <a asp-action="Remove" asp-route-supplyId="@Model.SupplyID" class="btn btn-outline-danger">Remove stock</a>
             <a asp-action="AddStock" asp-route-supplyId="@Model.SupplyID" class="btn btn-primary">+ Add stock</a>
         }
@@ -89,9 +87,9 @@
     @if (seesPrice)
     {
         <div>
-            <span>Average price per @Model.Unit</span>
+            <span>Latest price per @Model.Unit</span>
             <strong>@(Model.UnitPrice.HasValue ? "₱ " + Model.UnitPrice.Value.ToString("N2") : "No price yet")</strong>
-            <small class="asset-muted d-block">@(Model.PricedPurchases == 0 ? "Enter a price when adding stock" : "from " + Model.PricedPurchases + " priced deliver" + (Model.PricedPurchases == 1 ? "y" : "ies"))</small>
+            <small class="asset-muted d-block">@(Model.UnitPrice.HasValue ? "what Purchasing last paid" : "set when Purchasing orders it")</small>
         </div>
         <div>
             <span>Stock value</span>

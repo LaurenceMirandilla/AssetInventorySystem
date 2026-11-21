@@ -39,12 +39,12 @@
                 <div class="register-step-body">
                     <div class="row g-2">
                         <div class="col-md-6">
-                            <label class="form-label" for="SupplierName">Name</label>
+                            <label class="form-label" for="SupplierName">Name <small class="text-muted">pick from the list, or type a new one</small></label>
                             <input asp-for="SupplierName" class="form-control" maxlength="150" list="supplierList" required autocomplete="off" />
                             <datalist id="supplierList">
-                                @foreach (var s in form.KnownSuppliers)
+                                @foreach (var s in form.Suppliers)
                                 {
-                                    <option value="@s"></option>
+                                    <option value="@s.Name" data-address="@s.Address" data-contact="@s.Contact"></option>
                                 }
                             </datalist>
                         </div>
@@ -141,6 +141,17 @@
             }
             rows.forEach(function (row) { row.addEventListener('input', sync); });
             sync();
+
+            // A supplier picked from the list fills in its address and contact.
+            var nameBox = document.getElementById('SupplierName');
+            nameBox.addEventListener('change', function () {
+                var v = nameBox.value.trim().toLowerCase();
+                var opt = Array.from(document.querySelectorAll('#supplierList option')).find(function (o) { return o.value.toLowerCase() === v; });
+                if (!opt) return;
+                var a = document.getElementById('SupplierAddress'), c = document.getElementById('SupplierContact');
+                if (!a.value) a.value = opt.dataset.address || '';
+                if (!c.value) c.value = opt.dataset.contact || '';
+            });
         })();
     </script>
 }

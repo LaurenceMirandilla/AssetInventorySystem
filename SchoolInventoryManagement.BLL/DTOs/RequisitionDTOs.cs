@@ -48,8 +48,8 @@ namespace SchoolInventoryManagement.BLL.DTOs
         public string? Reason { get; set; }
         public CategoryKind ItemKind { get; set; }
         public List<PurchaseOrderFormLineDTO> Lines { get; set; } = new();
-        // Earlier orders' suppliers, to pick from.
-        public List<string> KnownSuppliers { get; set; } = new();
+        // The supplier list, to pick from (Scripts/033).
+        public List<SupplierDTO> Suppliers { get; set; } = new();
     }
 
     public class PurchaseOrderFormLineDTO
@@ -121,5 +121,45 @@ namespace SchoolInventoryManagement.BLL.DTOs
         public int Quantity { get; set; }
         public decimal UnitPrice { get; set; }
         public decimal Amount => Quantity * UnitPrice;
+    }
+}
+
+namespace SchoolInventoryManagement.BLL.DTOs
+{
+    // Suppliers (Scripts/033).
+    public class SupplierDTO
+    {
+        public int SupplierID { get; set; }
+        public string Name { get; set; } = null!;
+        public string? Address { get; set; }
+        public string? Contact { get; set; }
+        public string? Notes { get; set; }
+        public int Orders { get; set; }
+        public decimal Spent { get; set; }
+        public System.DateTime? LastOrder { get; set; }
+    }
+
+    public class SupplierDetailDTO : SupplierDTO
+    {
+        public System.Collections.Generic.List<SupplierOrderDTO> OrderList { get; set; } = new();
+    }
+
+    public class SupplierOrderDTO
+    {
+        public int PurchaseOrderID { get; set; }
+        public string PONumber { get; set; } = null!;
+        public System.DateTime OrderDate { get; set; }
+        public int NewItemRequestID { get; set; }
+        public System.Collections.Generic.List<PurchaseOrderLineDTO> Lines { get; set; } = new();
+        public decimal Total => System.Linq.Enumerable.Sum(Lines, l => l.Amount);
+    }
+
+    public class SaveSupplierDTO
+    {
+        public int? SupplierID { get; set; }
+        public string Name { get; set; } = "";
+        public string? Address { get; set; }
+        public string? Contact { get; set; }
+        public string? Notes { get; set; }
     }
 }

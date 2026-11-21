@@ -1438,10 +1438,19 @@ a.dash-kpi:hover { background: rgba(255, 255, 255, 0.14); color: #fff; text-deco
 
 /* Department forms: the rooms picker (Scripts/029). */
 .dept-rooms-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px; }
-.dept-room { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border: 1px solid #dfe7e1; border-radius: 8px; background: #fff; cursor: pointer; font-size: 0.9rem; min-width: 0; }
+.dept-rooms-list { align-items: start; }
+/* Red tag mode on Property (Assets/Index). */
+.rt-col { width: 36px; }
+.rt-bar { display: flex; align-items: center; gap: 10px; }
+.rt-bar input[name=reason] { flex: 1 1 260px; min-width: 0; }
+/* Condition tag on a unit being returned (AssetRequests/RecordReturn). */
+.rr-cond { margin-top: 6px; font-size: 0.78rem; padding-top: 2px; padding-bottom: 2px; }
+.dept-room { display: flex; align-items: flex-start; gap: 8px; padding: 7px 10px; border: 1px solid #dfe7e1; border-radius: 8px; background: #fff; cursor: pointer; font-size: 0.9rem; min-width: 0; height: 100%; }
+.dept-room input { margin-top: 3px !important; flex: none; }
+.dept-room-text { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; line-height: 1.3; }
 .dept-room input { margin: 0; accent-color: var(--sab-green); }
-.dept-room span { min-width: 0; overflow-wrap: anywhere; }
-.dept-room small { color: var(--sab-text-muted); white-space: nowrap; }
+.dept-room span { min-width: 0; overflow-wrap: break-word; }
+.dept-room small { color: var(--sab-text-muted); font-size: 0.76rem; }
 .dept-room.is-taken { background: #f4f6f5; color: var(--sab-text-muted); cursor: not-allowed; }
 .dept-room:has(input:checked) { border-color: var(--sab-green); background: #eef7f0; }
 

@@ -121,6 +121,14 @@
                                         <span class="asset-code-chip">@unit.AssetCode</span>
                                         <span class="rr-unit">@UnitLabel(unit)</span>
                                         <span class="rr-notback">not back</span>
+                                        @* Its own condition tag; blank = the one below for every unit. *@
+                                        <select class="form-select form-select-sm rr-cond" name="UnitConditions[@unit.AssignmentID]" aria-label="Condition of @unit.AssetCode">
+                                            <option value="" selected="@(!Model.UnitConditions.ContainsKey(unit.AssignmentID))">Condition: same as below</option>
+                                            @foreach (var c in Enum.GetValues<SchoolInventoryManagement.DAL.Entities.Enums.ConditionStatus>())
+                                            {
+                                                <option value="@c" selected="@(Model.UnitConditions.TryGetValue(unit.AssignmentID, out var picked) && picked == c.ToString())">@DisplayText.Humanize(c.ToString())</option>
+                                            }
+                                        </select>
                                     </label>
                                 }
                             </div>
@@ -149,12 +157,23 @@
             <div class="asset-card register-step mb-3">
                 <div class="register-step-head">
                     <div class="register-step-title flex-grow-1">Condition on return</div>
-                    <span class="nr-head-note">applies to every ticked unit</span>
+                    <span class="nr-head-note">for every ticked unit not tagged on its own</span>
                 </div>
                 <div class="register-step-body">
                     @{ ViewData["ChipName"] = "ConditionOnReturn"; }
                     <partial name="_ConditionChips" model="(SchoolInventoryManagement.DAL.Entities.Enums.ConditionStatus?)Model.ConditionOnReturn" />
-                    <div class="nr-hint mt-2">If some came back in a different state, untick them and return them separately.</div>
+                    <div class="nr-hint mt-2">A unit that came back in a different state: tag it with its own condition on its tile above.</div>
+                </div>
+            </div>
+
+            @* ---- Remarks ---- *@
+            <div class="asset-card register-step mb-3">
+                <div class="register-step-head">
+                    <div class="register-step-title flex-grow-1">Remarks</div>
+                    <span class="nr-head-note">optional · kept with each unit's history</span>
+                </div>
+                <div class="register-step-body">
+                    <textarea name="Remarks" class="form-control" rows="2" maxlength="500" placeholder="e.g. FAN-0012 has a cracked blade; returned late because...">@Model.Remarks</textarea>
                 </div>
             </div>
         </div>

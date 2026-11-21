@@ -83,15 +83,8 @@
                             <div class="form-text">The unit people ask for it in.</div>
                             <span asp-validation-for="Unit" class="text-danger small"></span>
                         </div>
-                        <div class="col-md-4">
-                            <label asp-for="UnitPrice" class="form-label">Price paid per unit <span class="register-optional">optional</span></label>
-                            <div class="input-group">
-                                <span class="input-group-text">&#8369;</span>
-                                <input asp-for="UnitPrice" class="form-control" id="supplyPrice" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0.00" />
-                            </div>
-                            <div class="form-text">What the opening quantity cost each. Later deliveries have their own price; the supply shows the average.</div>
-                            <span asp-validation-for="UnitPrice" class="text-danger small"></span>
-                        </div>
+                        @* No price here: it comes from Purchasing's purchase orders. *@
+                        <input type="hidden" id="supplyPrice" value="" />
                         <div class="col-12">
                             <label asp-for="Description" class="form-label">Description <span class="register-optional">optional</span></label>
                             <textarea asp-for="Description" class="form-control" rows="2" maxlength="255" placeholder="Brand or size notes."></textarea>

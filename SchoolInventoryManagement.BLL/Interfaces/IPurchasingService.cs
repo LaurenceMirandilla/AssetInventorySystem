@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using SchoolInventoryManagement.BLL.DTOs;
 
@@ -18,5 +19,12 @@ namespace SchoolInventoryManagement.BLL.Interfaces
         // Until the items are received from the supplier. Returns the
         // requisition it was for.
         Task<int> DeleteOrderAsync(int purchaseOrderId, int actingUserId);
+
+        // Suppliers (Scripts/033): the list with how much was ordered from
+        // each, one supplier with its orders and prices, and adding or
+        // editing one. Returns the supplier's id.
+        Task<List<SupplierDTO>> GetSuppliersAsync(int actingUserId);
+        Task<SupplierDetailDTO> GetSupplierAsync(int supplierId, int actingUserId);
+        Task<int> SaveSupplierAsync(SaveSupplierDTO dto, int actingUserId);
     }
 }

@@ -921,6 +921,125 @@ namespace SchoolInventoryManagement.Web.Controllers
             }
         }
 
+        // ---- Import items from Excel ----------------------------------------
+        // GET /Assets/Import : the template, and the upload.
+        [Authorize(Roles = RoleNames.AssetOfficer + "," + RoleNames.Administrator)]
+        public IActionResult Import() => View();
+
+        // GET /Assets/ImportTemplate : the Excel template, with today's lists.
+        [Authorize(Roles = RoleNames.AssetOfficer + "," + RoleNames.Administrator)]
+        public async Task<IActionResult> ImportTemplate([FromServices] ItemImport import) =>
+            File(await import.TemplateAsync(),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Property import template.xlsx");
+
+        // POST /Assets/Import : checks the file and shows every row. Kept on
+        // the server for "Import" (ImportSave) when nothing is wrong.
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        [RequestSizeLimit(10_000_000)]
+        [Authorize(Roles = RoleNames.AssetOfficer + "," + RoleNames.Administrator)]
+        public async Task<IActionResult> Import(IFormFile? file, [FromServices] ItemImport import)
+        {
+            if (file is null || file.Length == 0 || !file.FileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+            {
+                TempData["ErrorMessage"] = "Pick the filled-in template (an .xlsx file).";
+                return RedirectToAction(nameof(Import));
+            }
+            var token = Guid.NewGuid().ToString("N");
+            var path = Path.Combine(Path.GetTempPath(), $"sab-import-{token}.xlsx");
+            await using (var save = System.IO.File.Create(path))
+                await file.CopyToAsync(save);
+            try
+            {
+                await using var read = System.IO.File.OpenRead(path);
+                ViewBag.Rows = await import.CheckAsync(read);
+            }
+            catch (Exception)
+            {
+                System.IO.File.Delete(path);
+                TempData["ErrorMessage"] = "That file could not be read as Excel. Download the template, fill it in and upload it again.";
+                return RedirectToAction(nameof(Import));
+            }
+            ViewBag.Token = token;
+            ViewBag.FileName = file.FileName;
+            return View();
+        }
+
+        // POST /Assets/ImportSave : imports a checked file.
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        [OneTimeSubmit]
+        [Authorize(Roles = RoleNames.AssetOfficer + "," + RoleNames.Administrator)]
+        public async Task<IActionResult> ImportSave(string token, [FromServices] ItemImport import)
+        {
+            if (string.IsNullOrEmpty(token) || token.Any(ch => !Uri.IsHexDigit(ch)))
+                return RedirectToAction(nameof(Import));
+            var path = Path.Combine(Path.GetTempPath(), $"sab-import-{token}.xlsx");
+            if (!System.IO.File.Exists(path))
+            {
+                TempData["ErrorMessage"] = "That upload has expired. Upload the file again.";
+                return RedirectToAction(nameof(Import));
+            }
+            try
+            {
+                List<ItemImport.Row> rows;
+                await using (var read = System.IO.File.OpenRead(path))
+                    rows = await import.CheckAsync(read);
+                if (rows.Any(r => r.Problems.Count > 0))
+                {
+                    TempData["ErrorMessage"] = "Some rows have problems now. Fix the file and upload it again.";
+                    return RedirectToAction(nameof(Import));
+                }
+                var (done, failed) = await import.ImportAsync(rows, CurrentUserId);
+                TempData["StatusMessage"] = $"Imported {done.Count} row{(done.Count == 1 ? "" : "s")} into the Property Department's stock.";
+                if (failed.Count > 0)
+                    TempData["ErrorMessage"] = "Not imported: " + string.Join(" · ", failed);
+                return RedirectToAction(nameof(Index));
+            }
+            finally
+            {
+                System.IO.File.Delete(path);
+            }
+        }
+
+        // POST /Assets/RedTagMany : red tag mode on Property -- the ticked
+        // units, one reason for all.
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        [OneTimeSubmit]
+        [Authorize(Roles = RoleNames.AssetOfficer + "," + RoleNames.Administrator)]
+        public async Task<IActionResult> RedTagMany(List<int> assetIds, string? reason)
+        {
+            reason = reason?.Trim();
+            if (assetIds is null || assetIds.Count == 0 || string.IsNullOrEmpty(reason))
+            {
+                TempData["ErrorMessage"] = "Tick at least one unit and say why they are red tagged.";
+                return RedirectToAction(nameof(Index));
+            }
+
+            var done = new List<string>();
+            var failed = new List<string>();
+            foreach (var id in assetIds.Distinct())
+            {
+                var asset = await _assetService.GetAssetByIdAsync(id);
+                if (asset is null) continue;
+                try
+                {
+                    await _disposalService.RedTagAsync(id, reason, asset.RowVersion, CurrentUserId);
+                    done.Add(asset.AssetCode);
+                }
+                catch (Exception ex)
+                {
+                    failed.Add($"{asset.AssetCode}: {UserMessageFor(ex)}");
+                }
+            }
+            if (done.Count > 0)
+                TempData["StatusMessage"] = $"{done.Count} unit{(done.Count == 1 ? "" : "s")} red tagged for disposal: {string.Join(", ", done)}.";
+            if (failed.Count > 0)
+                TempData["ErrorMessage"] = "Not red tagged: " + string.Join(" · ", failed);
+            return RedirectToAction(nameof(Index));
+        }
+
         // POST /Assets/RemoveRedTag/5 -- back into Property stock.
         [HttpPost]
         [ValidateAntiForgeryToken]

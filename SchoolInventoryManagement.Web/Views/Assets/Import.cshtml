@@ -1,0 +1,91 @@
+@using SchoolInventoryManagement.Web.Helpers
+@{
+    ViewData["Title"] = "Import items";
+    var rows = ViewBag.Rows as List<ItemImport.Row>;
+    var bad = rows?.Count(r => r.Problems.Count > 0) ?? 0;
+}
+@* Import items from Excel (ItemImport): download the template, fill it in,
+   upload it; every row is checked and shown; Import saves them into the
+   Property Department's stock once nothing is wrong. *@
+
+@if (TempData["ErrorMessage"] != null)
+{
+    <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
+}
+
+<div class="sab-page-head">
+    <div>
+        <nav class="asset-crumbs" aria-label="Breadcrumb">
+            <a asp-action="Index">Property</a>
+            <span aria-hidden="true">&rsaquo;</span>
+            <span>Import items</span>
+        </nav>
+        <h2>Import items</h2>
+        <p class="sab-page-sub">Add many fixed assets and consumables at once from Excel. Everything goes into the Property Department's stock of each row's branch.</p>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-lg-5">
+        <div class="asset-card mb-3">
+            <div class="rq-card-head"><h3>1. Download the template</h3></div>
+            <div class="p-3">
+                <p class="mb-2">Two sheets: <strong>Fixed assets</strong> (category, model, quantity, branch, room, condition, serial numbers, cost, date) and <strong>Consumables</strong> (supply, category, unit, quantity, branch, room). The <strong>Lists</strong> sheet has what the dropdowns offer and how to fill it in.</p>
+                <a asp-action="ImportTemplate" class="btn btn-outline-secondary">Download template (.xlsx)</a>
+            </div>
+        </div>
+        <form asp-action="Import" method="post" enctype="multipart/form-data" class="asset-card">
+            @Html.AntiForgeryToken()
+            <div class="rq-card-head"><h3>2. Upload it</h3></div>
+            <div class="p-3">
+                <input type="file" name="file" accept=".xlsx" class="form-control mb-2" required aria-label="Filled-in template" />
+                <button type="submit" class="btn btn-primary">Check the file</button>
+                <div class="form-text">Nothing is saved yet: every row is checked first.</div>
+            </div>
+        </form>
+    </div>
+
+    <div class="col-lg-7">
+        @if (rows is not null)
+        {
+            <div class="asset-card">
+                <div class="rq-card-head">
+                    <h3>3. Check and import</h3>
+                    <span>@ViewBag.FileName · @rows.Count row@(rows.Count == 1 ? "" : "s")@(bad > 0 ? $" · {bad} with problems" : "")</span>
+                </div>
+                <div class="table-responsive">
+                    <table class="table asset-table mb-0">
+                        <thead><tr><th>Sheet</th><th>Row</th><th>Item</th><th>Problems</th></tr></thead>
+                        <tbody>
+                            @foreach (var r in rows)
+                            {
+                                <tr class="@(r.Problems.Count > 0 ? "table-danger" : "")">
+                                    <td>@r.Sheet</td>
+                                    <td>@r.Number</td>
+                                    <td>@r.What</td>
+                                    <td>@if (r.Problems.Count == 0) { <span class="text-success">OK</span> } else { @string.Join(" ", r.Problems) }</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <div class="p-3">
+                    @if (bad > 0)
+                    {
+                        <p class="text-danger mb-0">Fix the rows marked in red in the file, then upload it again. Nothing was saved.</p>
+                    }
+                    else
+                    {
+                        <form asp-action="ImportSave" method="post" class="d-flex align-items-center flex-wrap" style="gap:10px;">
+                            @Html.AntiForgeryToken()
+                            @Html.FormTicket()
+                            <input type="hidden" name="token" value="@ViewBag.Token" />
+                            <button type="submit" class="btn btn-primary">Import @rows.Count row@(rows.Count == 1 ? "" : "s")</button>
+                            <span class="text-muted">Units get their control numbers; new models and supplies are added to their lists.</span>
+                        </form>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+</div>

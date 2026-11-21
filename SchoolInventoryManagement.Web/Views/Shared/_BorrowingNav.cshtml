@@ -1,0 +1,24 @@
+@model string
+@* Borrowing's pages as tabs (the sidebar has one Borrowing link): your own
+   borrows and returns; for the Property Department, the borrows to approve
+   and returns to record; and the finished ones. *@
+@{
+    var officer = User.IsInRole("Property Officer") || User.IsInRole("Administrator");
+}
+<ul class="nav nav-tabs mb-3" aria-label="Borrowing">
+    <li class="nav-item">
+        <a class="nav-link @(Model == "mine" ? "active" : "")" aria-current="@(Model == "mine" ? "page" : null)"
+           asp-controller="AssetRequests" asp-action="MyRequests">My borrowing</a>
+    </li>
+    @if (officer)
+    {
+        <li class="nav-item">
+            <a class="nav-link d-inline-flex align-items-center @(Model == "approvals" ? "active" : "")" aria-current="@(Model == "approvals" ? "page" : null)"
+               asp-controller="AssetRequests" asp-action="Pending">Approvals &amp; returns @await Component.InvokeAsync("ApprovalsBadge")</a>
+        </li>
+    }
+    <li class="nav-item">
+        <a class="nav-link @(Model == "history" ? "active" : "")" aria-current="@(Model == "history" ? "page" : null)"
+           asp-controller="AssetRequests" asp-action="History">History</a>
+    </li>
+</ul>

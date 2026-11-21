@@ -86,8 +86,9 @@
                 <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">Stock</button>
                 <ul class="dropdown-menu dropdown-menu-end">
                     <li><a class="dropdown-item" asp-action="AddStock"><strong>Add stock</strong><div class="small text-muted">Supplies that arrived</div></a></li>
-                    <li><a class="dropdown-item" asp-action="Move"><strong>Move stock</strong><div class="small text-muted">To another location or branch</div></a></li>
-                    <li><a class="dropdown-item" asp-action="Count"><strong>Count supplies</strong><div class="small text-muted">Check a location and correct it</div></a></li>
+                    @* Move stock and Count supplies were removed. *@
+                    <li hidden><a class="dropdown-item" asp-action="Move"><strong>Move stock</strong><div class="small text-muted">To another location or branch</div></a></li>
+                    <li hidden><a class="dropdown-item" asp-action="Count"><strong>Count supplies</strong><div class="small text-muted">Check a location and correct it</div></a></li>
                 </ul>
             </div>
             <partial name="_NewItemMenu" />

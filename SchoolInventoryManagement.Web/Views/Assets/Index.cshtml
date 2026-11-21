@@ -4,7 +4,7 @@
 @using SchoolInventoryManagement.DAL.Entities.Enums
 @inject SchoolInventoryManagement.BLL.Interfaces.ISupplyService SupplyCounts
 @{
-    ViewData["Title"] = "Items";
+    ViewData["Title"] = User.IsInRole(RoleNames.AssetOfficer) || User.IsInRole(RoleNames.Administrator) ? "Property" : "Items";
     // What this page shows, for the live updates (_Layout, site.js).
     ViewData["LiveScope"] = "assets";
     // For the Assets / Supplies switch. Disposed units are never counted,
@@ -76,7 +76,7 @@
 
 <div class="sab-page-head">
     <div>
-        <h2>Items</h2>
+        <h2>@ViewData["Title"]</h2>
         <p class="sab-page-sub">
             @if (Model.HasFilters)
             {
@@ -100,6 +100,9 @@
             <partial name="_InventoryMenu" model="@(ViewBag.RedTagCount is int n ? n : 0)" />
             <a asp-controller="AssetAssignments" asp-action="Department" class="btn btn-outline-secondary">Assign to department</a>
             <a asp-action="BulkCreate" class="btn btn-outline-secondary">+ Bulk register</a>
+            <a asp-action="Import" class="btn btn-outline-secondary">Import items</a>
+            @* Red tag mode: rows get a tick box; tick the units and red-tag them together. *@
+            <button type="button" class="btn btn-outline-danger" id="redTagMode" aria-pressed="false">Red tag</button>
             <partial name="_NewItemMenu" />
         }
     </div>
@@ -309,6 +312,7 @@
             <table class="table asset-table">
                 <thead>
                     <tr>
+                        <th class="rt-col" hidden><input type="checkbox" class="form-check-input" id="rtAll" aria-label="Tick every unit on this page that can be red tagged" /></th>
                         <th>Code</th>
                         <th>Asset</th>
                         <th>Category</th>
@@ -332,6 +336,16 @@
                             + (string.IsNullOrWhiteSpace(asset.SerialNumber) ? "" : " · SN " + asset.SerialNumber)
                             + (string.IsNullOrWhiteSpace(asset.CurrentLocationName) ? "" : " · " + asset.CurrentLocationName);
                         <tr>
+                            <td class="rt-col" hidden>
+                                @if (asset.CanBeRedTagged)
+                                {
+                                    <input type="checkbox" class="form-check-input rt-box" form="redTagForm" name="assetIds" value="@asset.AssetID" aria-label="Red tag @asset.AssetCode" />
+                                }
+                                else
+                                {
+                                    <span class="text-muted" title="@(asset.Status == AssetStatus.RedTagged ? "Already red tagged" : "Out on a request or with someone")">—</span>
+                                }
+                            </td>
                             <td><a asp-action="Details" asp-route-id="@asset.AssetID" class="asset-code-chip">@asset.AssetCode</a></td>
                             <td>
                                 <a asp-action="Details" asp-route-id="@asset.AssetID" class="asset-name" title="@hint">@asset.AssetName</a>
@@ -472,7 +486,48 @@
     }
 </div>
 
+@if (canManage)
+{
+    @* The red tag bar: shown in red tag mode. *@
+    <form id="redTagForm" asp-action="RedTagMany" method="post" class="register-footer rt-bar" hidden>
+        @Html.AntiForgeryToken()
+        <strong class="text-danger"><span id="rtCount">0</span> ticked</strong>
+        <input type="text" name="reason" class="form-control" maxlength="500" required placeholder="Why they are red tagged (broken beyond repair, obsolete...)" aria-label="Reason for red tagging" />
+        <button type="button" class="btn btn-outline-secondary" id="rtCancel">Cancel</button>
+        <button type="submit" class="btn btn-danger" id="rtGo" disabled
+                onclick="return confirm('Red tag the ticked units for disposal? They leave the stock that can be borrowed.');">Red tag ticked</button>
+    </form>
+}
+
 @section Scripts {
+    <script>
+        // Red tag mode (Property): tick box column and the bar at the bottom.
+        (function () {
+            var toggle = document.getElementById('redTagMode');
+            var bar = document.getElementById('redTagForm');
+            if (!toggle || !bar) return;
+            var boxes = Array.from(document.querySelectorAll('.rt-box'));
+            var all = document.getElementById('rtAll');
+            function count() {
+                var n = boxes.filter(function (b) { return b.checked; }).length;
+                document.getElementById('rtCount').textContent = n;
+                document.getElementById('rtGo').disabled = n === 0;
+            }
+            function setMode(on) {
+                toggle.setAttribute('aria-pressed', on ? 'true' : 'false');
+                toggle.classList.toggle('btn-danger', on);
+                toggle.classList.toggle('btn-outline-danger', !on);
+                document.querySelectorAll('.rt-col').forEach(function (c) { c.hidden = !on; });
+                bar.hidden = !on;
+                if (!on) { boxes.forEach(function (b) { b.checked = false; }); if (all) all.checked = false; }
+                count();
+            }
+            toggle.addEventListener('click', function () { setMode(toggle.getAttribute('aria-pressed') !== 'true'); });
+            document.getElementById('rtCancel').addEventListener('click', function () { setMode(false); });
+            boxes.forEach(function (b) { b.addEventListener('change', count); });
+            if (all) all.addEventListener('change', function () { boxes.forEach(function (b) { b.checked = all.checked; }); count(); });
+        })();
+    </script>
     <script>
         // Cascading filters. Every list can be used on its own, and the
         // pairs keep each other consistent:

@@ -32,11 +32,11 @@
             <h2 class="asset-detail-title">Add stock</h2>
             @if (ticket is null)
             {
-                <div class="asset-detail-sub">For supplies that arrived without a new-item request: a direct purchase, or unused supplies handed back.</div>
+                <div class="asset-detail-sub">Supplies put in the Property Department's stock (of each room's branch). Prices come from Purchasing's purchase orders.</div>
             }
             else
             {
-                <div class="asset-detail-sub"><span>Supplies that arrived for <a asp-controller="NewItemRequests" asp-action="Details" asp-route-id="@ticket.NewItemRequestID">new-item request #@ticket.NewItemRequestID</a>, for the @ticket.DepartmentName. They go into the Property Department's stock, and are handed to the @ticket.DepartmentName when the request is marked delivered.</span></div>
+                <div class="asset-detail-sub"><span>Supplies that arrived for <a asp-controller="NewItemRequests" asp-action="Details" asp-route-id="@ticket.NewItemRequestID">requisition #@ticket.NewItemRequestID</a>, for the @ticket.DepartmentName. They go into the Property Department's stock, and are handed to the @ticket.DepartmentName when the requisition is sent.</span></div>
             }
         </div>
     </div>
@@ -70,71 +70,11 @@
         </div>
     }
 
-    <div class="asset-card register-step mb-3">
-        <div class="register-step-head"><div class="register-step-title">Where it came from</div></div>
-        <div class="register-step-body">
-            <div class="row g-3">
-                <div class="col-md-4">
-                    <label asp-for="Source" class="form-label">Source</label>
-                    <select asp-for="Source" class="form-select">
-                        <option value="">Pick one</option>
-                        @foreach (var s in sources)
-                        {
-                            <option value="@s">@s</option>
-                        }
-                        @if (Model.Source == SchoolInventoryManagement.BLL.Services.SupplyService.NewItemSource)
-                        {
-                            <option value="@Model.Source" selected>@Model.Source</option>
-                        }
-                    </select>
-                    <span asp-validation-for="Source" class="text-danger small"></span>
-                </div>
-                <div class="col-md-4">
-                    <label asp-for="SourceName" class="form-label">From <span class="register-optional">optional</span></label>
-                    <input asp-for="SourceName" class="form-control" maxlength="100" autocomplete="off" placeholder="Who sold or returned it" />
-                </div>
-                <div class="col-md-4">
-                    <label asp-for="Reference" class="form-label">Receipt or reference no. <span class="register-optional">optional</span></label>
-                    <input asp-for="Reference" class="form-control" maxlength="50" autocomplete="off" />
-                </div>
-            </div>
-        </div>
-    </div>
-
-    @* Whose stock it becomes. Supplies are requested from the Property
-       Department; another department's stock is its own. *@
-    <div class="asset-card register-step mb-3">
-        <div class="register-step-head"><div class="register-step-title">Belongs to</div></div>
-        <div class="register-step-body">
-            <div class="row g-3 align-items-end">
-                <div class="col-md-6">
-                    <label asp-for="DepartmentID" class="form-label">Department</label>
-                    <select asp-for="DepartmentID" class="form-select" id="stockDepartment" disabled="@(ticket is not null)">
-                        <option value="">Property Department (in stock, can be requested)</option>
-                        @foreach (var g in ticket is null ? departments.GroupBy(d => d.BranchName) : Enumerable.Empty<IGrouping<string, SupplyDepartmentOption>>())
-                        {
-                            <optgroup label="@g.Key">
-                                @foreach (var d in g)
-                                {
-                                    <option value="@d.Id">@d.Name (its own, not requested)</option>
-                                }
-                            </optgroup>
-                        }
-                    </select>
-                </div>
-                <div class="col-md-6">
-                    @if (ticket is null)
-                    {
-                        <div class="form-text mb-2">The Property Department of each room's branch keeps it, and people request it from there. Pick another department only for stock it keeps for itself, put in rooms of its own branch.</div>
-                    }
-                    else
-                    {
-                        <div class="form-text mb-2">Supplies bought through a request always go into the Property Department's stock first. Marking the request delivered hands them to the @ticket.DepartmentName.</div>
-                    }
-                </div>
-            </div>
-        </div>
-    </div>
+    @* Where it came from and whose it is are no longer asked: stock goes to
+       the Property Department of each room's branch, and prices come from
+       Purchasing's purchase orders. *@
+    <input type="hidden" name="Source" value="@(string.IsNullOrEmpty(Model.Source) ? "Direct purchase" : Model.Source)" />
+    <input type="hidden" name="DepartmentID" id="stockDepartment" value="" />
 
     <div class="asset-card register-step">
         <div class="register-step-head">
@@ -165,12 +105,7 @@
                             <input name="Lines[@i].Quantity" value="@line.Quantity" type="number" min="1" step="1" inputmode="numeric"
                                    class="form-control" data-field="Quantity" aria-label="Quantity to add" />
                         </div>
-                        <div class="col-8 col-md-2">
-                            <label class="form-label small asset-muted mb-1">Price each (&#8369;)</label>
-                            <input name="Lines[@i].UnitPrice" value="@(line.UnitPrice?.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture))" type="number" min="0" step="0.01" inputmode="decimal"
-                                   class="form-control" data-field="UnitPrice" placeholder="0.00" aria-label="Price paid for each" />
-                        </div>
-                        <div class="col-12 col-md-3" data-cell="LocationID">
+                        <div class="col-12 col-md-5" data-cell="LocationID">
                             <label class="form-label small asset-muted mb-1">Put in</label>
                             <select name="Lines[@i].LocationID" class="form-select" data-field="LocationID" data-combobox aria-label="Put in">
                                 <option value="">Search a location...</option>
@@ -320,7 +255,6 @@
                 var cell = freshSelect(first, copy, 'SupplyID');
                 freshSelect(first, copy, 'LocationID');
                 field(copy, 'Quantity').value = 1;
-                field(copy, 'UnitPrice').value = '';
                 body.appendChild(copy);
                 renumber(); sync();
                 (cell.querySelector('.combo-input') || field(copy, 'SupplyID')).focus();

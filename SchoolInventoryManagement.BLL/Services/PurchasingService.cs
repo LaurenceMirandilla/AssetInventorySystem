@@ -92,11 +92,6 @@ namespace SchoolInventoryManagement.BLL.Services
             if (lines.Count == 0)
                 throw new InvalidOperationException("Everything to buy on this requisition is already on a purchase order.");
 
-            var suppliers = await _context.PurchaseOrders.AsNoTracking()
-                .OrderByDescending(o => o.PurchaseOrderID)
-                .Select(o => o.SupplierName)
-                .Take(300)
-                .ToListAsync();
 
             return new PurchaseOrderFormDTO
             {
@@ -107,7 +102,7 @@ namespace SchoolInventoryManagement.BLL.Services
                 Reason = request.Reason,
                 ItemKind = request.ItemKind,
                 Lines = lines,
-                KnownSuppliers = suppliers.Select(s => s.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Take(40).ToList()
+                Suppliers = await SupplierListAsync()
             };
         }
 
@@ -158,8 +153,26 @@ namespace SchoolInventoryManagement.BLL.Services
                 .ToListAsync();
             var next = numbers.Select(n => int.TryParse(n[prefix.Length..], out var x) ? x : 0).DefaultIfEmpty(0).Max() + 1;
 
+            // The supplier on the list, added to it when new; its address and
+            // contact fill in what was left blank, and new ones are kept.
+            var listed = await _context.Suppliers.FirstOrDefaultAsync(s => s.Name == supplier);
+            if (listed is null)
+            {
+                listed = new Supplier { Name = supplier, Address = address, Contact = contact, CreatedAt = PhilippineTime.Now };
+                _context.Suppliers.Add(listed);
+            }
+            else
+            {
+                address ??= listed.Address;
+                contact ??= listed.Contact;
+                listed.Address = address;
+                listed.Contact = contact;
+                supplier = listed.Name;
+            }
+
             var order = new PurchaseOrder
             {
+                Supplier = listed,
                 PONumber = $"{prefix}{next:0000}",
                 NewItemRequestID = request.NewItemRequestID,
                 SupplierName = supplier,
@@ -185,6 +198,17 @@ namespace SchoolInventoryManagement.BLL.Services
             {
                 // Two orders numbered at the same moment.
                 throw new ConcurrencyConflictException("Another purchase order was saved at the same moment. Please try again.");
+            }
+
+            // A consumable's price is what Purchasing last paid for it: Reports
+            // and the supply's page read it from here.
+            var supplyIds = lines.Where(l => items[l.NewItemRequestItemID].SupplyID != null)
+                .ToDictionary(l => items[l.NewItemRequestItemID].SupplyID!.Value, l => Math.Round(l.UnitPrice, 2));
+            if (supplyIds.Count > 0)
+            {
+                foreach (var supply in await _context.Supplies.Where(s => supplyIds.Keys.Contains(s.SupplyID)).ToListAsync())
+                    supply.UnitPrice = supplyIds[supply.SupplyID];
+                await _context.SaveChangesAsync();
             }
 
             // Nothing left to buy: Procurement is done, and the requisition
@@ -260,6 +284,91 @@ namespace SchoolInventoryManagement.BLL.Services
                 CanDelete = BuyerRoles.Contains(actor.Role.RoleName)
                             && o.RequestStatus is NewItemStatus.Procuring or NewItemStatus.AwaitingArrival
             };
+        }
+
+        // ---- Suppliers (Scripts/033) --------------------------------------------
+        private Task<List<SupplierDTO>> SupplierListAsync() =>
+            _context.Suppliers.AsNoTracking()
+                .OrderBy(s => s.Name)
+                .Select(s => new SupplierDTO
+                {
+                    SupplierID = s.SupplierID,
+                    Name = s.Name,
+                    Address = s.Address,
+                    Contact = s.Contact,
+                    Notes = s.Notes,
+                    Orders = s.Orders.Count(),
+                    Spent = s.Orders.SelectMany(o => o.Lines).Sum(l => (decimal?)(l.Quantity * l.UnitPrice)) ?? 0m,
+                    LastOrder = s.Orders.Max(o => (DateTime?)o.OrderDate)
+                })
+                .ToListAsync();
+
+        public async Task<List<SupplierDTO>> GetSuppliersAsync(int actingUserId)
+        {
+            await EnsureRoleAsync(actingUserId, ReaderRoles, "Only Purchasing, Property, the Principal and Administrators see suppliers.");
+            return await SupplierListAsync();
+        }
+
+        public async Task<SupplierDetailDTO> GetSupplierAsync(int supplierId, int actingUserId)
+        {
+            await EnsureRoleAsync(actingUserId, ReaderRoles, "Only Purchasing, Property, the Principal and Administrators see suppliers.");
+            var s = (await SupplierListAsync()).FirstOrDefault(x => x.SupplierID == supplierId)
+                ?? throw new KeyNotFoundException("Supplier not found.");
+            var orders = await _context.PurchaseOrders.AsNoTracking()
+                .Where(o => o.SupplierID == supplierId)
+                .OrderByDescending(o => o.OrderDate).ThenByDescending(o => o.PurchaseOrderID)
+                .Select(o => new SupplierOrderDTO
+                {
+                    PurchaseOrderID = o.PurchaseOrderID,
+                    PONumber = o.PONumber,
+                    OrderDate = o.OrderDate,
+                    NewItemRequestID = o.NewItemRequestID,
+                    Lines = o.Lines.OrderBy(l => l.PurchaseOrderLineID).Select(l => new PurchaseOrderLineDTO
+                    {
+                        ItemName = l.Item.ItemName,
+                        Description = l.Item.Description,
+                        Unit = l.Item.Unit,
+                        Quantity = l.Quantity,
+                        UnitPrice = l.UnitPrice
+                    }).ToList()
+                })
+                .ToListAsync();
+            return new SupplierDetailDTO
+            {
+                SupplierID = s.SupplierID, Name = s.Name, Address = s.Address, Contact = s.Contact, Notes = s.Notes,
+                Orders = s.Orders, Spent = s.Spent, LastOrder = s.LastOrder, OrderList = orders
+            };
+        }
+
+        public async Task<int> SaveSupplierAsync(SaveSupplierDTO dto, int actingUserId)
+        {
+            await EnsureRoleAsync(actingUserId, BuyerRoles, "Only Purchasing Officers and Administrators edit suppliers.");
+            string? Clean(string? text, int max, string what)
+            {
+                var t = text?.Trim();
+                if (string.IsNullOrEmpty(t)) return null;
+                if (t.Length > max) throw new ArgumentException($"The {what} can be at most {max} characters.");
+                return t;
+            }
+            var name = Clean(dto.Name, 150, "name") ?? throw new ArgumentException("Name the supplier.");
+            if (await _context.Suppliers.AnyAsync(s => s.Name == name && s.SupplierID != (dto.SupplierID ?? 0)))
+                throw new ArgumentException($"{name} is already on the list.");
+
+            Supplier supplier;
+            if (dto.SupplierID is int id)
+                supplier = await _context.Suppliers.FirstOrDefaultAsync(s => s.SupplierID == id)
+                    ?? throw new KeyNotFoundException("Supplier not found.");
+            else
+            {
+                supplier = new Supplier { CreatedAt = PhilippineTime.Now };
+                _context.Suppliers.Add(supplier);
+            }
+            supplier.Name = name;
+            supplier.Address = Clean(dto.Address, 250, "address");
+            supplier.Contact = Clean(dto.Contact, 100, "contact");
+            supplier.Notes = Clean(dto.Notes, 500, "note");
+            await _context.SaveChangesAsync();
+            return supplier.SupplierID;
         }
 
         public async Task<int> DeleteOrderAsync(int purchaseOrderId, int actingUserId)

@@ -504,7 +504,11 @@ namespace SchoolInventoryManagement.Web.Controllers
                         model.ConditionOnReturn,
                         model.ReturnLocationID!.Value,
                         RowVersionHelper.FromBase64(model.RowVersionBase64),
-                        CurrentUserId);
+                        CurrentUserId,
+                        model.UnitConditions
+                            .Where(u => Enum.TryParse<ConditionStatus>(u.Value, out _))
+                            .ToDictionary(u => u.Key, u => Enum.Parse<ConditionStatus>(u.Value)),
+                        model.Remarks);
 
                     TempData["StatusMessage"] =
                         $"{model.AssignmentIDs.Count} unit{(model.AssignmentIDs.Count == 1 ? "" : "s")} returned.";

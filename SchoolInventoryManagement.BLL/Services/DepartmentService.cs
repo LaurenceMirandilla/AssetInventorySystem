@@ -144,6 +144,11 @@ namespace SchoolInventoryManagement.BLL.Services
 
             department.DepartmentName = dto.DepartmentName;
             department.Description = dto.Description;
+            // Its people move with it: a person's branch is their
+            // department's (Users and Branches count them that way).
+            if (department.BranchID != dto.BranchID)
+                foreach (var person in await _context.Users.Where(u => u.DepartmentID == departmentId).ToListAsync())
+                    person.BranchID = dto.BranchID;
             department.BranchID = dto.BranchID;
             await SetRoomsAsync(department, dto.LocationIDs, dto.MainLocationID);
 

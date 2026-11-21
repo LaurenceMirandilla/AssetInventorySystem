@@ -17,11 +17,13 @@
             var id = $"{Model.Prefix}-room-{r.LocationID}";
             <label class="dept-room @(other ? "is-taken" : "")" for="@id" data-branch="@r.BranchID">
                 <input type="checkbox" id="@id" name="LocationIDs" value="@r.LocationID" checked="@mine" disabled="@other" data-name="@r.Name" />
-                <span>@r.Name</span>
-                @if (other)
-                {
-                    <small>· @r.OwnerName</small>
-                }
+                <span class="dept-room-text">
+                    <span>@r.Name</span>
+                    @if (other)
+                    {
+                        <small>@r.OwnerName's room</small>
+                    }
+                </span>
             </label>
         }
     </div>

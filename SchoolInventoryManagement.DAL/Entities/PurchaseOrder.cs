@@ -21,6 +21,10 @@ namespace SchoolInventoryManagement.DAL.Entities
 
         public int NewItemRequestID { get; set; }
 
+        // The supplier on the list (Scripts/033); the name, address and
+        // contact below are what the order was printed with.
+        public int? SupplierID { get; set; }
+
         [Required]
         [MaxLength(150)]
         public string SupplierName { get; set; } = null!;
@@ -45,6 +49,9 @@ namespace SchoolInventoryManagement.DAL.Entities
 
         [ForeignKey(nameof(CreatedByUserID))]
         public User CreatedByUser { get; set; } = null!;
+
+        [ForeignKey(nameof(SupplierID))]
+        public Supplier? Supplier { get; set; }
 
         public ICollection<PurchaseOrderLine> Lines { get; set; } = new List<PurchaseOrderLine>();
     }

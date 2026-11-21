@@ -87,6 +87,7 @@ builder.Services.AddScoped<IAssetRequestService, AssetRequestService>();
 builder.Services.AddScoped<IAssetAssignmentService, AssetAssignmentService>();
 builder.Services.AddScoped<IRequestFulfillmentService, RequestFulfillmentService>();
 builder.Services.AddScoped<IPurchasingService, PurchasingService>();
+builder.Services.AddScoped<SchoolInventoryManagement.Web.Helpers.ItemImport>();
 builder.Services.AddScoped<IAssetMovementService, AssetMovementService>();
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IDisposalService, DisposalService>();

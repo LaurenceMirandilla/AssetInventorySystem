@@ -10,6 +10,10 @@
 		<ProjectReference Include="..\SchoolInventoryManagement.BLL\SchoolInventoryManagement.BLL.csproj" />
 	</ItemGroup>
 
+	<ItemGroup>
+	  <PackageReference Include="ClosedXML" Version="0.104.2" />
+	</ItemGroup>
+
 	
 
 </Project>

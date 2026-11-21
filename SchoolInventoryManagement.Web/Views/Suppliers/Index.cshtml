@@ -1,0 +1,68 @@
+@model List<SchoolInventoryManagement.BLL.DTOs.SupplierDTO>
+@{
+    ViewData["Title"] = "Suppliers";
+    var canEdit = User.IsInRole("Purchasing Officer") || User.IsInRole("Administrator");
+}
+@if (TempData["ErrorMessage"] != null)
+{
+    <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
+}
+
+<div class="sab-page-head">
+    <div>
+        <h2>Suppliers</h2>
+        <p class="sab-page-sub">Who Purchasing buys from. Purchase orders pick a supplier from this list (a new name is added to it); each supplier shows its orders and the prices paid.</p>
+    </div>
+    @if (canEdit)
+    {
+        <div class="sab-page-actions">
+            <button type="button" class="btn btn-primary" data-bs-toggle="collapse" data-bs-target="#newSupplier" aria-expanded="false">+ New supplier</button>
+        </div>
+    }
+</div>
+
+@if (canEdit)
+{
+    <form asp-action="Save" method="post" class="asset-card collapse mb-3" id="newSupplier">
+        @Html.AntiForgeryToken()
+        <div class="p-3 row g-2">
+            <div class="col-md-4"><label class="form-label" for="Name">Name</label><input id="Name" name="Name" class="form-control" maxlength="150" required /></div>
+            <div class="col-md-4"><label class="form-label" for="Contact">Contact <small class="text-muted">optional</small></label><input id="Contact" name="Contact" class="form-control" maxlength="100" placeholder="Phone, email or contact person" /></div>
+            <div class="col-md-4"><label class="form-label" for="Address">Address <small class="text-muted">optional</small></label><input id="Address" name="Address" class="form-control" maxlength="250" /></div>
+            <div class="col-12"><label class="form-label" for="Notes">Notes <small class="text-muted">optional</small></label><input id="Notes" name="Notes" class="form-control" maxlength="500" /></div>
+            <div class="col-12 text-end"><button type="submit" class="btn btn-primary">Add supplier</button></div>
+        </div>
+    </form>
+}
+
+<div class="sab-table-card">
+    @if (Model.Count == 0)
+    {
+        <div class="sab-empty">
+            <div class="sab-empty-title">No suppliers yet</div>
+            <p>Add one here, or make a purchase order: its supplier is added to the list.</p>
+        </div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table asset-table mb-0">
+                <thead>
+                    <tr><th>Supplier</th><th class="d-none d-md-table-cell">Contact</th><th class="text-end">Orders</th><th class="text-end">Spent</th><th class="d-none d-sm-table-cell">Last order</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var s in Model)
+                    {
+                        <tr>
+                            <td><a asp-action="Details" asp-route-id="@s.SupplierID" class="fw-semibold">@s.Name</a>@if (!string.IsNullOrWhiteSpace(s.Address)) {<small class="d-block text-muted">@s.Address</small>}</td>
+                            <td class="d-none d-md-table-cell">@DisplayText.Or(s.Contact, "—")</td>
+                            <td class="text-end">@s.Orders</td>
+                            <td class="text-end">₱@s.Spent.ToString("N2")</td>
+                            <td class="d-none d-sm-table-cell">@(s.LastOrder?.ToString("MMM d, yyyy") ?? "—")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>

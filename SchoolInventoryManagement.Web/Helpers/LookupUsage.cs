@@ -154,7 +154,9 @@ namespace SchoolInventoryManagement.Web.Helpers
         {
             var locations = await _context.Locations.GroupBy(l => l.BranchID).Select(g => new { Id = g.Key, N = g.Count() }).ToDictionaryAsync(x => x.Id, x => x.N);
             var departments = await _context.Departments.GroupBy(d => d.BranchID).Select(g => new { Id = g.Key, N = g.Count() }).ToDictionaryAsync(x => x.Id, x => x.N);
-            var users = await _context.Users.GroupBy(u => u.BranchID)
+            // By the branch of each person's department, so a branch's count
+            // is the sum of its departments' counts.
+            var users = await _context.Users.GroupBy(u => u.Department.BranchID)
                 .Select(g => new { Id = g.Key, N = g.Count(), Active = g.Count(u => u.Status == "Active") })
                 .ToDictionaryAsync(x => x.Id);
             var assets = await _context.Assets.Where(a => a.BranchID != null).Select(a => a.BranchID!.Value).Distinct().ToListAsync();

@@ -18,6 +18,14 @@ namespace SchoolInventoryManagement.Web.ViewModels
         [Display(Name = "Condition on return")]
         public ConditionStatus ConditionOnReturn { get; set; } = ConditionStatus.Good;
 
+        // A unit tagged with its own condition (assignment id -> condition);
+        // the rest take ConditionOnReturn.
+        public Dictionary<int, string> UnitConditions { get; set; } = new();
+
+        // Remarks on the return, kept with each unit's record.
+        [MaxLength(500)]
+        public string? Remarks { get; set; }
+
         [Required(ErrorMessage = "Say where the units are being put back.")]
         [Display(Name = "Return to location")]
         public int? ReturnLocationID { get; set; }

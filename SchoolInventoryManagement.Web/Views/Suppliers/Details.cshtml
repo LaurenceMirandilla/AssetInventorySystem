@@ -1,0 +1,82 @@
+@model SchoolInventoryManagement.BLL.DTOs.SupplierDetailDTO
+@{
+    ViewData["Title"] = Model.Name;
+    var canEdit = User.IsInRole("Purchasing Officer") || User.IsInRole("Administrator");
+}
+@if (TempData["ErrorMessage"] != null)
+{
+    <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
+}
+
+<div class="sab-page-head">
+    <div>
+        <nav class="asset-crumbs" aria-label="Breadcrumb">
+            <a asp-action="Index">Suppliers</a>
+            <span aria-hidden="true">&rsaquo;</span>
+            <span>@Model.Name</span>
+        </nav>
+        <h2>@Model.Name</h2>
+        <p class="sab-page-sub">@Model.Orders order@(Model.Orders == 1 ? "" : "s") · ₱@Model.Spent.ToString("N2") spent@(Model.LastOrder is null ? "" : " · last on " + Model.LastOrder.Value.ToString("MMM d, yyyy"))</p>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-lg-4">
+        <form asp-action="Save" method="post" class="asset-card">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="SupplierID" value="@Model.SupplierID" />
+            <div class="rq-card-head"><h3>Details</h3></div>
+            <div class="p-3">
+                <label class="form-label" for="Name">Name</label>
+                <input id="Name" name="Name" class="form-control mb-2" maxlength="150" value="@Model.Name" required disabled="@(!canEdit)" />
+                <label class="form-label" for="Contact">Contact</label>
+                <input id="Contact" name="Contact" class="form-control mb-2" maxlength="100" value="@Model.Contact" disabled="@(!canEdit)" />
+                <label class="form-label" for="Address">Address</label>
+                <input id="Address" name="Address" class="form-control mb-2" maxlength="250" value="@Model.Address" disabled="@(!canEdit)" />
+                <label class="form-label" for="Notes">Notes</label>
+                <textarea id="Notes" name="Notes" class="form-control mb-3" rows="2" maxlength="500" disabled="@(!canEdit)">@Model.Notes</textarea>
+                @if (canEdit)
+                {
+                    <button type="submit" class="btn btn-primary w-100">Save</button>
+                }
+            </div>
+        </form>
+    </div>
+    <div class="col-lg-8">
+        <div class="asset-card">
+            <div class="rq-card-head"><h3>Orders and prices</h3><span>newest first</span></div>
+            @if (Model.OrderList.Count == 0)
+            {
+                <div class="sab-empty"><p class="mb-0">No purchase orders from this supplier yet.</p></div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table asset-table mb-0">
+                        <thead><tr><th>Order</th><th>Item</th><th class="text-end">Qty</th><th class="text-end">Unit price</th><th class="text-end">Amount</th></tr></thead>
+                        <tbody>
+                            @foreach (var o in Model.OrderList)
+                            {
+                                for (var i = 0; i < o.Lines.Count; i++)
+                                {
+                                    var l = o.Lines[i];
+                                    <tr>
+                                        <td>@if (i == 0)
+                                            {
+                                                <a asp-controller="Purchasing" asp-action="Order" asp-route-id="@o.PurchaseOrderID">@o.PONumber</a>
+                                                <small class="d-block text-muted">@o.OrderDate.ToString("MMM d, yyyy") · requisition #@o.NewItemRequestID</small>
+                                            }</td>
+                                        <td>@l.ItemName</td>
+                                        <td class="text-end">@l.Quantity</td>
+                                        <td class="text-end">₱@l.UnitPrice.ToString("N2")</td>
+                                        <td class="text-end">₱@l.Amount.ToString("N2")</td>
+                                    </tr>
+                                }
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+</div>

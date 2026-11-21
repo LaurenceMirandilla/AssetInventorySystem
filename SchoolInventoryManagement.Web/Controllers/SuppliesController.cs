@@ -311,6 +311,8 @@ namespace SchoolInventoryManagement.Web.Controllers
 
         // GET /Supplies/Move[?supplyId=5]
         [Authorize(Roles = RoleNames.AssetOfficer + "," + RoleNames.Administrator)]
+        // Removed from the pages (Move stock, Count supplies): no longer reachable.
+        [NonAction]
         public async Task<IActionResult> Move(int? supplyId)
         {
             await PopulateMoveAsync();
@@ -322,6 +324,8 @@ namespace SchoolInventoryManagement.Web.Controllers
         [ValidateAntiForgeryToken]
         [OneTimeSubmit]
         [Authorize(Roles = RoleNames.AssetOfficer + "," + RoleNames.Administrator)]
+        // Removed from the pages (Move stock, Count supplies): no longer reachable.
+        [NonAction]
         public async Task<IActionResult> Move(MoveStockDTO dto, int? backToSupplyId)
         {
             if (ModelState.IsValid)
@@ -392,6 +396,8 @@ namespace SchoolInventoryManagement.Web.Controllers
 
         // GET /Supplies/Count[?locationId=3]
         [Authorize(Roles = RoleNames.AssetOfficer + "," + RoleNames.Administrator)]
+        // Removed from the pages (Move stock, Count supplies): no longer reachable.
+        [NonAction]
         public async Task<IActionResult> Count(int? locationId)
         {
             ViewBag.Locations = await LocationOptionsAsync();
@@ -406,6 +412,8 @@ namespace SchoolInventoryManagement.Web.Controllers
         [ValidateAntiForgeryToken]
         [OneTimeSubmit]
         [Authorize(Roles = RoleNames.AssetOfficer + "," + RoleNames.Administrator)]
+        // Removed from the pages (Move stock, Count supplies): no longer reachable.
+        [NonAction]
         public async Task<IActionResult> Count(SaveSupplyCountDTO dto)
         {
             try

@@ -1013,3 +1013,44 @@ window.sabShow = function (el, text, whenEmpty) {
     setInterval(check, EVERY);
     document.addEventListener('visibilitychange', function () { if (!document.hidden) check(); });
 })();
+
+// Dropdown menus (the Filters menus above all) that would open past the
+// edge of the page -- under the sidebar on the left, or off the screen on
+// the right -- open on the other side of their button instead, and are
+// never wider than the page. Decided just before Bootstrap places the menu.
+document.addEventListener('show.bs.dropdown', function (e) {
+    var toggle = e.target;
+    var menu = toggle.parentNode ? toggle.parentNode.querySelector(':scope > .dropdown-menu') : null;
+    if (!menu) return;
+    var content = document.querySelector('.sab-content') || document.body;
+    var box = content.getBoundingClientRect();
+    var minLeft = Math.max(box.left, 0) + 8, maxRight = Math.min(box.right, window.innerWidth) - 8;
+    menu.style.maxWidth = Math.max(240, maxRight - minLeft) + 'px';
+    // Its width, measured while hidden.
+    var keep = menu.style.cssText;
+    menu.style.visibility = 'hidden'; menu.style.display = 'block'; menu.style.position = 'absolute';
+    var w = menu.offsetWidth;
+    menu.style.cssText = keep;
+    var t = toggle.getBoundingClientRect();
+    var end = menu.classList.contains('dropdown-menu-end');
+    if (end && t.right - w < minLeft && t.left + w <= maxRight) {
+        menu.classList.remove('dropdown-menu-end');
+        menu.dataset.flippedEnd = '1';
+    } else if (!end && t.left + w > maxRight && t.right - w >= minLeft) {
+        menu.classList.add('dropdown-menu-end');
+        menu.dataset.flippedStart = '1';
+    } else if (t.right - w < minLeft && t.left + w > maxRight) {
+        // Too wide for either side: open toward the roomier side, narrowed to fit.
+        var leftRoom = t.right - minLeft, rightRoom = maxRight - t.left;
+        if (end && rightRoom > leftRoom) { menu.classList.remove('dropdown-menu-end'); menu.dataset.flippedEnd = '1'; }
+        if (!end && leftRoom > rightRoom) { menu.classList.add('dropdown-menu-end'); menu.dataset.flippedStart = '1'; }
+        menu.style.maxWidth = Math.max(240, Math.max(leftRoom, rightRoom)) + 'px';
+    }
+});
+// Put a flipped menu back the way the page wrote it, for next time.
+document.addEventListener('hidden.bs.dropdown', function (e) {
+    var menu = e.target.parentNode ? e.target.parentNode.querySelector(':scope > .dropdown-menu') : null;
+    if (!menu) return;
+    if (menu.dataset.flippedEnd) { menu.classList.add('dropdown-menu-end'); delete menu.dataset.flippedEnd; }
+    if (menu.dataset.flippedStart) { menu.classList.remove('dropdown-menu-end'); delete menu.dataset.flippedStart; }
+});

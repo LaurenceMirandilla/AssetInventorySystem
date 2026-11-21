@@ -42,6 +42,7 @@ namespace SchoolInventoryManagement.DAL.Context
         public DbSet<NewItemRequestStep> NewItemRequestSteps { get; set; } = null!;
         public DbSet<NewItemRequestItem> NewItemRequestItems { get; set; } = null!;
         public DbSet<PurchaseOrder> PurchaseOrders { get; set; } = null!;
+        public DbSet<Supplier> Suppliers { get; set; } = null!;
         public DbSet<PurchaseOrderLine> PurchaseOrderLines { get; set; } = null!;
         public DbSet<NewItemRequestUnit> NewItemRequestUnits { get; set; } = null!;
         public DbSet<AssetCount> AssetCounts { get; set; } = null!;
@@ -620,6 +621,11 @@ namespace SchoolInventoryManagement.DAL.Context
                 .HasForeignKey(r => r.NewItemRequestID).OnDelete(DeleteBehavior.Restrict);
             modelBuilder.Entity<PurchaseOrder>()
                 .HasIndex(o => o.PONumber).IsUnique();
+            modelBuilder.Entity<PurchaseOrder>()
+                .HasOne(o => o.Supplier).WithMany(s => s.Orders)
+                .HasForeignKey(o => o.SupplierID).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<Supplier>()
+                .HasIndex(s => s.Name).IsUnique();
             modelBuilder.Entity<PurchaseOrder>()
                 .HasOne(o => o.Request).WithMany(n => n.PurchaseOrders)
                 .HasForeignKey(o => o.NewItemRequestID).OnDelete(DeleteBehavior.Restrict);
