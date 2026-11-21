@@ -48,7 +48,7 @@ namespace SchoolInventoryManagement.BLL.Services
             ApplicationDbContext context, Dictionary<int, int> before, Dictionary<int, int> change) =>
             QueueLowStockAsync(context);
 
-        // Tells Asset Officers and Administrators when the changes about to
+        // Tells Property Officers and Administrators when the changes about to
         // be saved take a supply down to its low-stock level, or to
         // nothing, IN A BRANCH: the level is per branch, not school-wide.
         // Only on the way down, so a branch that stays low does not notify

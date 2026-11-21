@@ -33,7 +33,7 @@ namespace SchoolInventoryManagement.BLL.Interfaces
         // The requester only, and only while it is still Pending.
         Task CancelAsync(int requestId, int actingUserId);
 
-        // ---- Approvers (Asset Officer, Administrator, Principal) ----
+        // ---- Approvers (Property Officer, Administrator, Principal) ----
 
         // Waiting for a decision, approved and waiting to be released, and
         // released and out for delivery. Each pending line also says how
@@ -57,7 +57,7 @@ namespace SchoolInventoryManagement.BLL.Interfaces
 
         Task RejectAsync(int requestId, string? reason, int actingUserId);
 
-        // ---- Release (Asset Officer, Administrator) ----
+        // ---- Release (Property Officer, Administrator) ----
 
         Task<SupplyReleaseInfoDTO> GetReleaseInfoAsync(int requestId);
 
@@ -65,7 +65,7 @@ namespace SchoolInventoryManagement.BLL.Interfaces
         // history lines. The supplies are now out for delivery.
         Task ReleaseAsync(int requestId, ReleaseSupplyRequestDTO dto, int actingUserId);
 
-        // ---- Delivery (Asset Officer, Administrator) ----
+        // ---- Delivery (Property Officer, Administrator) ----
 
         // The supplies reached the requester's location: records who
         // received them and finishes the request.

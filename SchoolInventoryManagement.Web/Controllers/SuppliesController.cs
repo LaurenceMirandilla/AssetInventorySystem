@@ -39,7 +39,7 @@ namespace SchoolInventoryManagement.Web.Controllers
             int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
         // GET /Supplies. Every signed-in role may see the list and a
-        // supply's page; only Asset Officers and Administrators change them.
+        // supply's page; only Property Officers and Administrators change them.
         public async Task<IActionResult> Index(
             string? keyword, int? categoryId, int? branchId, int? locationId,
             SupplyStockStatus? status, int page = 1, int? pageSize = null)
@@ -224,15 +224,15 @@ namespace SchoolInventoryManagement.Web.Controllers
                 return;
 
             var room = await StoreRoomAsync(ticket.DeliverToLocationID);
-            // One row per supply, even if the ticket named it twice; what
-            // was already added for it is left out.
+            // One row per supply, even if the ticket named it twice: what
+            // was bought for it, less what was already added.
             dto.Lines = ticket.Items
                 .Where(i => i.SupplyID.HasValue)
                 .GroupBy(i => i.SupplyID)
                 .Select(g => new AddStockLineDTO
                 {
                     SupplyID = g.Key,
-                    Quantity = g.Sum(i => i.Quantity) - g.First().AddedToStock,
+                    Quantity = g.Sum(i => i.ToBuy) - g.First().AddedToStock,
                     LocationID = room
                 })
                 .Where(l => l.Quantity > 0)
@@ -250,7 +250,7 @@ namespace SchoolInventoryManagement.Web.Controllers
                     && i.Request.ItemKind == CategoryKind.Supply && i.Request.RequestStatus == NewItemStatus.Arrived)
                 .Select(i => new
                 {
-                    i.NewItemRequestID, i.ItemName, i.Unit, i.Quantity, i.EstimatedUnitPrice, i.Description,
+                    i.NewItemRequestID, i.ItemName, i.Unit, Quantity = i.ToBuy, i.EstimatedUnitPrice, i.Description,
                     i.Request.CategoryID, i.Request.DeliverToLocationID,
                     Department = i.Request.Department.DepartmentName
                 })

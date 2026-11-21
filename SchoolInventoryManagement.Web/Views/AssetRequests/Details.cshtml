@@ -10,7 +10,7 @@
     ViewData["LiveScope"] = "assetrequest:" + Model.RequestID;
 
     // Borrow and transfer requests are decided by the Property
-    // Department's Asset Officers (Administrators as a backup).
+    // Department's Property Officers (Administrators as a backup).
     var isApprover = User.IsInRole(RoleNames.AssetOfficer)
         || User.IsInRole(RoleNames.Administrator);
 
@@ -44,8 +44,8 @@
     var (backLabel, backAction) = section switch
     {
         "approvals" => ("Approvals", "Pending"),
-        "history" => ("Request History", "History"),
-        _ => ("My Requests", "MyRequests")
+        "history" => ("Borrow History", "History"),
+        _ => ("Borrowing", "MyRequests")
     };
 
     // Borrow: where the units are (or will be) collected. The approver's

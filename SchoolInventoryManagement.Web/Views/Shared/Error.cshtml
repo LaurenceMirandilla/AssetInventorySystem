@@ -4,7 +4,7 @@
 
     // Same label the sidebar gives the first link for this role.
     var signedIn = User.Identity?.IsAuthenticated == true;
-    var homeLabel = User.IsInRole("Asset Officer") || User.IsInRole("Administrator") || User.IsInRole("Principal")
+    var homeLabel = User.IsInRole("Property Officer") || User.IsInRole("Administrator") || User.IsInRole("Principal")
         ? "Dashboard" : "Home";
 }
 

@@ -13,7 +13,7 @@ using SchoolInventoryManagement.Web.ViewModels;
 namespace SchoolInventoryManagement.Web.Controllers
 {
     // Physical counts of assets, room by room. Counting is the Property
-    // Department's work (Asset Officers, Administrators); the Principal
+    // Department's work (Property Officers, Administrators); the Principal
     // can read past counts. AssetCountService checks both again.
     [Authorize]
     public class AssetCountsController : BaseController

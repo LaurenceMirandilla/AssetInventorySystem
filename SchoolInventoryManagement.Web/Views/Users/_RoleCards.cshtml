@@ -3,14 +3,15 @@
    does, as radio buttons named RoleID. Roles come from ViewBag.Roles. *@
 @{
     var roles = ((IEnumerable<SelectListItem>)ViewBag.Roles).ToList();
-    var order = new[] { "Teacher", "Staff", "Department Head", "Principal", "Asset Officer", "Administrator" };
+    var order = new[] { "Teacher", "Staff", "Department Head", "Principal", "Property Officer", "Purchasing Officer", "Administrator" };
     var about = new Dictionary<string, string>
     {
-        ["Teacher"] = "Borrow, request supplies and purchases.",
+        ["Teacher"] = "Borrow; make requisitions if chosen to.",
         ["Staff"] = "Same as Teacher.",
-        ["Department Head"] = "Leads a department; borrows and requests like a Teacher.",
-        ["Principal"] = "Approves requests and new-item requests; manages users.",
-        ["Asset Officer"] = "Registers assets, hands out and records returns.",
+        ["Department Head"] = "Leads a department; borrows like a Teacher.",
+        ["Principal"] = "Sees every requisition and the reports; manages users.",
+        ["Property Officer"] = "Receives, picks and sends requisitions; approves borrows and records returns.",
+        ["Purchasing Officer"] = "Buys what requisitions are missing, with purchase orders (the Purchasing page).",
         ["Administrator"] = "Everything, including users and settings."
     };
     var sorted = roles.OrderBy(r => Array.IndexOf(order, r.Text) is var i && i >= 0 ? i : 99).ThenBy(r => r.Text).ToList();

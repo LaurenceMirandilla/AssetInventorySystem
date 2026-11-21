@@ -28,17 +28,24 @@
 <div class="asset-detail-head">
     <div>
         <nav class="asset-crumbs" aria-label="Breadcrumb">
-            <a asp-action="MyRequests">New-Item Requests</a>
+            <a asp-action="MyRequests">Requisitions</a>
             <span aria-hidden="true">&rsaquo;</span>
-            <span>New request</span>
+            <span>New requisition</span>
         </nav>
-        <h2 class="asset-detail-title">Request new items</h2>
-        <div class="asset-detail-sub">For things the school doesn't have yet, or needs more of.</div>
+        <h2 class="asset-detail-title">New requisition</h2>
+        <div class="asset-detail-sub">Fixed assets or consumables for your department. What the Property Department has is sent from stock; anything missing is bought first.</div>
     </div>
     <div class="asset-detail-actions">
         <span class="asset-pill asset-status st-available">Authorised requester &middot; @lookups.DepartmentName</span>
     </div>
 </div>
+
+@if (lookups.DeliveryRoomName is null)
+{
+    @* Sent to the department's room (Scripts/029): without one there is
+       nowhere to send it. *@
+    <div class="alert alert-warning">Your department has no room yet, so there is nowhere to send a requisition. Ask an administrator to give it one on the Departments page.</div>
+}
 
 <form asp-action="Create" method="post" class="register-form" id="newItemForm">
     @Html.AntiForgeryToken()
@@ -57,27 +64,27 @@
                             <input type="radio" name="Kind" value="Asset" checked="@(!isSupplies)" />
                             <span class="nr-kind-dot" aria-hidden="true"></span>
                             <span>
-                                <strong>Assets</strong>
-                                <small>Kept and tracked one by one, each with its own code: chairs, laptops, projectors.</small>
+                                <strong>Fixed Asset</strong>
+                                <small>Kept and tracked one by one, each with its own control number: chairs, laptops, projectors.</small>
                             </span>
                         </label>
                         <label class="nr-kind @(isSupplies ? "is-on" : "")">
                             <input type="radio" name="Kind" value="Supply" checked="@isSupplies" />
                             <span class="nr-kind-dot" aria-hidden="true"></span>
                             <span>
-                                <strong>Supplies</strong>
+                                <strong>Consumables</strong>
                                 <small>Counted by quantity and used up: paper, markers, alcohol.</small>
                             </span>
                         </label>
                     </div>
-                    <div class="nr-hint mt-2">One request is either assets or supplies, not both.</div>
+                    <div class="nr-hint mt-2">One requisition is either fixed assets or consumables, not both.</div>
                 </div>
             </div>
 
             @* ---- Items ---- *@
             <div class="asset-card register-step mb-3">
                 <div class="register-step-head">
-                    <div class="register-step-title flex-grow-1" id="itemsTitle">@(isSupplies ? "Supplies to be bought" : "Assets to be bought")</div>
+                    <div class="register-step-title flex-grow-1" id="itemsTitle">@(isSupplies ? "Consumables" : "Fixed assets")</div>
                     <span class="nr-head-note" id="itemsNote"></span>
                 </div>
                 <div class="register-step-body ni2-box @(isSupplies ? "is-supplies" : "")" id="itemsBox">
@@ -105,6 +112,7 @@
                                     <input type="hidden" name="ModelIds" class="ni-model-id" value="@row.ModelId" />
                                     <input type="hidden" name="SupplyIds" class="ni-supply-id" value="@row.SupplyId" />
                                     <div class="nr-hint ni-picked" aria-live="polite"></div>
+                                    <div class="nr-hint ni-stock fw-semibold"></div>
                                 </div>
                                 <div class="qty-stepper ni-qty">
                                     <button type="button" class="qty-btn" data-step="-1" aria-label="Fewer">&minus;</button>
@@ -133,7 +141,7 @@
                     </div>
                     <span asp-validation-for="ItemNames" class="text-danger d-block"></span>
 
-                    <div class="ni2-note">No prices to fill in. Describe what you need; procurement works out the cost.</div>
+                    <div class="ni2-note">No prices to fill in. What is not in stock is bought by Purchasing, who works out the cost.</div>
                 </div>
             </div>
 
@@ -147,27 +155,7 @@
                     <textarea asp-for="Reason" class="form-control" rows="3" maxlength="500" aria-label="Reason"
                               placeholder="What it is for and who will use it."></textarea>
                     <span asp-validation-for="Reason" class="text-danger d-block"></span>
-                    <div class="nr-hint mt-1">The Principal reads this when deciding.</div>
-                </div>
-            </div>
-
-            @* ---- Deliver to ---- *@
-            <div class="asset-card register-step mb-3">
-                <div class="register-step-head">
-                    <div class="register-step-title flex-grow-1">Delivered to</div>
-                    <span class="nr-head-note">your department's room</span>
-                </div>
-                <div class="register-step-body">
-                    @* Not asked any more: the department's room (Scripts/029). *@
-                    @if (lookups.DeliveryRoomName is string room)
-                    {
-                        <div class="fw-semibold">@room</div>
-                        <div class="nr-hint mt-1">Where the items are brought when they arrive, and where you receive them. It comes from your account.</div>
-                    }
-                    else
-                    {
-                        <div class="alert alert-warning py-2 mb-0">Your department has no room yet, so there is nowhere to deliver. Ask an administrator to give it one.</div>
-                    }
+                    <div class="nr-hint mt-1">The Property and Purchasing officers read this.</div>
                 </div>
             </div>
 
@@ -183,7 +171,7 @@
                         <input asp-for="NeededBy" type="date" class="form-control" id="neededBy" min="@PhilippineTime.Today.ToString("yyyy-MM-dd")" />
                     </div>
                     <span asp-validation-for="NeededBy" class="text-danger d-block"></span>
-                    <div class="nr-hint mt-1">Buying takes time. Give procurement as much notice as you can.</div>
+                    <div class="nr-hint mt-1">Buying takes time: if something has to be bought, give as much notice as you can.</div>
                 </div>
             </div>
         </div>
@@ -191,37 +179,30 @@
         @* ---- Summary ---- *@
         <div class="col-lg-4">
             <div class="asset-card nr-summary">
-                <div class="asset-card-title">Your request</div>
+                <div class="asset-card-title">Your requisition</div>
                 <dl class="approve-facts nr-summary-body">
-                    <div><dt>Kind</dt><dd id="sumKind">@(isSupplies ? "Supplies" : "Assets")</dd></div>
+                    <div><dt>Kind</dt><dd id="sumKind">@(isSupplies ? "Consumables" : "Fixed assets")</dd></div>
                     <div><dt>Items</dt><dd id="sumItems" class="is-empty">None yet</dd></div>
                     <div><dt>Needed by</dt><dd id="sumNeeded" class="is-empty">Not chosen yet</dd></div>
                     <div><dt>For</dt><dd>@DisplayText.Or(lookups.DepartmentName, "None")</dd></div>
-                    <div class="nr-summary-wide border-0 pb-0"><dt>Deliver to</dt><dd class="@(lookups.DeliveryRoomName is null ? "is-empty" : "")">@(lookups.DeliveryRoomName ?? "No room yet")</dd></div>
+                    <div class="nr-summary-wide"><dt>To buy</dt><dd id="sumBuy" class="is-empty">Nothing: all from stock</dd></div>
+                    <div class="nr-summary-wide border-0 pb-0"><dt>Sent to</dt><dd class="@(lookups.DeliveryRoomName is null ? "is-empty" : "")">@(lookups.DeliveryRoomName ?? "No room yet")</dd></div>
                 </dl>
                 <div class="ni-next">
                     <div class="register-side-label mb-2">What happens next</div>
-                    <ol class="ni-steps">
-                        <li class="is-first">
+                    <ol class="ni-steps" id="nextSteps">
+                        @* Procurement only when something must be bought (update()). *@
+                        <li id="nextProc" hidden>
                             <span class="ni-step-num">1</span>
-                            <span><strong>Principal</strong><small>reads the reason and approves</small></span>
+                            <span><strong>Procurement</strong><small>Purchasing buys what is missing: <span id="nextProcWhat"></span></small></span>
+                        </li>
+                        <li>
+                            <span class="ni-step-num">1</span>
+                            <span><strong>Property</strong><small>the Property Department picks the rest from stock and sends everything@(lookups.DeliveryRoomName is null ? "" : " to " + lookups.DeliveryRoomName)</small></span>
                         </li>
                         <li>
                             <span class="ni-step-num">2</span>
-                            <span><strong>Procurement</strong><small>an Asset Officer buys it</small></span>
-                        </li>
-                        <li>
-                            <span class="ni-step-num">3</span>
-                            <span><strong>Arrived</strong><small>checked against your description and put on record; assets get their control numbers</small></span>
-                        </li>
-                        <li>
-                            <span class="ni-step-num">4</span>
-                            <span><strong>Delivered</strong><small>brought to the location you chose</small></span>
-                        </li>
-                        @* Assets only: shown or hidden with the kind (applyKind). *@
-                        <li id="nextReceipt" hidden="@isSupplies">
-                            <span class="ni-step-num">5</span>
-                            <span><strong>You confirm receipt</strong><small>then the items are your department's to look after</small></span>
+                            <span><strong>Receive</strong><small id="nextReceiveText">@(isSupplies ? "you confirm you received it" : "you confirm you received it; then the items are your department's to look after")</small></span>
                         </li>
                     </ol>
                 </div>
@@ -230,10 +211,10 @@
     </div>
 
     <div class="register-footer">
-        <span class="d-none d-md-inline">All the items go in one request, approved or rejected together.</span>
+        <span class="d-none d-md-inline">All the items go in one requisition and are sent together.</span>
         <div class="d-flex ms-auto" style="gap:8px;">
             <a asp-action="MyRequests" class="btn btn-outline-secondary">Cancel</a>
-            <button type="submit" class="btn btn-primary" id="submitBtn">Submit request</button>
+            <button type="submit" class="btn btn-primary" id="submitBtn">Submit requisition</button>
         </div>
     </div>
 </form>
@@ -274,10 +255,12 @@
                 if (/(x|ch|sh|ss)$/.test(l)) return u + 'es';
                 return u + 's';
             }
+            // What the Property Department can still hand out (Scripts/031).
+            function inStock(o) { return isSupplies() ? o.Quantity : o.InStock; }
             function sub(o) {
                 return isSupplies()
-                    ? o.Category + ' · ' + o.Quantity + ' ' + plural(o.Unit, o.Quantity) + ' at your branch'
-                    : o.Category + ' · ' + o.Units + ' in school';
+                    ? o.Category + ' · ' + o.Quantity + ' ' + plural(o.Unit, o.Quantity) + ' in stock'
+                    : o.Category + ' · ' + o.InStock + ' in stock';
             }
 
             // ---- A row's link to an existing model or supply ----
@@ -427,9 +410,11 @@
                 var supplies = isSupplies();
                 kinds.forEach(function (k) { k.closest('.nr-kind').classList.toggle('is-on', k.checked); });
                 box.classList.toggle('is-supplies', supplies);
-                document.getElementById('itemsTitle').textContent = supplies ? 'Supplies to be bought' : 'Assets to be bought';
-                document.getElementById('sumKind').textContent = supplies ? 'Supplies' : 'Assets';
-                document.getElementById('nextReceipt').hidden = supplies;
+                document.getElementById('itemsTitle').textContent = supplies ? 'Consumables' : 'Fixed assets';
+                document.getElementById('sumKind').textContent = supplies ? 'Consumables' : 'Fixed assets';
+                document.getElementById('nextReceiveText').textContent = supplies
+                    ? 'you confirm you received it'
+                    : "you confirm you received it; then the items are your department's to look after";
                 document.getElementById('searchHint').textContent = supplies
                     ? 'Start typing in the Item box: matching supplies appear, or keep what you typed as a new item.'
                     : 'Start typing in the Item box: matching models appear, or keep what you typed as a new item.';
@@ -459,8 +444,42 @@
                 addButton.disabled = rows.length >= maxRows;
 
                 document.getElementById('itemsNote').textContent = named
-                    ? named + ' item' + (named === 1 ? '' : 's') + (named > 1 ? ' · one request, decided together' : '')
+                    ? named + ' item' + (named === 1 ? '' : 's') + (named > 1 ? ' · one requisition, sent together' : '')
                     : '';
+
+                // From stock or to buy, line by line (the server decides the
+                // same way when it is sent): a new item is all to buy; more
+                // than Property has means the rest is bought.
+                var left = {}, missing = [];
+                rows.forEach(function (row) {
+                    var name = row.querySelector('.ni-name').value.trim();
+                    var stockEl = row.querySelector('.ni-stock');
+                    var qty = parseInt(row.querySelector('.qty-input').value, 10) || 0;
+                    if (!name || qty < 1) { stockEl.textContent = ''; return; }
+                    var o = idInput(row).value ? byId(idInput(row).value) : null;
+                    var have = 0;
+                    if (o) {
+                        if (!(o.Id in left)) left[o.Id] = inStock(o);
+                        have = Math.min(qty, left[o.Id]);
+                        left[o.Id] -= have;
+                    }
+                    var buy = qty - have;
+                    stockEl.textContent = !o ? 'New: all to buy'
+                        : buy === 0 ? 'All from stock'
+                        : have === 0 ? 'None in stock: all to buy'
+                        : have + ' from stock · ' + buy + ' to buy';
+                    stockEl.classList.toggle('text-warning', buy > 0);
+                    if (buy > 0) missing.push(name + ' ×' + buy);
+                });
+                var sumBuy = document.getElementById('sumBuy');
+                sumBuy.textContent = missing.length ? missing.join(', ') : 'Nothing: all from stock';
+                sumBuy.classList.toggle('is-empty', !missing.length);
+                document.getElementById('nextProc').hidden = !missing.length;
+                document.getElementById('nextProcWhat').textContent = missing.join(', ');
+                var n = 0;
+                document.querySelectorAll('#nextSteps > li').forEach(function (li) {
+                    if (!li.hidden) li.querySelector('.ni-step-num').textContent = ++n;
+                });
                 sabShow(document.getElementById('sumItems'), named ? named + ' · ' + units + ' unit' + (units === 1 ? '' : 's') : '', 'None yet');
 
 

@@ -61,7 +61,7 @@
         <div class="asset-detail-sub">@Model.CategoryName &middot; counted per @Model.Unit@(string.IsNullOrWhiteSpace(Model.Description) ? "" : " · " + Model.Description)</div>
     </div>
     <div class="asset-detail-actions">
-        <a asp-controller="SupplyRequests" asp-action="Create" asp-route-supplyId="@Model.SupplyID" class="btn btn-outline-secondary">Request this</a>
+        <a asp-controller="NewItemRequests" asp-action="Create" asp-route-supplyId="@Model.SupplyID" class="btn btn-outline-secondary">Request this</a>
         @if (canManage)
         {
             <a asp-action="Edit" asp-route-id="@Model.SupplyID" class="btn btn-outline-secondary">Edit</a>

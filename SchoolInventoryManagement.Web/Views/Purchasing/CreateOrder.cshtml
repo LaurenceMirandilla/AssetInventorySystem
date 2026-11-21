@@ -1,0 +1,146 @@
+@model SchoolInventoryManagement.BLL.DTOs.CreatePurchaseOrderDTO
+@using SchoolInventoryManagement.BLL.DTOs
+@using SchoolInventoryManagement.DAL.Entities.Enums
+@{
+    var form = (PurchaseOrderFormDTO)ViewBag.Form;
+    var entered = ViewBag.Entered as Dictionary<int, CreatePurchaseOrderLineDTO>;
+    ViewData["Title"] = $"Purchase order · Requisition #{form.NewItemRequestID}";
+}
+@* A purchase order for what requisition #N is missing (Scripts/031): the
+   supplier, then how many of each item and at what price. Each item can be
+   split over several orders (two suppliers): leave its quantity at 0 to
+   order it later. *@
+
+<div class="sab-page-head">
+    <div>
+        <nav class="asset-crumbs" aria-label="Breadcrumb">
+            <a asp-action="Index">Purchasing</a>
+            <span aria-hidden="true">&rsaquo;</span>
+            <a asp-controller="NewItemRequests" asp-action="Details" asp-route-id="@form.NewItemRequestID">Requisition #@form.NewItemRequestID</a>
+            <span aria-hidden="true">&rsaquo;</span>
+            <span>Purchase order</span>
+        </nav>
+        <h2>New purchase order</h2>
+        <p class="sab-page-sub">For requisition #@form.NewItemRequestID: @form.DepartmentName, @form.RequestedByUserName@(form.NeededBy is null ? "" : ", needed by " + form.NeededBy.Value.ToString("MMM d, yyyy")).</p>
+    </div>
+</div>
+
+<div asp-validation-summary="All" class="text-danger mb-2"></div>
+
+<form asp-action="CreateOrder" method="post" id="poForm">
+    @Html.AntiForgeryToken()
+    @Html.FormTicket()
+    <input type="hidden" asp-for="NewItemRequestID" />
+
+    <div class="row g-3">
+        <div class="col-lg-8">
+            <div class="asset-card register-step mb-3">
+                <div class="register-step-head"><div class="register-step-title">Supplier</div></div>
+                <div class="register-step-body">
+                    <div class="row g-2">
+                        <div class="col-md-6">
+                            <label class="form-label" for="SupplierName">Name</label>
+                            <input asp-for="SupplierName" class="form-control" maxlength="150" list="supplierList" required autocomplete="off" />
+                            <datalist id="supplierList">
+                                @foreach (var s in form.KnownSuppliers)
+                                {
+                                    <option value="@s"></option>
+                                }
+                            </datalist>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label" for="SupplierContact">Contact <small class="text-muted">optional</small></label>
+                            <input asp-for="SupplierContact" class="form-control" maxlength="100" placeholder="Phone, email or contact person" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label" for="SupplierAddress">Address <small class="text-muted">optional</small></label>
+                            <input asp-for="SupplierAddress" class="form-control" maxlength="250" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label" for="OrderDate">Order date</label>
+                            <input asp-for="OrderDate" type="date" class="form-control" value="@Model.OrderDate.ToString("yyyy-MM-dd")" required />
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="asset-card register-step mb-3">
+                <div class="register-step-head"><div class="register-step-title">Items to buy</div></div>
+                <div class="register-step-body p-0">
+                    <div class="table-responsive">
+                        <table class="table asset-table mb-0">
+                            <thead>
+                                <tr><th>Item</th><th class="text-end">Left to order</th><th style="width:110px;">Quantity</th><th style="width:150px;">Unit price (₱)</th><th class="text-end">Amount</th></tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var line in form.Lines)
+                                {
+                                    var e = entered != null && entered.TryGetValue(line.NewItemRequestItemID, out var x) ? x : null;
+                                    <tr data-po-line>
+                                        <td>@line.ItemName@(form.ItemKind == CategoryKind.Supply && !string.IsNullOrWhiteSpace(line.Unit) ? $" ({line.Unit})" : "")
+                                            @if (!string.IsNullOrWhiteSpace(line.Description)) {<small class="d-block text-muted">@line.Description</small>}</td>
+                                        <td class="text-end">@line.Left</td>
+                                        <td><input type="number" name="Quantity_@line.NewItemRequestItemID" class="form-control form-control-sm" min="0" max="@line.Left" step="1"
+                                                   value="@(e?.Quantity ?? line.Left)" data-po-qty aria-label="Quantity of @line.ItemName" /></td>
+                                        <td><input type="number" name="Price_@line.NewItemRequestItemID" class="form-control form-control-sm" min="0" step="0.01"
+                                                   value="@(e is not null && e.UnitPrice >= 0 ? e.UnitPrice.ToString("0.00") : "")" data-po-price placeholder="0.00" aria-label="Unit price of @line.ItemName" required /></td>
+                                        <td class="text-end" data-po-amount>—</td>
+                                    </tr>
+                                }
+                            </tbody>
+                            <tfoot>
+                                <tr><th colspan="4" class="text-end">Total</th><th class="text-end" id="poTotal">₱0.00</th></tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                    <p class="small text-muted p-3 mb-0">Buying from two suppliers? Put 0 for what this supplier does not have, and make another order for it.</p>
+                </div>
+            </div>
+
+            <div class="asset-card register-step mb-3">
+                <div class="register-step-head"><div class="register-step-title">Notes <small class="text-muted">optional</small></div></div>
+                <div class="register-step-body">
+                    <textarea asp-for="Notes" class="form-control" rows="2" maxlength="500" placeholder="Terms, delivery instructions..."></textarea>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="asset-card nr-summary">
+                <div class="register-step-head"><div class="register-step-title">The requisition</div></div>
+                <div class="p-3">
+                    <p class="mb-2"><strong>@form.DepartmentName</strong> · @form.RequestedByUserName</p>
+                    <p class="mb-0 text-muted">@DisplayText.Or(form.Reason, "No reason given")</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="register-footer">
+        <a asp-action="Index" class="btn btn-outline-secondary">Cancel</a>
+        <button type="submit" class="btn btn-primary">Save purchase order</button>
+    </div>
+</form>
+
+@section Scripts {
+    <script>
+        (function () {
+            var rows = Array.from(document.querySelectorAll('[data-po-line]'));
+            var peso = function (n) { return '₱' + n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
+            function sync() {
+                var total = 0;
+                rows.forEach(function (row) {
+                    var q = parseInt(row.querySelector('[data-po-qty]').value, 10) || 0;
+                    var p = parseFloat(row.querySelector('[data-po-price]').value) || 0;
+                    // A line left at 0 is not on this order: no price needed.
+                    row.querySelector('[data-po-price]').required = q > 0;
+                    row.querySelector('[data-po-amount]').textContent = q > 0 ? peso(q * p) : '—';
+                    total += q * p;
+                });
+                document.getElementById('poTotal').textContent = peso(total);
+            }
+            rows.forEach(function (row) { row.addEventListener('input', sync); });
+            sync();
+        })();
+    </script>
+}

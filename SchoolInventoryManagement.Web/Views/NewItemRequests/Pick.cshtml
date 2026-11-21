@@ -1,0 +1,99 @@
+@model SchoolInventoryManagement.BLL.DTOs.PickUnitsDTO
+@{
+    ViewData["Title"] = $"Pick from stock · Requisition #{Model.NewItemRequestID}";
+}
+@* Pick from stock (Scripts/031): for each fixed-asset line, tick the units
+   the Property Department sends from its stock. Picked units are kept for
+   the requisition (In transit) until it is sent; unticking puts one back. *@
+
+@if (TempData["ErrorMessage"] != null)
+{
+    <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
+}
+
+<div class="sab-page-head">
+    <div>
+        <nav class="asset-crumbs" aria-label="Breadcrumb">
+            <a asp-action="Pending">Requisition queue</a>
+            <span aria-hidden="true">&rsaquo;</span>
+            <a asp-action="Details" asp-route-id="@Model.NewItemRequestID">#@Model.NewItemRequestID</a>
+            <span aria-hidden="true">&rsaquo;</span>
+            <span>Pick from stock</span>
+        </nav>
+        <h2>Pick from stock</h2>
+        <p class="sab-page-sub">Requisition #@Model.NewItemRequestID for the @Model.DepartmentName (@Model.RequestedByUserName). Units in the Property Department's stock at @Model.BranchName.</p>
+    </div>
+</div>
+
+<form asp-action="Pick" asp-route-id="@Model.NewItemRequestID" method="post">
+    @Html.AntiForgeryToken()
+    @if (!Model.Lines.Any())
+    {
+        <div class="sab-table-card"><div class="sab-empty"><p class="mb-0">Nothing on this requisition comes from stock: it is all bought.</p></div></div>
+    }
+    @foreach (var line in Model.Lines)
+    {
+        var name = $"unit_{line.NewItemRequestItemID}";
+        <input type="hidden" name="line_@line.NewItemRequestItemID" value="1" />
+        <div class="asset-card mb-3" data-pick-line data-max="@line.FromStock">
+            <div class="rq-card-head">
+                <h3>@line.ItemName</h3>
+                <span>pick <strong data-pick-count>@line.Units.Count(u => u.Picked)</strong> of @line.FromStock</span>
+            </div>
+            @if (!string.IsNullOrWhiteSpace(line.Description))
+            {
+                <p class="px-3 mb-2 text-muted">“@line.Description”</p>
+            }
+            @if (!line.Units.Any())
+            {
+                <div class="sab-empty"><p class="mb-0">None in stock now. Send what is short back to Purchasing from the requisition page.</p></div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table asset-table mb-0">
+                        <thead>
+                            <tr><th style="width:44px;"></th><th>Control no.</th><th class="d-none d-sm-table-cell">Serial</th><th>Room</th><th>Condition</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var unit in line.Units)
+                            {
+                                <tr>
+                                    <td><input class="form-check-input" type="checkbox" name="@name" value="@unit.AssetID" id="u@unit.AssetID" checked="@unit.Picked" aria-label="Pick @unit.AssetCode" /></td>
+                                    <td><label for="u@unit.AssetID" class="asset-code-chip mb-0">@unit.AssetCode</label></td>
+                                    <td class="d-none d-sm-table-cell">@DisplayText.Or(unit.SerialNumber, "—")</td>
+                                    <td>@DisplayText.Or(unit.LocationName, "—")</td>
+                                    <td>@DisplayText.Humanize(unit.Condition)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    }
+
+    <div class="register-footer ni-footer">
+        <a asp-action="Details" asp-route-id="@Model.NewItemRequestID" class="btn btn-outline-secondary">&larr; Requisition #@Model.NewItemRequestID</a>
+        <span class="ms-auto me-2 text-muted d-none d-sm-inline">Picked units are kept for this requisition until it is sent.</span>
+        <button type="submit" class="btn btn-primary">Save picks</button>
+    </div>
+</form>
+
+@section Scripts {
+    <script>
+        // At most the line's "from stock" count can be ticked.
+        document.querySelectorAll('[data-pick-line]').forEach(function (card) {
+            var max = parseInt(card.getAttribute('data-max'), 10) || 0;
+            var boxes = Array.from(card.querySelectorAll('input[type=checkbox]'));
+            var count = card.querySelector('[data-pick-count]');
+            function sync() {
+                var n = boxes.filter(function (b) { return b.checked; }).length;
+                count.textContent = n;
+                boxes.forEach(function (b) { b.disabled = !b.checked && n >= max; });
+            }
+            boxes.forEach(function (b) { b.addEventListener('change', sync); });
+            sync();
+        });
+    </script>
+}

@@ -23,7 +23,7 @@ namespace SchoolInventoryManagement.BLL.Interfaces
 
         // Every approved or rejected request (approved ones include any
         // later cancelled while in transit), filtered and paged, newest
-        // decision first. Asset Officers and Administrators only.
+        // decision first. Property Officers and Administrators only.
         Task<RequestHistoryResultDTO> GetDecisionHistoryAsync(RequestHistoryFilterDTO filter, int actingUserId);
 
         // notifyRequester exists so RequestFulfillmentService can suppress

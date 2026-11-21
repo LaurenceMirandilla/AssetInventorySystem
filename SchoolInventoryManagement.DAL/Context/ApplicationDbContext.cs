@@ -41,6 +41,9 @@ namespace SchoolInventoryManagement.DAL.Context
         public DbSet<NewItemRequest> NewItemRequests { get; set; } = null!;
         public DbSet<NewItemRequestStep> NewItemRequestSteps { get; set; } = null!;
         public DbSet<NewItemRequestItem> NewItemRequestItems { get; set; } = null!;
+        public DbSet<PurchaseOrder> PurchaseOrders { get; set; } = null!;
+        public DbSet<PurchaseOrderLine> PurchaseOrderLines { get; set; } = null!;
+        public DbSet<NewItemRequestUnit> NewItemRequestUnits { get; set; } = null!;
         public DbSet<AssetCount> AssetCounts { get; set; } = null!;
         public DbSet<AssetCountLine> AssetCountLines { get; set; } = null!;
 
@@ -608,6 +611,39 @@ namespace SchoolInventoryManagement.DAL.Context
                 .HasForeignKey(n => n.CategoryID)
                 .OnDelete(DeleteBehavior.Restrict);
 
+            // Requisitions (Scripts/031): purchase orders and the units
+            // Property picked from stock. Only the order's lines and a
+            // requisition's picks go with their parent; nothing else
+            // cascades (SQL Server refuses two cascade paths).
+            modelBuilder.Entity<PurchaseOrder>()
+                .HasIndex(o => o.PONumber).IsUnique();
+            modelBuilder.Entity<PurchaseOrder>()
+                .HasOne(o => o.Request).WithMany(n => n.PurchaseOrders)
+                .HasForeignKey(o => o.NewItemRequestID).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<PurchaseOrder>()
+                .HasOne(o => o.CreatedByUser).WithMany()
+                .HasForeignKey(o => o.CreatedByUserID).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<PurchaseOrderLine>()
+                .HasOne(l => l.Order).WithMany(o => o.Lines)
+                .HasForeignKey(l => l.PurchaseOrderID).OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<PurchaseOrderLine>()
+                .HasOne(l => l.Item).WithMany()
+                .HasForeignKey(l => l.NewItemRequestItemID).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<NewItemRequestUnit>()
+                .HasKey(u => new { u.NewItemRequestID, u.AssetID });
+            modelBuilder.Entity<NewItemRequestUnit>()
+                .HasOne(u => u.Request).WithMany(n => n.PickedUnits)
+                .HasForeignKey(u => u.NewItemRequestID).OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<NewItemRequestUnit>()
+                .HasOne(u => u.Asset).WithMany()
+                .HasForeignKey(u => u.AssetID).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<NewItemRequestUnit>()
+                .HasOne(u => u.Item).WithMany()
+                .HasForeignKey(u => u.NewItemRequestItemID).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<NewItemRequestUnit>()
+                .HasOne(u => u.PickedByUser).WithMany()
+                .HasForeignKey(u => u.PickedByUserID).OnDelete(DeleteBehavior.Restrict);
+
             // =====================================================
             // UNIQUE CONSTRAINTS
             // =====================================================
@@ -694,6 +730,7 @@ namespace SchoolInventoryManagement.DAL.Context
             {
                 (typeof(Asset), nameof(Asset.AcquisitionDate)),
                 (typeof(NewItemRequest), nameof(NewItemRequest.NeededBy)),
+                (typeof(PurchaseOrder), nameof(PurchaseOrder.OrderDate)),
             };
 
             foreach (var entityType in modelBuilder.Model.GetEntityTypes())

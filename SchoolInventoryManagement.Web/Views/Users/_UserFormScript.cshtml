@@ -1,4 +1,4 @@
-@* Shared by Add user and Edit user: branch narrows department, the role
+﻿@* Shared by Add user and Edit user: branch narrows department, the role
    tiles light up, the side card follows what's typed, and the first
    password's confirmation says whether it matches. *@
 <script>
@@ -13,11 +13,12 @@
 
         // What each role can do, for the side card.
         var can = {
-            'Teacher': [[1, 'Browse items and borrow them'], [1, 'Ask to move items to a room'], [1, 'Request supplies'], [0, 'Request new items, unless chosen to'], [0, 'Approve requests or manage assets']],
-            'Staff': [[1, 'Browse items and borrow them'], [1, 'Ask to move items to a room'], [1, 'Request supplies'], [0, 'Request new items, unless chosen to'], [0, 'Approve requests or manage assets']],
-            'Department Head': [[1, 'Borrow items and request supplies'], [0, 'Request new items, unless chosen to'], [0, 'Approve borrow or transfer requests'], [0, 'Manage assets']],
-            'Principal': [[1, 'Approve supply requests'], [1, 'Approve new-item requests'], [1, 'Choose who can request new items'], [1, 'Manage users, branches and departments'], [1, 'See reports'], [0, 'Register or hand out assets']],
-            'Asset Officer': [[1, 'Register and edit assets'], [1, 'Approve requests, hand out and record returns'], [1, 'Procure new items, and choose who can request them'], [1, 'Manage categories, models and locations'], [1, 'See reports'], [0, 'Manage users']],
+            'Teacher': [[1, 'Browse items and borrow them'], [0, 'Make requisitions, unless chosen to'], [0, 'Approve requests or manage assets']],
+            'Staff': [[1, 'Browse items and borrow them'], [0, 'Make requisitions, unless chosen to'], [0, 'Approve requests or manage assets']],
+            'Department Head': [[1, 'Borrow items'], [0, 'Make requisitions, unless chosen to'], [0, 'Approve borrow requests'], [0, 'Manage assets']],
+            'Principal': [[1, 'See every requisition'], [1, 'Choose who can make requisitions'], [1, 'Manage users, branches and departments'], [1, 'See reports'], [0, 'Register or hand out assets']],
+            'Property Officer': [[1, 'Register and edit assets'], [1, 'Receive, pick and send requisitions'], [1, 'Approve borrows and record returns'], [1, 'Manage categories, models and locations'], [1, 'See reports'], [0, 'Manage users']],
+            'Purchasing Officer': [[1, 'See approved purchase requests on the Purchasing page'], [1, 'Mark them bought'], [1, 'Borrow items and request supplies'], [0, 'Approve requests or manage assets']],
             'Administrator': [[1, 'Everything, including users and settings']]
         };
 

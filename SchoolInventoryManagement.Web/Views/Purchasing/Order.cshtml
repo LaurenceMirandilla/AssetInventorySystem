@@ -1,0 +1,160 @@
+@model SchoolInventoryManagement.BLL.DTOs.PurchaseOrderDTO
+@{
+    // A page of its own, to print and bring to the supplier.
+    Layout = null;
+    var back = Url.Action("Details", "NewItemRequests", new { id = Model.NewItemRequestID });
+}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>@Model.PONumber - Ste. Anne De Beaupre School</title>
+    <link rel="icon" href="~/images/favicon.png" />
+    <style>
+        :root { --ink: #1c2a22; --muted: #5d6b63; --line: #d5ddd8; --brand: #1e5b35; }
+        * { box-sizing: border-box; }
+        body { margin: 0; background: #eef2ef; color: var(--ink); font: 14px/1.45 "Segoe UI", Roboto, Arial, sans-serif; }
+        .bar { display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap;
+               max-width: 820px; margin: 16px auto 0; padding: 0 16px; }
+        .bar a, .bar button { font: inherit; padding: 7px 14px; border-radius: 6px; border: 1px solid var(--line);
+               background: #fff; color: var(--ink); text-decoration: none; cursor: pointer; }
+        .bar .primary { background: var(--brand); border-color: var(--brand); color: #fff; }
+        .bar .danger { color: #a12a2a; }
+        .msg { max-width: 820px; margin: 10px auto 0; padding: 0 16px; }
+        .msg div { padding: 8px 12px; border-radius: 6px; background: #e3f2e8; }
+        .msg .err { background: #f8e1e1; }
+        .sheet { max-width: 820px; margin: 12px auto 24px; background: #fff; padding: 36px 40px; border: 1px solid var(--line); }
+        .head { display: flex; justify-content: space-between; gap: 16px; border-bottom: 2px solid var(--brand); padding-bottom: 14px; }
+        .school { display: flex; gap: 12px; align-items: center; }
+        .school img { width: 54px; height: 54px; object-fit: contain; }
+        .school strong { display: block; font-size: 17px; }
+        .po { text-align: right; }
+        .po h1 { margin: 0; font-size: 22px; letter-spacing: .04em; color: var(--brand); }
+        .po div { color: var(--muted); }
+        .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin: 20px 0; }
+        .cols h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 4px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 8px 6px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+        th { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+        .num { text-align: right; white-space: nowrap; }
+        small { color: var(--muted); }
+        tfoot td { font-weight: 700; border-bottom: none; font-size: 15px; }
+        .notes { margin-top: 16px; padding: 10px 12px; background: #f6f8f7; border-left: 3px solid var(--brand); }
+        .sign { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 48px; }
+        .sign div { border-top: 1px solid var(--ink); padding-top: 6px; }
+        .ref { margin-top: 28px; color: var(--muted); font-size: 12px; }
+        @@media (max-width: 640px) {
+            .sheet { padding: 20px 16px; }
+            .head, .cols, .sign { display: block; }
+            .po { text-align: left; margin-top: 10px; }
+            .cols > div { margin-bottom: 12px; }
+            .sign div { margin-top: 36px; }
+        }
+        @@media print {
+            body { background: #fff; }
+            .bar, .msg { display: none; }
+            .sheet { border: none; margin: 0; max-width: none; padding: 0; }
+        }
+    </style>
+</head>
+<body>
+    <div class="bar">
+        <a href="@back">&larr; Requisition #@Model.NewItemRequestID</a>
+        <span>
+            @if (Model.CanDelete)
+            {
+                <form method="post" action="@Url.Action("DeleteOrder", new { id = Model.PurchaseOrderID })" style="display:inline"
+                      onsubmit="return confirm('Delete @Model.PONumber? Its items become to buy again.');">
+                    @Html.AntiForgeryToken()
+                    <button type="submit" class="danger">Delete order</button>
+                </form>
+            }
+            <button type="button" class="primary" onclick="window.print()">Print</button>
+        </span>
+    </div>
+    @if (TempData["StatusMessage"] != null)
+    {
+        <div class="msg"><div>@TempData["StatusMessage"]</div></div>
+    }
+    @if (TempData["ErrorMessage"] != null)
+    {
+        <div class="msg"><div class="err">@TempData["ErrorMessage"]</div></div>
+    }
+
+    <div class="sheet">
+        <div class="head">
+            <div class="school">
+                <img src="~/images/logo.png" alt="" />
+                <div>
+                    <strong>Ste. Anne De Beaupre School</strong>
+                    <span>@Model.BranchName</span>
+                </div>
+            </div>
+            <div class="po">
+                <h1>PURCHASE ORDER</h1>
+                <div><strong>@Model.PONumber</strong></div>
+                <div>@Model.OrderDate.ToString("MMMM d, yyyy")</div>
+            </div>
+        </div>
+
+        <div class="cols">
+            <div>
+                <h2>Supplier</h2>
+                <strong>@Model.SupplierName</strong>
+                @if (!string.IsNullOrWhiteSpace(Model.SupplierAddress)) {<div>@Model.SupplierAddress</div>}
+                @if (!string.IsNullOrWhiteSpace(Model.SupplierContact)) {<div>@Model.SupplierContact</div>}
+            </div>
+            <div>
+                <h2>Deliver to</h2>
+                <strong>Ste. Anne De Beaupre School · @Model.BranchName</strong>
+                <div>@Model.DeliverTo</div>
+                @if (Model.NeededBy is not null) {<div>Needed by @Model.NeededBy.Value.ToString("MMMM d, yyyy")</div>}
+            </div>
+        </div>
+
+        <table>
+            <thead>
+                <tr><th style="width:32px;">#</th><th>Item</th><th class="num">Qty</th><th class="num">Unit price</th><th class="num">Amount</th></tr>
+            </thead>
+            <tbody>
+                @for (var i = 0; i < Model.Lines.Count; i++)
+                {
+                    var l = Model.Lines[i];
+                    <tr>
+                        <td>@(i + 1)</td>
+                        <td>@l.ItemName@if (!string.IsNullOrWhiteSpace(l.Description)) {<small style="display:block">@l.Description</small>}</td>
+                        <td class="num">@l.Quantity @(string.IsNullOrWhiteSpace(l.Unit) ? (l.Quantity == 1 ? "unit" : "units") : SupplyText.Unit(l.Quantity, l.Unit))</td>
+                        <td class="num">₱@l.UnitPrice.ToString("N2")</td>
+                        <td class="num">₱@l.Amount.ToString("N2")</td>
+                    </tr>
+                }
+            </tbody>
+            <tfoot>
+                <tr><td colspan="4" class="num">Total</td><td class="num">₱@Model.Total.ToString("N2")</td></tr>
+            </tfoot>
+        </table>
+
+        @if (!string.IsNullOrWhiteSpace(Model.Notes))
+        {
+            <div class="notes">@Model.Notes</div>
+        }
+
+        <div class="sign">
+            <div>
+                <strong>@Model.PreparedByName</strong><br />
+                <small>Prepared by@(string.IsNullOrWhiteSpace(Model.PreparedByRole) ? "" : ", " + Model.PreparedByRole)</small>
+            </div>
+            <div>
+                <br />
+                <small>Received by the supplier (name, signature, date)</small>
+            </div>
+        </div>
+
+        <div class="ref">
+            For requisition #@Model.NewItemRequestID of the @Model.DepartmentName (@Model.RequestedByUserName).
+            Made @Model.CreatedAt.ToString("MMM d, yyyy h:mm tt").
+        </div>
+    </div>
+</body>
+</html>

@@ -71,6 +71,9 @@ namespace SchoolInventoryManagement.BLL.DTOs
         public string Category { get; set; } = null!;
         // Units the school has now, disposed ones left out.
         public int Units { get; set; }
+        // What the Property Department of the requester's branch can still
+        // hand out (Scripts/031).
+        public int InStock { get; set; }
     }
 
     public class NewItemSupplyChoiceDTO
@@ -79,7 +82,8 @@ namespace SchoolInventoryManagement.BLL.DTOs
         public string Name { get; set; } = null!;
         public string Category { get; set; } = null!;
         public string Unit { get; set; } = null!;
-        // In stock at the requester's own branch.
+        // What the Property Department of the requester's branch can still
+        // hand out (Scripts/031).
         public int Quantity { get; set; }
     }
 

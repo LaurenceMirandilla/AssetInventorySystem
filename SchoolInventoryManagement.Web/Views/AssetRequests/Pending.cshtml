@@ -17,7 +17,7 @@
     Dictionary<int, string> deptBranches = (ViewBag.DepartmentBranches as Dictionary<int, string>) ?? new Dictionary<int, string>();
     string BranchOf(AssetRequestResponseDTO r) => deptBranches.TryGetValue(r.DepartmentID, out var b) ? b : "";
 
-    // Only Asset Officers and Administrators reach this page (borrow and
+    // Only Property Officers and Administrators reach this page (borrow and
     // transfer requests are the Property Department's).
     var canManageAssets = User.IsInRole(RoleNames.AssetOfficer) || User.IsInRole(RoleNames.Administrator);
 
@@ -92,7 +92,7 @@
     @if (canManageAssets)
     {
         <div class="asset-detail-actions">
-            <a asp-action="History" class="btn btn-outline-secondary">Request History</a>
+            <a asp-action="History" class="btn btn-outline-secondary">Borrow History</a>
         </div>
     }
 </div>

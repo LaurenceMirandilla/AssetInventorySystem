@@ -39,7 +39,7 @@ namespace SchoolInventoryManagement.DAL.Entities
         public bool MustChangePassword { get; set; }
 
         // Whether this person may file new-item requests. Off for everyone
-        // until an Administrator, the Principal or an Asset Officer turns
+        // until an Administrator, the Principal or a Property Officer turns
         // it on (New-Item Approvals > Who can request). Scripts/019.
         public bool CanRequestNewItems { get; set; }
 

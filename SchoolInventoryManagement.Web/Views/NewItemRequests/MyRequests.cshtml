@@ -5,7 +5,7 @@
 @{
     // The signed-in user's own new-item requests, with each one's stages
     // and steps beside the list. (Everyone's requests: All.cshtml.)
-    ViewData["Title"] = "My New-Item Requests";
+    ViewData["Title"] = "Requisitions";
     // What this page shows, for the live updates (_Layout, site.js).
     ViewData["LiveScope"] = "mine";
 
@@ -39,19 +39,7 @@
         r.RequestStatus is NewItemStatus.Rejected or NewItemStatus.Cancelled;
 
     // What a step did, said after the person's name.
-    static string StepText(NewItemStatus s) => s switch
-    {
-        NewItemStatus.AwaitingDeptHead => "submitted the request",
-        NewItemStatus.AwaitingBudget => "approved for the department",
-        NewItemStatus.Procuring => "approved the request",
-        NewItemStatus.AwaitingArrival => "marked it procured",
-        NewItemStatus.Arrived => "confirmed it arrived",
-        NewItemStatus.Delivered => "delivered it",
-        NewItemStatus.DeliveryFailed => "could not deliver it",
-        NewItemStatus.Rejected => "rejected the request",
-        NewItemStatus.Cancelled => "cancelled the request",
-        _ => s.ToString()
-    };
+    static string StepText(NewItemStatus s) => NewItemProgress.StepText(s);
 }
 
 @if (TempData["ErrorMessage"] != null)
@@ -61,7 +49,7 @@
 
 <div class="asset-detail-head">
     <div>
-        <h2 class="asset-detail-title">My New-Item Requests</h2>
+        <h2 class="asset-detail-title">Requisitions</h2>
         <div class="asset-detail-sub">Things you have asked the school to acquire, and where each one has got to.</div>
     </div>
     @if (canRequest)
@@ -69,7 +57,7 @@
         <div class="asset-detail-actions">
             <a asp-action="Create" class="btn btn-primary">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
-                Request new items
+                New requisition
             </a>
         </div>
     }
@@ -79,16 +67,16 @@
 {
     @* Not one of the chosen requesters. *@
     <div class="alert alert-warning">
-        <strong>You can't request new items yourself.</strong>
+        <strong>You can't make requisitions yourself.</strong>
         @if (askThese.Any())
         {
             <span>Ask one of your department's requesters: @string.Join(askThese.Count == 2 ? " or " : ", ", askThese).</span>
         }
         else
         {
-            <span>Nobody in your department has been chosen yet. Ask the Administrator, the Principal or an Asset Officer to choose someone.</span>
+            <span>Nobody in your department has been chosen yet. Ask the Administrator, the Principal or a Property Officer to choose someone.</span>
         }
-        <span>You can still borrow and request supplies that are in stock.</span>
+        <span>You can still borrow from the Property Department (Borrowing).</span>
     </div>
 }
 
@@ -97,10 +85,10 @@
     <div class="sab-table-card">
         <div class="sab-empty">
             <div class="sab-empty-title">No requests yet</div>
-            <p>@(canRequest ? "Need something the school does not have? Ask for it here." : "Requests you file for new items would be listed here.")</p>
+            <p>@(canRequest ? "Need fixed assets or consumables for your department? Make a requisition: what is in stock is sent, the rest is bought first." : "Your requisitions would be listed here.")</p>
             @if (canRequest)
             {
-                <a asp-action="Create" class="btn btn-primary">+ Request new items</a>
+                <a asp-action="Create" class="btn btn-primary">+ New requisition</a>
             }
         </div>
     </div>
@@ -108,11 +96,11 @@
 else
 {
     <div class="sab-table-card myassets" data-md data-page-size="8">
-        <aside class="myassets-list" aria-label="Your new-item requests">
+        <aside class="myassets-list" aria-label="Your requisitions">
             <div class="md-toolbar">
                 <label class="asset-search">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
-                    <input type="text" data-md-search autocomplete="off" placeholder="Search my requests..." aria-label="Search my new-item requests" />
+                    <input type="text" data-md-search autocomplete="off" placeholder="Search my requisitions..." aria-label="Search my requisitions" />
                 </label>
                 <div class="dropdown">
                     <button type="button" class="asset-tool-btn" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
@@ -126,7 +114,7 @@ else
                             @* Only real stages, once each: the old department-head
                                value reads as "Awaiting Principal" too, and
                                DeliveryFailed is never a request's stage. *@
-                            @foreach (var s in new[] { NewItemStatus.AwaitingBudget, NewItemStatus.Procuring, NewItemStatus.AwaitingArrival,
+                            @foreach (var s in new[] { NewItemStatus.Procuring, NewItemStatus.AwaitingArrival,
                                                        NewItemStatus.Arrived, NewItemStatus.Delivered, NewItemStatus.Rejected, NewItemStatus.Cancelled })
                             {
                                 <option value="@s.ToString().ToLowerInvariant()">@DisplayText.Stage(s)</option>
@@ -192,13 +180,13 @@ else
                     <div class="myassets-panel-head">
                         <div class="min-w-0">
                             <div class="myassets-panel-meta">
-                                <span>New-item request #@r.NewItemRequestID · submitted @r.RequestDate.ToString("MMM d, yyyy")</span>
+                                <span>Requisition #@r.NewItemRequestID · submitted @r.RequestDate.ToString("MMM d, yyyy")</span>
                             </div>
                             <h3 class="myassets-panel-title">@r.ItemName</h3>
                         </div>
                         <div class="myassets-panel-actions">
                             <span class="asset-pill asset-status @pillCss">@DisplayText.Stage(r.RequestStatus)</span>
-                            <a asp-action="Details" asp-route-id="@r.NewItemRequestID" class="btn btn-outline-secondary">Open request &rarr;</a>
+                            <a asp-action="Details" asp-route-id="@r.NewItemRequestID" class="btn btn-outline-secondary">Open requisition &rarr;</a>
                         </div>
                     </div>
 
@@ -206,7 +194,7 @@ else
 
                     <div class="myassets-stats">
                         <div><span>Items</span><strong>@r.Items.Count · @r.Quantity unit@(r.Quantity == 1 ? "" : "s")</strong></div>
-                        <div><span>Deliver to</span><strong>@DisplayText.Or(r.DeliverToText, "Not given")</strong></div>
+                        <div><span>Sent to</span><strong>@DisplayText.Or(r.DeliverToText, "Not given")</strong></div>
                         <div><span>Needed by</span><strong>@DisplayText.Or(r.NeededBy?.ToString("MMM d, yyyy"), "No date given")</strong></div>
                         <div><span>Last action</span><strong>@((lastStep?.ActedAt ?? r.RequestDate).ToString("MMM d"))</strong></div>
                     </div>
@@ -214,7 +202,7 @@ else
                     @if (r.AwaitsAcknowledgment)
                     {
                         <form asp-action="Acknowledge" asp-route-id="@r.NewItemRequestID" asp-route-returnTo="mine" method="post" class="req-action mt-3"
-                              onsubmit="return confirm('Confirm you received every item on request #@r.NewItemRequestID?');">
+                              onsubmit="return confirm('Confirm you received every item on requisition #@r.NewItemRequestID?');">
                             @Html.AntiForgeryToken()
                             @Html.FormTicket()
                             <input type="hidden" name="rowVersionBase64" value="@RowVersionHelper.ToBase64(r.RowVersion)" />

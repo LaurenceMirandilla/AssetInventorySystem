@@ -6,7 +6,7 @@
     // Everyone's new-item requests (NewItemRequestsController.All), as a
     // read-only overview: decisions happen on New-Item Approvals. Every
     // request is on the page; the search box and the Filters menu narrow it.
-    ViewData["Title"] = "All New-Item Requests";
+    ViewData["Title"] = "All requisitions";
     // What this page shows, for the live updates (_Layout, site.js).
     ViewData["LiveScope"] = "newitems";
     NewItemStatus? status = ViewBag.Status as NewItemStatus?;
@@ -14,17 +14,17 @@
     string sort = ViewBag.Sort as string ?? "newest";
     Dictionary<int, string> deptBranches = (ViewBag.DepartmentBranches as Dictionary<int, string>) ?? new Dictionary<int, string>();
     string BranchOf(NewItemRequestResponseDTO r) => deptBranches.TryGetValue(r.DepartmentID, out var b) ? b : "";
-    var stages = new[] { NewItemStatus.AwaitingBudget, NewItemStatus.Procuring,
+    var stages = new[] { NewItemStatus.Procuring,
                          NewItemStatus.AwaitingArrival, NewItemStatus.Arrived, NewItemStatus.Delivered,
                          NewItemStatus.Rejected, NewItemStatus.Cancelled };
     var chipLabel = new Dictionary<NewItemStatus, string>
     {
-        [NewItemStatus.AwaitingDeptHead] = "Principal",
-        [NewItemStatus.AwaitingBudget] = "Principal",
-        [NewItemStatus.Procuring] = "Procuring",
-        [NewItemStatus.AwaitingArrival] = "Waiting arrival",
-        [NewItemStatus.Arrived] = "To deliver",
-        [NewItemStatus.Delivered] = "Delivered",
+        [NewItemStatus.AwaitingDeptHead] = "To buy",
+        [NewItemStatus.AwaitingBudget] = "To buy",
+        [NewItemStatus.Procuring] = "To buy",
+        [NewItemStatus.AwaitingArrival] = "Ordered",
+        [NewItemStatus.Arrived] = "At Property",
+        [NewItemStatus.Delivered] = "Sent",
         [NewItemStatus.Rejected] = "Rejected",
         [NewItemStatus.Cancelled] = "Cancelled"
     };
@@ -36,8 +36,8 @@
 
 <div class="asset-detail-head mb-3 pb-0 border-0">
     <div>
-        <h2 class="asset-detail-title">All New-Item Requests</h2>
-        <div class="asset-detail-sub">@Model.Count request@(Model.Count == 1 ? "" : "s") from everyone, @sort first, wherever they have got to.</div>
+        <h2 class="asset-detail-title">All requisitions</h2>
+        <div class="asset-detail-sub">@Model.Count requisition@(Model.Count == 1 ? "" : "s") from everyone, @sort first, wherever they have got to.</div>
     </div>
     <div class="asset-detail-actions">
         <a asp-action="Requesters" class="btn btn-outline-secondary">Who can request</a>
@@ -61,7 +61,7 @@ else
                 <div class="md-toolbar">
                     <label class="asset-search">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
-                        <input type="text" data-md-search value="@search" autocomplete="off" placeholder="Item, reason, requester, department or #..." aria-label="Search new-item requests" />
+                        <input type="text" data-md-search value="@search" autocomplete="off" placeholder="Item, reason, requester, department or #..." aria-label="Search requisitions" />
                     </label>
                     <div class="dropdown">
                         <button type="button" class="asset-tool-btn" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
@@ -145,7 +145,7 @@ else
                             <div class="md-person">
                                 <span class="md-avatar md-avatar-lg">@NewItemProgress.Initials(r.RequestedByUserName)</span>
                                 <div class="min-w-0">
-                                    <div class="myassets-panel-meta"><span>New-item request #@r.NewItemRequestID · submitted @r.RequestDate.ToString("MMM d, yyyy")</span></div>
+                                    <div class="myassets-panel-meta"><span>Requisition #@r.NewItemRequestID · submitted @r.RequestDate.ToString("MMM d, yyyy")</span></div>
                                     <h3 class="md-person-name">@r.ItemName@(r.Items.Count == 1 && r.Quantity > 1 ? $" ×{r.Quantity}" : "")</h3>
                                     <div class="myassets-panel-meta">@r.RequestedByUserName@(r.RequestedByRoleName != null ? " · " + r.RequestedByRoleName : "") · @r.DepartmentName</div>
                                 </div>
@@ -160,7 +160,7 @@ else
 
                         <div class="myassets-stats">
                             <div><span>Items</span><strong>@r.Items.Count · @r.Quantity unit@(r.Quantity == 1 ? "" : "s")</strong></div>
-                            <div><span>Deliver to</span><strong>@DisplayText.Or(r.DeliverToText, "Not given")</strong></div>
+                            <div><span>Sent to</span><strong>@DisplayText.Or(r.DeliverToText, "Not given")</strong></div>
                             <div><span>Needed by</span><strong>@DisplayText.Or(r.NeededBy?.ToString("MMM d, yyyy"), "No date given")</strong></div>
                             <div><span>Last action</span><strong>@lastText</strong></div>
                         </div>
@@ -177,7 +177,7 @@ else
                         {
                             <div class="req-waiting">
                                 <span>Waiting on</span>
-                                <span>@NewItemProgress.WaitingOn(r.RequestStatus). This page is a read-only overview — decisions happen on New-Item Approvals.</span>
+                                <span>@NewItemProgress.WaitingOn(r.RequestStatus). This page is a read-only overview.</span>
                             </div>
                         }
                         else if (r.Steps.Any())

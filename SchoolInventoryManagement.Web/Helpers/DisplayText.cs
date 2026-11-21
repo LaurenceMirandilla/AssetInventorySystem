@@ -52,16 +52,14 @@ namespace SchoolInventoryManagement.Web.Helpers
             _ => "st-undermaintenance"
         };
 
-        // A new-item request's stage, as the status pill shows it.
+        // A requisition's stage, as the status pill shows it (Scripts/031).
         public static string Stage(NewItemStatus status) => status switch
         {
-            // No longer a stage of its own: read as waiting for the Principal.
-            NewItemStatus.AwaitingDeptHead => "Awaiting Principal",
-            NewItemStatus.AwaitingBudget => "Awaiting Principal",
-            NewItemStatus.Procuring => "Item procurement",
-            NewItemStatus.AwaitingArrival => "Waiting for item arrival",
-            NewItemStatus.Arrived => "Arrived, to be delivered",
-            NewItemStatus.Delivered => "Delivered",
+            NewItemStatus.AwaitingDeptHead or NewItemStatus.AwaitingBudget or NewItemStatus.Procuring
+                => "Procurement: to buy",
+            NewItemStatus.AwaitingArrival => "Procurement: ordered",
+            NewItemStatus.Arrived => "At Property",
+            NewItemStatus.Delivered => "Sent",
             _ => status.ToString()
         };
 
@@ -72,11 +70,12 @@ namespace SchoolInventoryManagement.Web.Helpers
             NewItemStatus.AwaitingDeptHead => "Submitted",
             // Old tickets only, from when a department head came first.
             NewItemStatus.AwaitingBudget => "Approved by department head",
-            NewItemStatus.Procuring => "Approved by Principal, sent for procurement",
-            NewItemStatus.AwaitingArrival => "Item procured",
-            NewItemStatus.Arrived => "Arrival confirmed",
-            NewItemStatus.Delivered => "Delivered",
-            NewItemStatus.DeliveryFailed => "Could not be delivered",
+            NewItemStatus.Procuring => "Approved by Principal",
+            NewItemStatus.AwaitingArrival => "Ordered",
+            NewItemStatus.Arrived => "Received from the supplier",
+            NewItemStatus.Delivered => "Sent out",
+            NewItemStatus.DeliveryFailed => "Could not be sent",
+            NewItemStatus.SentToPurchasing => "Short in stock: sent to Purchasing",
             NewItemStatus.Rejected => "Rejected",
             _ => status.ToString()
         };
@@ -84,11 +83,10 @@ namespace SchoolInventoryManagement.Web.Helpers
         // The button that moves a request on from its current stage.
         public static string AdvanceButton(NewItemStatus status) => status switch
         {
-            NewItemStatus.AwaitingDeptHead => "Approve",
-            NewItemStatus.AwaitingBudget => "Approve",
-            NewItemStatus.Procuring => "Item procured",
-            NewItemStatus.AwaitingArrival => "Confirm arrival",
-            NewItemStatus.Arrived => "Delivered",
+            NewItemStatus.AwaitingDeptHead or NewItemStatus.AwaitingBudget => "Send to Purchasing",
+            NewItemStatus.Procuring => "Mark as ordered",
+            NewItemStatus.AwaitingArrival => "Received from supplier",
+            NewItemStatus.Arrived => "Send out",
             _ => ""
         };
 

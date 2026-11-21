@@ -32,12 +32,12 @@
     //                   every ticket, where it means "submitted".
     // AwaitingBudget:   submitted; the Principal (or an Administrator)
     //                   reads the reason and approves or rejects.
-    // Procuring:        Principal approved; an Asset Officer is buying it.
+    // Procuring:        Principal approved; a Property Officer is buying it.
     // AwaitingArrival:  bought or obtained; waiting for it to be delivered,
-    //                   which an Asset Officer confirms.
+    //                   which a Property Officer confirms.
     // Arrived:          it is at the school and still has to be brought to
     //                   the requester's location (the Delivery stage). An
-    //                   Asset Officer marks it Delivered, or records that a
+    //                   Property Officer marks it Delivered, or records that a
     //                   delivery could not be made and tries again.
     // Delivered:        brought to the location; the request is finished.
     // DeliveryFailed:   never a ticket's status. Only written as a step,
@@ -55,6 +55,10 @@
         Rejected,
         Cancelled,
         Delivered,
-        DeliveryFailed
+        DeliveryFailed,
+        // A step only, never a request's status: Property found part of a
+        // requisition short in stock and sent it back to Purchasing to buy
+        // (Scripts/031).
+        SentToPurchasing
     }
 }

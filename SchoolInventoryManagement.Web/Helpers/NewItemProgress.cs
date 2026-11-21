@@ -7,29 +7,31 @@ using SchoolInventoryManagement.Web.ViewModels;
 
 namespace SchoolInventoryManagement.Web.Helpers
 {
-    // A new-item request's place in its stages (Principal, Procurement,
-    // Arrival, Delivery, and for assets Received), for the request lists
-    // (All New-Item Requests, New-Item Approvals): the progress strip, the
-    // short stage label, and who it waits on.
+    // A requisition's place in its stages (Scripts/031), for the lists, the
+    // queues and its page: the progress strip, the short label, and who it
+    // waits on.
+    //
+    //   something to buy:  Procurement -> Property -> Receive
+    //   all in stock:      Property -> Receive
+    //
+    // Procurement: Purchasing orders what is missing; the supplier delivers.
+    // Property: the Property Department receives it, picks the rest from
+    // stock and sends everything. Receive: the requester confirms.
     public static class NewItemProgress
     {
-        // Stages at which the ticket can still be rejected.
+        // Stages at which a requisition can still be rejected: until it is
+        // sent out.
         public static readonly NewItemStatus[] Open =
-        {
-            NewItemStatus.AwaitingDeptHead, NewItemStatus.AwaitingBudget,
-            NewItemStatus.Procuring, NewItemStatus.AwaitingArrival
-        };
-
-        // Not finished yet: the stages above, and Delivery (arrived at the
-        // school, still to be brought to the requester's location).
-        public static readonly NewItemStatus[] Active =
         {
             NewItemStatus.AwaitingDeptHead, NewItemStatus.AwaitingBudget,
             NewItemStatus.Procuring, NewItemStatus.AwaitingArrival, NewItemStatus.Arrived
         };
 
-        // At the Delivery stage, the last try could not be made: that
-        // step (its remarks say why). Null otherwise.
+        // Not sent out yet.
+        public static readonly NewItemStatus[] Active = Open;
+
+        // At Property, the last try to send it could not be made: that step
+        // (its remarks say why). Null otherwise.
         public static NewItemRequestStepDTO? DeliveryProblem(NewItemRequestResponseDTO r)
         {
             if (r.RequestStatus != NewItemStatus.Arrived)
@@ -38,61 +40,65 @@ namespace SchoolInventoryManagement.Web.Helpers
             return last is not null && last.Status == NewItemStatus.DeliveryFailed ? last : null;
         }
 
-        // Stage label, and the step status that completes it.
-        public static readonly (string Label, NewItemStatus DoneBy)[] Stages =
-        {
-            ("Principal", NewItemStatus.Procuring),
-            ("Procurement", NewItemStatus.AwaitingArrival),
-            ("Arrival", NewItemStatus.Arrived),
-            ("Delivery", NewItemStatus.Delivered)
-        };
-
         public static bool IsStopped(NewItemRequestResponseDTO r) =>
             r.RequestStatus is NewItemStatus.Rejected or NewItemStatus.Cancelled;
 
-        public const int StageCount = 4;
-
-        // Assets have a fifth stage: the requester confirms receipt, and
-        // the units become their department's. Not on requests delivered
-        // before units were registered against them (nothing to confirm).
-        // Needs RegisteredUnits filled (NewItemRequestService does).
+        // The requester confirms receiving it: consumables always; fixed
+        // assets unless delivered before units were registered against them
+        // (nothing to confirm). Needs RegisteredUnits filled (the service
+        // does).
         public static bool HasReceipt(NewItemRequestResponseDTO r) =>
-            r.ItemKind == CategoryKind.Asset
-            && !(r.RequestStatus == NewItemStatus.Delivered && r.RegisteredUnits.Count == 0 && r.AcknowledgedAt is null);
+            !(r.ItemKind == CategoryKind.Asset && r.RequestStatus == NewItemStatus.Delivered
+              && r.RegisteredUnits.Count == 0 && r.AcknowledgedAt is null);
 
-        public static int StageCountFor(NewItemRequestResponseDTO r) => StageCount + (HasReceipt(r) ? 1 : 0);
+        // Its stages, in order.
+        public static List<string> StageLabels(NewItemRequestResponseDTO r)
+        {
+            var labels = new List<string>();
+            if (r.NeedsPurchase)
+                labels.Add("Procurement");
+            labels.Add("Property");
+            if (HasReceipt(r))
+                labels.Add("Receive");
+            return labels;
+        }
 
-        // Still going: an open stage, or delivered and waiting for the
-        // requester to confirm receipt.
+        public static int StageCountFor(NewItemRequestResponseDTO r) => StageLabels(r).Count;
+
+        // Still going: not sent yet, or sent and waiting for the requester.
         public static bool IsActive(NewItemRequestResponseDTO r) =>
             Active.Contains(r.RequestStatus) || r.AwaitsAcknowledgment;
 
         // Who it waits on, the receipt included.
         public static string WaitingOn(NewItemRequestResponseDTO r) =>
-            r.AwaitsAcknowledgment ? $"{r.RequestedByUserName} to confirm receipt" : WaitingOn(r.RequestStatus);
+            r.AwaitsAcknowledgment ? $"{r.RequestedByUserName} to confirm receiving it" : WaitingOn(r.RequestStatus);
 
-        // The list pill, the receipt included.
+        // The list pill.
         public static string Short(NewItemRequestResponseDTO r) =>
-            r.AwaitsAcknowledgment ? "To confirm" : Short(r.RequestStatus);
+            r.AwaitsAcknowledgment ? "To confirm"
+            : r.RequestStatus == NewItemStatus.Delivered && r.AcknowledgedAt is not null ? "Received"
+            : Short(r.RequestStatus);
 
         // How many of its stages are behind it.
-        public static int StagesDone(NewItemRequestResponseDTO r) => r.RequestStatus switch
+        public static int StagesDone(NewItemRequestResponseDTO r)
         {
-            NewItemStatus.AwaitingDeptHead => 0,
-            NewItemStatus.AwaitingBudget => 0,
-            NewItemStatus.Procuring => 1,
-            NewItemStatus.AwaitingArrival => 2,
-            NewItemStatus.Arrived => 3,
-            NewItemStatus.Delivered => StageCount + (HasReceipt(r) && r.AcknowledgedAt is not null ? 1 : 0),
-            // Rejected or cancelled: as far as its steps got before that.
-            _ => r.Steps.Select(s => s.Status).Distinct().Count(s =>
-                    s is NewItemStatus.Procuring or NewItemStatus.AwaitingArrival
-                      or NewItemStatus.Arrived or NewItemStatus.Delivered)
-        };
+            var procurement = r.NeedsPurchase ? 1 : 0;
+            return r.RequestStatus switch
+            {
+                NewItemStatus.AwaitingDeptHead or NewItemStatus.AwaitingBudget
+                    or NewItemStatus.Procuring or NewItemStatus.AwaitingArrival => 0,
+                NewItemStatus.Arrived => procurement,
+                NewItemStatus.Delivered => procurement + 1 + (HasReceipt(r) && r.AcknowledgedAt is not null ? 1 : 0),
+                // Rejected or cancelled: as far as its steps got before that.
+                _ => r.Steps.Any(s => s.Status == NewItemStatus.Delivered) ? procurement + 1
+                    : r.NeedsPurchase && r.Steps.Any(s => s.Status == NewItemStatus.Arrived) ? 1
+                    : 0
+            };
+        }
 
-        // "Assets" or "Supplies".
+        // "Fixed assets" or "Consumables".
         public static string Kind(NewItemRequestResponseDTO r) =>
-            r.ItemKind == CategoryKind.Supply ? "Supplies" : "Assets";
+            r.ItemKind == CategoryKind.Supply ? "Consumables" : "Fixed assets";
 
         // "3 items · 15 units", or "1 item" when that says it all.
         public static string Units(NewItemRequestResponseDTO r)
@@ -104,12 +110,10 @@ namespace SchoolInventoryManagement.Web.Helpers
         // The short label on list pills.
         public static string Short(NewItemStatus s) => s switch
         {
-            NewItemStatus.AwaitingDeptHead => "Principal",
-            NewItemStatus.AwaitingBudget => "Principal",
-            NewItemStatus.Procuring => "To procure",
-            NewItemStatus.AwaitingArrival => "Waiting arrival",
-            NewItemStatus.Arrived => "To deliver",
-            NewItemStatus.Delivered => "Delivered",
+            NewItemStatus.AwaitingDeptHead or NewItemStatus.AwaitingBudget or NewItemStatus.Procuring => "To buy",
+            NewItemStatus.AwaitingArrival => "Ordered",
+            NewItemStatus.Arrived => "At Property",
+            NewItemStatus.Delivered => "Sent",
             NewItemStatus.Rejected => "Rejected",
             NewItemStatus.Cancelled => "Cancelled",
             _ => s.ToString()
@@ -128,37 +132,37 @@ namespace SchoolInventoryManagement.Web.Helpers
         // Who has to act next, for the read-only overview.
         public static string WaitingOn(NewItemStatus s) => s switch
         {
-            NewItemStatus.AwaitingDeptHead => "the Principal",
-            NewItemStatus.AwaitingBudget => "the Principal",
-            NewItemStatus.Procuring => "an Asset Officer to procure it",
-            NewItemStatus.AwaitingArrival => "an Asset Officer to confirm it arrived",
-            NewItemStatus.Arrived => "an Asset Officer to deliver it",
+            NewItemStatus.AwaitingDeptHead or NewItemStatus.AwaitingBudget or NewItemStatus.Procuring
+                => "Purchasing to order what is missing",
+            NewItemStatus.AwaitingArrival => "the supplier; Property receives it",
+            NewItemStatus.Arrived => "Property to get it ready and send it",
             _ => ""
         };
 
         // What a step did, said after the person's name.
         public static string StepText(NewItemStatus s) => s switch
         {
-            NewItemStatus.AwaitingDeptHead => "submitted the request",
-            NewItemStatus.AwaitingBudget => "approved for the department",
+            NewItemStatus.AwaitingDeptHead => "made the requisition",
+            NewItemStatus.AwaitingBudget => "approved it for the department",
+            // Before requisitions: the Principal's approval.
             NewItemStatus.Procuring => "approved the request",
-            NewItemStatus.AwaitingArrival => "marked it procured",
-            NewItemStatus.Arrived => "confirmed it arrived",
-            NewItemStatus.Delivered => "delivered it",
-            NewItemStatus.DeliveryFailed => "could not deliver it",
-            NewItemStatus.Rejected => "rejected the request",
-            NewItemStatus.Cancelled => "cancelled the request",
+            NewItemStatus.AwaitingArrival => "ordered what was missing",
+            NewItemStatus.Arrived => "received it from the supplier",
+            NewItemStatus.Delivered => "sent it out",
+            NewItemStatus.DeliveryFailed => "could not send it",
+            NewItemStatus.SentToPurchasing => "sent what was short in stock to Purchasing",
+            NewItemStatus.Rejected => "rejected the requisition",
+            NewItemStatus.Cancelled => "cancelled the requisition",
             _ => s.ToString()
         };
 
         // What happens after the current stage's button.
         public static string NextNote(NewItemStatus s) => s switch
         {
-            NewItemStatus.AwaitingDeptHead => "Next, an Asset Officer procures it.",
-            NewItemStatus.AwaitingBudget => "Next, an Asset Officer procures it.",
-            NewItemStatus.Procuring => "Next, it waits for arrival.",
-            NewItemStatus.AwaitingArrival => "Next, it is delivered.",
-            NewItemStatus.Arrived => "Delivered completes the request.",
+            NewItemStatus.AwaitingDeptHead or NewItemStatus.AwaitingBudget => "Next, Purchasing orders what is missing.",
+            NewItemStatus.Procuring => "Next, it waits for the supplier.",
+            NewItemStatus.AwaitingArrival => "Next, the Property Department gets it ready.",
+            NewItemStatus.Arrived => "Next, the requester confirms receiving it.",
             _ => ""
         };
 
@@ -166,33 +170,37 @@ namespace SchoolInventoryManagement.Web.Helpers
         // ("waiting", or "you" when the viewer acts on it).
         public static List<RequestStep> Steps(NewItemRequestResponseDTO r, string currentNote)
         {
+            var labels = StageLabels(r);
             var done = StagesDone(r);
             var stopped = IsStopped(r);
             var last = r.Steps.LastOrDefault();
-            var steps = new List<RequestStep>();
-            for (var i = 0; i < Stages.Length; i++)
+
+            string? DoneOn(string label) => label switch
             {
-                var doneStep = r.Steps.LastOrDefault(s => s.Status == Stages[i].DoneBy);
+                "Procurement" => r.Steps.LastOrDefault(s => s.Status == NewItemStatus.Arrived)?.ActedAt.ToString("MMM d"),
+                "Property" => r.Steps.LastOrDefault(s => s.Status == NewItemStatus.Delivered)?.ActedAt.ToString("MMM d"),
+                _ => r.AcknowledgedAt?.ToString("MMM d")
+            };
+
+            var steps = new List<RequestStep>();
+            for (var i = 0; i < labels.Count; i++)
+            {
                 if (i < done)
-                    steps.Add(new RequestStep(Stages[i].Label, doneStep?.ActedAt.ToString("MMM d"), RequestStepState.Done));
+                    steps.Add(new RequestStep(labels[i], DoneOn(labels[i]), RequestStepState.Done));
                 else if (i == done && stopped)
                     steps.Add(new RequestStep(r.RequestStatus == NewItemStatus.Rejected ? "Rejected" : "Cancelled",
                         last?.ActedAt.ToString("MMM d"), RequestStepState.Stopped));
                 else if (i == done && DeliveryProblem(r) is not null)
-                    steps.Add(new RequestStep(Stages[i].Label, "not delivered yet", RequestStepState.Late));
+                    steps.Add(new RequestStep(labels[i], "not sent yet", RequestStepState.Late));
                 else if (i == done)
-                    steps.Add(new RequestStep(Stages[i].Label, currentNote, RequestStepState.Current));
+                    steps.Add(new RequestStep(labels[i],
+                        labels[i] == "Receive" ? "requester confirms"
+                        : labels[i] == "Procurement" && r.RequestStatus == NewItemStatus.AwaitingArrival ? "ordered"
+                        : currentNote,
+                        RequestStepState.Current));
                 else
-                    steps.Add(new RequestStep(Stages[i].Label, null, RequestStepState.Todo));
+                    steps.Add(new RequestStep(labels[i], null, RequestStepState.Todo));
             }
-
-            // Assets: Received, once the requester confirms.
-            if (HasReceipt(r))
-                steps.Add(r.AcknowledgedAt is not null
-                    ? new RequestStep("Received", r.AcknowledgedAt.Value.ToString("MMM d"), RequestStepState.Done)
-                    : r.AwaitsAcknowledgment
-                        ? new RequestStep("Received", "requester confirms", RequestStepState.Current)
-                        : new RequestStep("Received", null, RequestStepState.Todo));
             return steps;
         }
 

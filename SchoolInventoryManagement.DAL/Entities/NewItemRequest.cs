@@ -110,5 +110,10 @@ namespace SchoolInventoryManagement.DAL.Entities
         // camera, HDMI cable +3", total units, no price). Scripts/014 copied
         // every older request in as a one-item ticket.
         public ICollection<NewItemRequestItem> Items { get; set; } = new List<NewItemRequestItem>();
+
+        // Requisitions (Scripts/031): the purchase orders for what had to be
+        // bought, and the units Property picked from its stock.
+        public ICollection<PurchaseOrder> PurchaseOrders { get; set; } = new List<PurchaseOrder>();
+        public ICollection<NewItemRequestUnit> PickedUnits { get; set; } = new List<NewItemRequestUnit>();
     }
 }

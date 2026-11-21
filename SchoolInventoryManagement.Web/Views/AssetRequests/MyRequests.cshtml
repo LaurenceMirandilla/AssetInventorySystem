@@ -3,7 +3,7 @@
 @using SchoolInventoryManagement.DAL.Entities.Enums
 @using SchoolInventoryManagement.Web.ViewModels
 @{
-    ViewData["Title"] = "My Requests";
+    ViewData["Title"] = "Borrowing";
     // What this page shows, for the live updates (_Layout, site.js).
     ViewData["LiveScope"] = "mine";
     // Explicit type: a var from ViewBag would stay dynamic and break the
@@ -49,18 +49,18 @@
 
 <div class="asset-detail-head">
     <div>
-        <h2 class="asset-detail-title">My Requests</h2>
-        <div class="asset-detail-sub">Your Borrow requests. You can cancel a request while it is still pending.</div>
+        <h2 class="asset-detail-title">Borrowing</h2>
+        <div class="asset-detail-sub">Your borrows and returns. Items come from the Property Department's stock; you can cancel a borrow while it is still pending.</div>
     </div>
     <div class="asset-detail-actions">
         <a asp-action="Create" class="btn btn-primary">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
-            New Request
+            New Borrow
         </a>
     </div>
 </div>
 
-<partial name="_RequestsSwitch" model="@("Assets")" />
+
 
 @if (!Model.Any())
 {
@@ -262,7 +262,7 @@ else
                             <div>
                                 <div class="req-action-title">@(isBorrow ? "Ready for you" : "On its way")</div>
                                 <div class="req-action-note">
-                                    @(isBorrow ? "Collect it from the Asset Officer at " + (r.PickupLocationName ?? "the pickup location") + "." : "It is being moved to " + (r.RequestedLocationName ?? "the new location") + ".")
+                                    @(isBorrow ? "Collect it from the Property Officer at " + (r.PickupLocationName ?? "the pickup location") + "." : "It is being moved to " + (r.RequestedLocationName ?? "the new location") + ".")
                                 </div>
                             </div>
                         </div>
@@ -292,7 +292,7 @@ else
                         <div class="req-action is-late">
                             <div>
                                 <div class="req-action-title">@Days((today - r.ReturnBy!.Value.Date).Days) late</div>
-                                <div class="req-action-note">Bring @(units == 1 ? "it" : "these") to the Asset Officer so the return can be recorded.</div>
+                                <div class="req-action-note">Bring @(units == 1 ? "it" : "these") to the Property Officer so the return can be recorded.</div>
                             </div>
                         </div>
                     }

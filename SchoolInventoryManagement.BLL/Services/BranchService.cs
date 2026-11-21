@@ -131,7 +131,7 @@ namespace SchoolInventoryManagement.BLL.Services
             if (branch is null)
                 throw new KeyNotFoundException("Branch not found.");
 
-            // Note: locations are managed by Asset Officers, not by the roles
+            // Note: locations are managed by Property Officers, not by the roles
             // allowed in here — so a Principal can be blocked by locations
             // they cannot remove themselves. That is deliberate; deleting an
             // entire branch should need more than one person's say-so.

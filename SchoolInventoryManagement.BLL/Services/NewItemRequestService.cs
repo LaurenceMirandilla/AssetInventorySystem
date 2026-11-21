@@ -13,36 +13,34 @@ using SchoolInventoryManagement.DAL.Entities.Enums;
 
 namespace SchoolInventoryManagement.BLL.Services
 {
-    // A new-item request moves through these stages:
+    // A requisition (Scripts/031; the table is still NewItemRequests) asks for
+    // fixed assets or consumables. Only people chosen under "Who can request"
+    // make them, and nobody approves them: what Property's stock can cover is
+    // decided line by line when it is made (NewItemRequestItem.ToBuy), and
     //
-    //   AwaitingBudget --approve--> Procuring --procured--> AwaitingArrival
-    //         |                         |                        |
-    //         |                         |          --arrival confirmed--> Arrived
-    //         +--------reject-----------+------------------------+--> Rejected
+    //   anything to buy:   Procuring --purchase orders--> AwaitingArrival
+    //                      --received from supplier--> Arrived ...
+    //   all in stock:      Arrived ...
     //
-    //   Arrived --delivered--> Delivered
-    //      |
-    //      +--not delivered (reason)--> stays Arrived, to be tried again
+    //   ... Arrived --sent out--> Delivered --requester confirms--> received
     //
     // Who acts at each stage:
-    //   AwaitingBudget:   the Principal, who reads the reason and approves
-    //                     or rejects.
-    //   Procuring:        an Asset Officer buys or obtains it and marks
-    //                     it procured, or rejects it with a reason.
-    //   AwaitingArrival:  an Asset Officer confirms it has arrived; the
-    //                     requester is told.
-    //   Arrived:          the Delivery stage. An Asset Officer brings it to
-    //                     the requester's location and marks it Delivered,
-    //                     or records why it could not be delivered.
-    // An Administrator can act at every stage, so a request is never stuck
-    // because nobody holds the role it is waiting on.
-    //
-    // Only people who have been allowed to (User.CanRequestNewItems) can
-    // file a request. There is no department-head step and there are no
-    // prices: both were removed (Scripts/019). AwaitingDeptHead survives
-    // only as the "submitted" marker on a ticket's first step.
-    // Nobody acts on their own request. Every move adds a
-    // NewItemRequestStep saying who did it, when, and their remarks.
+    //   Procuring:        a Purchasing Officer puts what is missing on
+    //                     purchase orders (PurchasingService); the last one
+    //                     moves it on. Or rejects it with a reason.
+    //   AwaitingArrival:  a Property Officer receives the bought items from
+    //                     the supplier.
+    //   Arrived:          a Property Officer registers the bought assets /
+    //                     adds the bought supplies to stock, picks the rest
+    //                     from stock, and sends everything at once. Anything
+    //                     no longer in stock goes back to Purchasing.
+    //   Delivered:        the requester confirms receiving it; fixed assets
+    //                     become their department's.
+    // An Administrator can act at every stage, so nothing is stuck because
+    // nobody holds a role. Nobody acts on their own requisition. Every move
+    // adds a NewItemRequestStep saying who did it, when, and their remarks.
+    // AwaitingDeptHead survives as the "submitted" marker on the first step;
+    // AwaitingBudget (the Principal's old approval) is no longer used.
     public class NewItemRequestService : INewItemRequestService
     {
         private readonly ApplicationDbContext _context;
@@ -107,9 +105,14 @@ namespace SchoolInventoryManagement.BLL.Services
             var role = actor.Role.RoleName;
             return request.RequestStatus switch
             {
+                // From before requisitions (Scripts/031 moves them on).
                 NewItemStatus.AwaitingDeptHead or NewItemStatus.AwaitingBudget =>
-                    role == RoleNames.Principal || role == RoleNames.Administrator,
-                NewItemStatus.Procuring or NewItemStatus.AwaitingArrival or NewItemStatus.Arrived =>
+                    role == RoleNames.Administrator,
+                // Buying what is missing.
+                NewItemStatus.Procuring =>
+                    role == RoleNames.PurchasingOfficer || role == RoleNames.Administrator,
+                // Receiving it, and sending everything out.
+                NewItemStatus.AwaitingArrival or NewItemStatus.Arrived =>
                     role == RoleNames.AssetOfficer || role == RoleNames.Administrator,
                 _ => false
             };
@@ -160,14 +163,26 @@ namespace SchoolInventoryManagement.BLL.Services
         // Approving a new ticket is the Principal's.
         private Task<List<int>> ApproverIdsAsync() => RoleOrAdminIdsAsync(RoleNames.Principal);
 
-        // Buying the item is the Asset Officers'.
-        private Task<List<int>> ProcurerIdsAsync() => RoleOrAdminIdsAsync(RoleNames.AssetOfficer);
+        // Buying what is missing: the Purchasing Officers.
+        private Task<List<int>> ProcurerIdsAsync() => RoleOrAdminIdsAsync(RoleNames.PurchasingOfficer);
 
-        // Stages at which the ticket can still be rejected. Not Arrived:
-        // once the item is at the school it is delivered, not rejected.
+        // Receiving, picking and sending out: the Property Officers.
+        private Task<List<int>> PropertyIdsAsync() => RoleOrAdminIdsAsync(RoleNames.AssetOfficer);
+
+        // Stages at which a requisition can still be rejected: until it is
+        // sent out.
         private static bool IsOpen(NewItemStatus s) =>
             s is NewItemStatus.AwaitingDeptHead or NewItemStatus.AwaitingBudget
-              or NewItemStatus.Procuring or NewItemStatus.AwaitingArrival;
+              or NewItemStatus.Procuring or NewItemStatus.AwaitingArrival or NewItemStatus.Arrived;
+
+        // The units held for a requisition: bought for it (registered
+        // against it) and picked from stock for it, not handed over yet.
+        private Task<List<Asset>> HeldUnitsAsync(int requestId) =>
+            _context.Assets
+                .Where(a => a.Status == AssetStatus.InTransit
+                            && (a.NewItemRequestID == requestId
+                                || _context.NewItemRequestUnits.Any(u => u.NewItemRequestID == requestId && u.AssetID == a.AssetID)))
+                .ToListAsync();
 
         // =====================================================
         // Who can request new items
@@ -199,7 +214,7 @@ namespace SchoolInventoryManagement.BLL.Services
             PermissionHelper.EnsureIsActive(actor);
             if (!RequesterManagerRoles.Contains(actor.Role.RoleName))
                 throw new UnauthorizedAccessException(
-                    "Only an Administrator, the Principal or an Asset Officer can choose who requests new items.");
+                    "Only an Administrator, the Principal or a Property Officer can choose who requests new items.");
             return actor;
         }
 
@@ -260,8 +275,8 @@ namespace SchoolInventoryManagement.BLL.Services
 
             NotificationHelper.Queue(_context, user.UserID,
                 allowed
-                    ? "You can now request new items for your department."
-                    : "You can no longer request new items. Your earlier requests are not affected.",
+                    ? "You can now make requisitions for your department."
+                    : "You can no longer make requisitions. Your earlier requisitions are not affected.",
                 "/NewItemRequests/MyRequests");
 
             await _context.SaveChangesAsync();
@@ -271,12 +286,12 @@ namespace SchoolInventoryManagement.BLL.Services
         {
             var me = await _context.Users.AsNoTracking()
                 .Where(u => u.UserID == actingUserId)
-                .Select(u => new { u.BranchID, u.Branch.BranchName, u.Department.DepartmentName })
+                .Select(u => new { u.BranchID, u.Branch.BranchName, u.Department.DepartmentName, DepartmentBranchID = u.Department.BranchID })
                 .FirstOrDefaultAsync();
             if (me is null)
                 throw new KeyNotFoundException("User not found.");
 
-            return new NewItemFormLookupsDTO
+            var lookups = new NewItemFormLookupsDTO
             {
                 DeliveryRoomName = await DepartmentRooms.DeliveryRoomNameAsync(_context, actingUserId),
                 DepartmentName = me.DepartmentName,
@@ -299,8 +314,7 @@ namespace SchoolInventoryManagement.BLL.Services
                         Id = s.SupplyID,
                         Name = s.SupplyName,
                         Category = s.Category.CategoryName,
-                        Unit = s.Unit,
-                        Quantity = s.Stock.Where(k => k.Location.BranchID == me.BranchID).Sum(k => (int?)k.Quantity) ?? 0
+                        Unit = s.Unit
                     })
                     .ToListAsync(),
                 Locations = await _context.Locations.AsNoTracking()
@@ -314,6 +328,20 @@ namespace SchoolInventoryManagement.BLL.Services
                     })
                     .ToListAsync()
             };
+
+            // What the Property Department of the requester's branch can
+            // still hand out: the form shows it, and says what will have to
+            // be bought.
+            if (me.DepartmentBranchID is int branchId)
+            {
+                var freeUnits = await RequisitionStock.FreeUnitsAsync(_context, branchId);
+                var freeSupplies = await RequisitionStock.FreeSuppliesAsync(_context, branchId);
+                foreach (var m in lookups.Models)
+                    m.InStock = freeUnits.GetValueOrDefault(m.Id);
+                foreach (var s in lookups.Supplies)
+                    s.Quantity = freeSupplies.GetValueOrDefault(s.Id);
+            }
+            return lookups;
         }
 
         // One ticket: every item on it shares the reason and the date, and
@@ -332,7 +360,7 @@ namespace SchoolInventoryManagement.BLL.Services
             // Only the people chosen under "Who can request".
             if (!requester.CanRequestNewItems)
                 throw new UnauthorizedAccessException(
-                    "You are not one of the people who can request new items. Ask a requester in your department, or ask the Administrator, the Principal or an Asset Officer to add you.");
+                    "You are not one of the people who can make requisitions. Ask one in your department, or ask the Administrator, the Principal or a Property Officer to add you.");
 
             var lines = dto.Items ?? new List<CreateNewItemRequestItemDTO>();
             if (lines.Count == 0)
@@ -359,7 +387,7 @@ namespace SchoolInventoryManagement.BLL.Services
             }
 
             if (string.IsNullOrWhiteSpace(dto.Reason))
-                throw new ArgumentException("Tell us why it is needed.");
+                throw new ArgumentException("Tell us what it is for.");
 
             if (dto.NeededBy is null)
                 throw new ArgumentException("Say when you need the item.");
@@ -429,6 +457,28 @@ namespace SchoolInventoryManagement.BLL.Services
                 };
             }).ToList();
 
+            // What Property can hand out now decides, line by line, what comes
+            // from stock and what Purchasing must buy. A new item (nothing
+            // picked from the list) is all to buy.
+            var branchId = await _context.Departments
+                .Where(d => d.DepartmentID == requester.DepartmentID)
+                .Select(d => d.BranchID)
+                .FirstAsync();
+            var free = isSupplies
+                ? await RequisitionStock.FreeSuppliesAsync(_context, branchId)
+                : await RequisitionStock.FreeUnitsAsync(_context, branchId);
+            foreach (var line in items)
+            {
+                var fromStock = 0;
+                if ((isSupplies ? line.SupplyID : line.ModelID) is int key)
+                {
+                    fromStock = Math.Min(line.Quantity, free.GetValueOrDefault(key));
+                    free[key] = free.GetValueOrDefault(key) - fromStock;
+                }
+                line.ToBuy = line.Quantity - fromStock;
+            }
+            var needsBuying = items.Any(i => i.ToBuy > 0);
+
             var request = new NewItemRequest
             {
                 RequestedByUserID = actingUserId,
@@ -442,8 +492,9 @@ namespace SchoolInventoryManagement.BLL.Services
                 Reason = dto.Reason.Trim(),
                 NeededBy = dto.NeededBy.Value.Date,
                 RequestDate = now,
-                // Straight to the Principal: there is no department-head step.
-                RequestStatus = NewItemStatus.AwaitingBudget,
+                // No approval: to Purchasing when something must be bought,
+                // otherwise straight to Property.
+                RequestStatus = needsBuying ? NewItemStatus.Procuring : NewItemStatus.Arrived,
                 Items = items
             };
 
@@ -454,12 +505,20 @@ namespace SchoolInventoryManagement.BLL.Services
             await _context.SaveChangesAsync();
 
             var requesterName = $"{requester.FirstName} {requester.LastName}";
-            var what = $"{ItemText(request)}, needed by {request.NeededBy:MMM d, yyyy}";
             var url = DetailsUrl(request.NewItemRequestID);
-            var message = $"New item request from {requesterName} needs your approval: {what}.";
-
-            foreach (var userId in (await ApproverIdsAsync()).Where(id => id != actingUserId))
-                NotificationHelper.Queue(_context, userId, message, url);
+            if (needsBuying)
+            {
+                var missing = string.Join(", ", items.Where(i => i.ToBuy > 0).Select(i => $"{i.ItemName} ×{i.ToBuy}"));
+                foreach (var userId in (await ProcurerIdsAsync()).Where(id => id != actingUserId))
+                    NotificationHelper.Queue(_context, userId,
+                        $"To buy for requisition #{request.NewItemRequestID} from {requesterName}: {missing}. Needed by {request.NeededBy:MMM d}.", url);
+            }
+            else
+            {
+                foreach (var userId in (await PropertyIdsAsync()).Where(id => id != actingUserId))
+                    NotificationHelper.Queue(_context, userId,
+                        $"Requisition #{request.NewItemRequestID} from {requesterName}: {ItemText(request)}, all in stock. Pick it and send it out by {request.NeededBy:MMM d}.", url);
+            }
 
             await _context.SaveChangesAsync();
 
@@ -477,24 +536,24 @@ namespace SchoolInventoryManagement.BLL.Services
                 .ToListAsync();
 
             var dtos = requests.Select(n => n.ToResponseDTO()).ToList();
-            await FillRegisteredUnitsAsync(dtos);
+            await FillRequisitionInfoAsync(dtos);
             return dtos;
         }
 
-        // The units registered for each asset request in the list.
-        private async Task FillRegisteredUnitsAsync(IEnumerable<NewItemRequestResponseDTO> dtos)
+        // The units held or sent for each requisition in a list (bought and
+        // picked from stock), its purchase orders, and each line's counts.
+        private async Task FillRequisitionInfoAsync(IEnumerable<NewItemRequestResponseDTO> dtos)
         {
-            var assetTickets = dtos.Where(d => d.ItemKind == CategoryKind.Asset).ToList();
-            if (assetTickets.Count == 0)
+            var list = dtos.ToList();
+            if (list.Count == 0)
                 return;
+            var ids = list.Select(d => d.NewItemRequestID).ToList();
 
-            var ids = assetTickets.Select(d => d.NewItemRequestID).ToList();
-            var units = await _context.Assets
+            var bought = await _context.Assets
                 .Where(a => a.NewItemRequestID != null && ids.Contains(a.NewItemRequestID.Value))
-                .OrderBy(a => a.AssetCode)
                 .Select(a => new
                 {
-                    TicketId = a.NewItemRequestID!.Value,
+                    RequestId = a.NewItemRequestID!.Value,
                     Unit = new RegisteredUnitDTO
                     {
                         AssetID = a.AssetID,
@@ -506,8 +565,63 @@ namespace SchoolInventoryManagement.BLL.Services
                 })
                 .ToListAsync();
 
-            foreach (var dto in assetTickets)
-                dto.RegisteredUnits = units.Where(u => u.TicketId == dto.NewItemRequestID).Select(u => u.Unit).ToList();
+            var picked = await _context.NewItemRequestUnits
+                .Where(u => ids.Contains(u.NewItemRequestID))
+                .Select(u => new
+                {
+                    RequestId = u.NewItemRequestID,
+                    LineId = u.NewItemRequestItemID,
+                    Unit = new RegisteredUnitDTO
+                    {
+                        AssetID = u.AssetID,
+                        AssetCode = u.Asset.AssetCode,
+                        AssetName = u.Asset.AssetName,
+                        ModelID = u.Asset.ModelID,
+                        Status = u.Asset.Status,
+                        FromStock = true
+                    }
+                })
+                .ToListAsync();
+
+            var orders = await _context.PurchaseOrders
+                .Where(o => ids.Contains(o.NewItemRequestID))
+                .OrderBy(o => o.PurchaseOrderID)
+                .Select(o => new
+                {
+                    o.NewItemRequestID,
+                    Summary = new PurchaseOrderSummaryDTO
+                    {
+                        PurchaseOrderID = o.PurchaseOrderID,
+                        PONumber = o.PONumber,
+                        SupplierName = o.SupplierName,
+                        OrderDate = o.OrderDate,
+                        Total = o.Lines.Sum(l => l.Quantity * l.UnitPrice)
+                    }
+                })
+                .ToListAsync();
+
+            var ordered = await _context.PurchaseOrderLines
+                .Where(l => ids.Contains(l.Order.NewItemRequestID))
+                .GroupBy(l => l.NewItemRequestItemID)
+                .Select(g => new { LineId = g.Key, Quantity = g.Sum(l => l.Quantity) })
+                .ToDictionaryAsync(x => x.LineId, x => x.Quantity);
+
+            foreach (var dto in list)
+            {
+                dto.RegisteredUnits = picked.Where(p => p.RequestId == dto.NewItemRequestID).Select(p => p.Unit)
+                    .Concat(bought.Where(b => b.RequestId == dto.NewItemRequestID).Select(b => b.Unit))
+                    .OrderBy(u => u.AssetCode)
+                    .ToList();
+                dto.PurchaseOrders = orders.Where(o => o.NewItemRequestID == dto.NewItemRequestID).Select(o => o.Summary).ToList();
+                foreach (var line in dto.Items)
+                {
+                    line.Ordered = ordered.GetValueOrDefault(line.NewItemRequestItemID);
+                    line.Picked = picked.Count(p => p.LineId == line.NewItemRequestItemID);
+                    line.Registered = line.ModelID is int model
+                        ? bought.Count(b => b.RequestId == dto.NewItemRequestID && b.Unit.ModelID == model)
+                        : 0;
+                }
+            }
         }
 
         // Supplies requests: how much was added to stock for each supply on
@@ -559,8 +673,42 @@ namespace SchoolInventoryManagement.BLL.Services
             var requests = await query.ToListAsync();
 
             var all = requests.Select(n => n.ToResponseDTO()).ToList();
-            await FillRegisteredUnitsAsync(all);
+            await FillRequisitionInfoAsync(all);
             return all;
+        }
+
+        // What the Purchasing page shows: approved, to buy; then bought,
+        // waiting to arrive.
+        private static readonly NewItemStatus[] PurchasingStages =
+            { NewItemStatus.Procuring, NewItemStatus.AwaitingArrival };
+
+        public async Task<List<NewItemRequestResponseDTO>> GetPurchasingQueueAsync(int actingUserId)
+        {
+            var actor = await PermissionHelper.GetUserOrThrowAsync(_context, actingUserId);
+            PermissionHelper.EnsureIsActive(actor);
+
+            var role = actor.Role.RoleName;
+            if (role != RoleNames.PurchasingOfficer && role != RoleNames.AssetOfficer && role != RoleNames.Administrator)
+                throw new UnauthorizedAccessException("Only Purchasing Officers, Property Officers and Administrators see purchasing.");
+
+            var requests = await QueryWithIncludes()
+                .Where(n => n.RequestStatus == NewItemStatus.Procuring || n.RequestStatus == NewItemStatus.AwaitingArrival)
+                .AsSplitQuery()
+                .ToListAsync();
+
+            var queue = requests
+                .OrderBy(n => Array.IndexOf(StageOrder, n.RequestStatus))
+                .ThenBy(n => n.NeededBy ?? DateTime.MaxValue)
+                .ThenBy(n => n.RequestDate)
+                .Select(n =>
+                {
+                    var dto = n.ToResponseDTO();
+                    dto.CanAct = CanActOn(n, actor);
+                    return dto;
+                })
+                .ToList();
+            await FillRequisitionInfoAsync(queue);
+            return queue;
         }
 
         public async Task<List<NewItemRequestResponseDTO>> GetPendingRequestsAsync(int actingUserId)
@@ -581,12 +729,13 @@ namespace SchoolInventoryManagement.BLL.Services
                 query = query.Where(n => n.RequestStatus == NewItemStatus.AwaitingDeptHead
                                          || n.RequestStatus == NewItemStatus.AwaitingBudget);
             else if (role == RoleNames.AssetOfficer)
-                query = query.Where(n => n.RequestStatus == NewItemStatus.Procuring
-                                         || n.RequestStatus == NewItemStatus.AwaitingArrival
+                query = query.Where(n => n.RequestStatus == NewItemStatus.AwaitingArrival
                                          || n.RequestStatus == NewItemStatus.Arrived);
+            else if (role == RoleNames.PurchasingOfficer)
+                query = query.Where(n => n.RequestStatus == NewItemStatus.Procuring);
             else
                 throw new UnauthorizedAccessException(
-                    "Only the Principal, Asset Officers and Administrators act on new item requests.");
+                    "Only the Property and Purchasing Officers and Administrators act on requisitions.");
 
             var requests = await query.ToListAsync();
 
@@ -602,7 +751,7 @@ namespace SchoolInventoryManagement.BLL.Services
                     return dto;
                 })
                 .ToList();
-            await FillRegisteredUnitsAsync(pending);
+            await FillRequisitionInfoAsync(pending);
             return pending;
         }
 
@@ -621,9 +770,9 @@ namespace SchoolInventoryManagement.BLL.Services
                 n.RequestStatus == NewItemStatus.AwaitingArrival ||
                 n.RequestStatus == NewItemStatus.Arrived);
 
-            if (!PermissionHelper.ApproverRoles.Contains(role))
+            if (!PermissionHelper.ApproverRoles.Contains(role) && role != RoleNames.PurchasingOfficer)
                 throw new UnauthorizedAccessException(
-                    "Only the Principal, Asset Officers and Administrators act on new item requests.");
+                    "Only the Property and Purchasing Officers and Administrators act on requisitions.");
 
             var requests = await query.AsSplitQuery().ToListAsync();
 
@@ -653,13 +802,14 @@ namespace SchoolInventoryManagement.BLL.Services
             var role = actor.Role.RoleName;
             var canView = request.RequestedByUserID == actingUserId
                           || PermissionHelper.ApproverRoles.Contains(role)
+                          || (role == RoleNames.PurchasingOfficer && PurchasingStages.Contains(request.RequestStatus))
                           || (role == RoleNames.DepartmentHead && actor.DepartmentID == request.DepartmentID);
             if (!canView)
                 throw new UnauthorizedAccessException("You cannot view this request.");
 
             var dto = request.ToResponseDTO();
             dto.CanAct = CanActOn(request, actor);
-            await FillRegisteredUnitsAsync(new[] { dto });
+            await FillRequisitionInfoAsync(new[] { dto });
             await FillSuppliesAddedAsync(dto);
             return dto;
         }
@@ -673,19 +823,21 @@ namespace SchoolInventoryManagement.BLL.Services
 
             var request = await _context.NewItemRequests
                 .Include(n => n.Items)
+                .Include(n => n.Department)
                 .FirstOrDefaultAsync(n => n.NewItemRequestID == requestId);
 
             if (request is null)
-                throw new KeyNotFoundException("Request not found.");
+                throw new KeyNotFoundException("Requisition not found.");
 
             if (request.RequestedByUserID == actingUserId)
-                throw new UnauthorizedAccessException("You cannot approve or move on your own request.");
+                throw new UnauthorizedAccessException("You cannot handle your own requisition. Another officer, or an Administrator, does.");
 
             if (!CanActOn(request, actor))
                 throw new UnauthorizedAccessException(request.RequestStatus switch
                 {
-                    NewItemStatus.AwaitingDeptHead or NewItemStatus.AwaitingBudget => "Only the Principal, or an Administrator, can act on it now.",
-                    NewItemStatus.Procuring or NewItemStatus.AwaitingArrival or NewItemStatus.Arrived => "Only an Asset Officer, or an Administrator, can act on it now.",
+                    NewItemStatus.AwaitingDeptHead or NewItemStatus.AwaitingBudget => "Only an Administrator can act on it now.",
+                    NewItemStatus.Procuring => "Only a Purchasing Officer, or an Administrator, can act on it now.",
+                    NewItemStatus.AwaitingArrival or NewItemStatus.Arrived => "Only a Property Officer, or an Administrator, can act on it now.",
                     _ => $"This request is {request.RequestStatus} and has no further steps."
                 });
 
@@ -702,31 +854,51 @@ namespace SchoolInventoryManagement.BLL.Services
             var to = NextStage[from];
             var now = PhilippineTime.Now;
 
-            // Assets are delivered as registered units, each with its
-            // control number, held by Property for this request until the
-            // requester confirms receipt (AcknowledgeReceiptAsync).
-            var units = new List<Asset>();
-            if (to == NewItemStatus.Delivered && request.ItemKind == CategoryKind.Asset)
+            // Procurement is done once everything missing is on a purchase
+            // order (making the last one moves it on by itself).
+            if (from == NewItemStatus.Procuring)
             {
-                units = await _context.Assets
-                    .Where(a => a.NewItemRequestID == requestId)
-                    .ToListAsync();
-                var ordered = request.Items.Sum(i => i.Quantity);
-                if (units.Count < ordered)
+                var lineIds = request.Items.Select(i => i.NewItemRequestItemID).ToList();
+                var ordered = await _context.PurchaseOrderLines
+                    .Where(l => lineIds.Contains(l.NewItemRequestItemID))
+                    .GroupBy(l => l.NewItemRequestItemID)
+                    .Select(g => new { g.Key, Quantity = g.Sum(l => l.Quantity) })
+                    .ToDictionaryAsync(x => x.Key, x => x.Quantity);
+                var left = request.Items.Sum(i => Math.Max(0, i.ToBuy - ordered.GetValueOrDefault(i.NewItemRequestItemID)));
+                if (left > 0)
                     throw new InvalidOperationException(
-                        $"Register all {ordered} unit{(ordered == 1 ? "" : "s")} first, so each gets its control number " +
-                        $"({units.Count} registered so far). Use \"Register the assets\" on this request.");
-
-                if (request.DeliverToLocationID is int roomId)
-                    foreach (var unit in units.Where(u => u.Status == AssetStatus.InTransit))
-                        MovementHelper.Record(_context, unit, roomId, actor.UserID,
-                            $"New-item request #{requestId}: delivered");
+                        $"{left} unit{(left == 1 ? " is" : "s are")} still to buy and on no purchase order. Make the purchase order first.");
             }
 
-            // Supplies were added to the Property Department's stock when
-            // they arrived; delivering them hands them to the department
-            // that asked, out of that stock.
+            // Sent out: fixed assets as their units (picked from stock, and
+            // bought and registered), each with its control number, held for
+            // the requisition until the requester confirms receipt.
+            // Consumables are handed over out of Property's stock.
+            var units = new List<Asset>();
             string? handedOver = null;
+            if (to == NewItemStatus.Delivered && request.ItemKind == CategoryKind.Asset)
+            {
+                var picked = await _context.NewItemRequestUnits.CountAsync(u => u.NewItemRequestID == requestId);
+                var registered = await _context.Assets.CountAsync(a => a.NewItemRequestID == requestId);
+                var toPick = Math.Max(0, request.Items.Sum(i => i.Quantity - i.ToBuy) - picked);
+                var toRegister = Math.Max(0, request.Items.Sum(i => i.ToBuy) - registered);
+                if (toPick > 0 || toRegister > 0)
+                {
+                    var todo = new List<string>();
+                    if (toPick > 0)
+                        todo.Add($"pick {toPick} unit{(toPick == 1 ? "" : "s")} from stock (\"Pick from stock\")");
+                    if (toRegister > 0)
+                        todo.Add($"register {toRegister} bought unit{(toRegister == 1 ? "" : "s")} (\"Register the bought units\")");
+                    throw new InvalidOperationException(
+                        $"Before sending it out, {string.Join(" and ", todo)}, so each unit has its control number. " +
+                        "If something is no longer in stock, use \"Short in stock: buy the rest\".");
+                }
+
+                units = await HeldUnitsAsync(requestId);
+                if (request.DeliverToLocationID is int roomId)
+                    foreach (var unit in units)
+                        MovementHelper.Record(_context, unit, roomId, actor.UserID, $"Requisition #{requestId}: sent out");
+            }
             if (to == NewItemStatus.Delivered && request.ItemKind == CategoryKind.Supply)
                 handedOver = await PurchasedSupplies.IssueAsync(_context, request, actor.UserID, now);
 
@@ -736,40 +908,35 @@ namespace SchoolInventoryManagement.BLL.Services
             request.Remarks = string.IsNullOrWhiteSpace(remarks) ? null : remarks.Trim();
             AddStep(request, to, actor.UserID, remarks, now);
 
-            var actorName = $"{actor.FirstName} {actor.LastName}";
             var item = ItemText(request);
             var url = DetailsUrl(requestId);
 
             switch (to)
             {
+                // Only from before requisitions: on to Purchasing.
                 case NewItemStatus.Procuring:
-                    NotificationHelper.Queue(_context, request.RequestedByUserID,
-                        $"The Principal approved your request #{requestId} for {item}. It is now being procured.", url);
                     foreach (var userId in (await ProcurerIdsAsync()).Where(id => id != actor.UserID && id != request.RequestedByUserID))
-                        NotificationHelper.Queue(_context, userId,
-                            $"To procure: new item request #{requestId} for {item} was approved by {actorName}.", url);
+                        NotificationHelper.Queue(_context, userId, $"To buy for requisition #{requestId}: {item}.", url);
                     break;
 
                 case NewItemStatus.AwaitingArrival:
                     NotificationHelper.Queue(_context, request.RequestedByUserID,
-                        $"Your request #{requestId} for {item} has been procured. You will be told when it arrives.", url);
+                        $"Requisition #{requestId}: what was missing has been ordered. The Property Department sends everything once it arrives.", url);
+                    foreach (var userId in (await PropertyIdsAsync()).Where(id => id != actor.UserID && id != request.RequestedByUserID))
+                        NotificationHelper.Queue(_context, userId,
+                            $"Ordered for requisition #{requestId} ({item}): receive it from the supplier when it comes.", url);
                     break;
 
                 case NewItemStatus.Arrived:
-                    var where = request.DeliverToLocationID is null
-                        ? null
-                        : await _context.Locations.Where(l => l.LocationID == request.DeliverToLocationID)
-                            .Select(l => l.LocationName).FirstOrDefaultAsync();
                     NotificationHelper.Queue(_context, request.RequestedByUserID,
-                        $"Your request #{requestId} has arrived: {item}." + (where is null ? "" : $" It will be brought to {where}."), url);
+                        $"Requisition #{requestId}: what was bought for it has arrived. The Property Department is getting it ready.", url);
                     break;
 
                 case NewItemStatus.Delivered:
                     var deliveredTo = await DeliverToNameAsync(request);
                     NotificationHelper.Queue(_context, request.RequestedByUserID,
-                        $"Your request #{requestId} was delivered" + (deliveredTo is null ? "" : $" to {deliveredTo}") + $": {item}." 
-                        + (units.Count > 0 ? " Please confirm you received it; it then becomes your department's." : "")
-                        + (string.IsNullOrEmpty(handedOver) ? "" : $" Handed over from the Property Department's stock: {handedOver}."), url);
+                        $"Requisition #{requestId} was sent" + (deliveredTo is null ? "" : $" to {deliveredTo}") + $": {item}. Please confirm you received it.",
+                        url);
                     break;
             }
 
@@ -789,19 +956,27 @@ namespace SchoolInventoryManagement.BLL.Services
             var (request, actor) = await LoadForActionAsync(requestId, rowVersion, actingUserId);
 
             if (!IsOpen(request.RequestStatus))
-                throw new InvalidOperationException($"This request is {request.RequestStatus} and can no longer be rejected.");
+                throw new InvalidOperationException("It has been sent out, so it can no longer be rejected.");
 
-            // The Principal rejects before procurement; an Asset Officer
-            // can reject during it (cannot be bought, no longer made, and
-            // so on). LoadForActionAsync already checked the actor holds
-            // the stage.
+            // Purchasing rejects while buying (cannot be bought, no longer
+            // made...); Property while receiving or preparing it.
+            // LoadForActionAsync already checked the actor holds the stage.
             var stage = request.RequestStatus switch
             {
-                NewItemStatus.Procuring => "during procurement",
-                NewItemStatus.AwaitingArrival => "while waiting for it to arrive",
-                _ => "at the Principal's approval"
+                NewItemStatus.Procuring => "by Purchasing",
+                NewItemStatus.AwaitingArrival => "while waiting for the supplier",
+                NewItemStatus.Arrived => "by the Property Department",
+                _ => ""
             };
             var now = PhilippineTime.Now;
+
+            // Units held for it go back into Property's stock: the ones
+            // picked for it, and the ones bought and registered for it.
+            // Supplies added to stock for it simply stay in stock.
+            foreach (var unit in await HeldUnitsAsync(requestId))
+                await PropertyStock.ReturnToStockAsync(_context, unit);
+            _context.NewItemRequestUnits.RemoveRange(
+                await _context.NewItemRequestUnits.Where(u => u.NewItemRequestID == requestId).ToListAsync());
 
             request.RequestStatus = NewItemStatus.Rejected;
             request.ReviewedByUserID = actor.UserID;
@@ -812,7 +987,7 @@ namespace SchoolInventoryManagement.BLL.Services
             NotificationHelper.Queue(
                 _context,
                 request.RequestedByUserID,
-                $"Your request #{requestId} for {ItemText(request)} was rejected {stage} by {actor.FirstName} {actor.LastName}. Reason: {reason}",
+                $"Your requisition #{requestId} for {ItemText(request)} was rejected {stage} ({actor.FirstName} {actor.LastName}). Reason: {reason}",
                 DetailsUrl(requestId));
 
             await SaveWithConcurrencyGuardAsync();
@@ -872,9 +1047,6 @@ namespace SchoolInventoryManagement.BLL.Services
             if (request.RequestedByUserID != actingUserId)
                 throw new UnauthorizedAccessException("Only the person who made the request can confirm receiving it.");
 
-            if (request.ItemKind != CategoryKind.Asset)
-                throw new InvalidOperationException("Supplies go into stock; there is nothing to confirm on this request.");
-
             if (request.AcknowledgedAt is not null)
                 throw new InvalidOperationException("You already confirmed receiving this request.");
 
@@ -883,11 +1055,12 @@ namespace SchoolInventoryManagement.BLL.Services
 
             _context.Entry(request).Property(n => n.RowVersion).OriginalValue = rowVersion;
 
-            // Held by Property for this request until now: the department's
-            // from here on.
-            var units = await _context.Assets
-                .Where(a => a.NewItemRequestID == requestId && a.Status == AssetStatus.InTransit)
-                .ToListAsync();
+            // Fixed assets held for it until now (bought, or picked from
+            // stock): the department's from here on. Consumables were taken
+            // out of Property's stock when it was sent.
+            var units = request.ItemKind == CategoryKind.Asset
+                ? await HeldUnitsAsync(requestId)
+                : new List<Asset>();
             foreach (var unit in units)
                 await PropertyStock.IssueToDepartmentAsync(_context, unit, request.DepartmentID);
 
@@ -898,11 +1071,252 @@ namespace SchoolInventoryManagement.BLL.Services
             if (request.ReviewedByUserID is int deliveredBy && deliveredBy != actingUserId)
                 NotificationHelper.Queue(
                     _context, deliveredBy,
-                    $"{actor.FirstName} {actor.LastName} confirmed receiving request #{requestId} ({ItemText(request)}). " +
-                    $"{(units.Count == 1 ? "It is" : "They are")} now {request.Department.DepartmentName}'s.",
+                    $"{actor.FirstName} {actor.LastName} confirmed receiving requisition #{requestId} ({ItemText(request)})." +
+                    (units.Count == 0 ? "" : $" {(units.Count == 1 ? "It is" : "They are")} now {request.Department.DepartmentName}'s."),
                     DetailsUrl(requestId));
 
             await SaveWithConcurrencyGuardAsync();
+        }
+
+        // ---- Pick from stock (Scripts/031) ----------------------------------
+        // Property picks which units it sends for the part of each fixed-asset
+        // line its stock covers. Any time before the requisition is sent out,
+        // so the units are kept for it (In transit) and nobody borrows them.
+        private async Task<NewItemRequest> LoadForPickingAsync(int requestId, int actingUserId)
+        {
+            var actor = await PermissionHelper.GetUserOrThrowAsync(_context, actingUserId);
+            PermissionHelper.EnsureIsActive(actor);
+            var role = actor.Role.RoleName;
+            if (role != RoleNames.AssetOfficer && role != RoleNames.Administrator)
+                throw new UnauthorizedAccessException("Only Property Officers and Administrators pick units from stock.");
+
+            var request = await _context.NewItemRequests
+                .Include(n => n.Items)
+                .Include(n => n.Department).ThenInclude(d => d.Branch)
+                .Include(n => n.RequestedByUser)
+                .FirstOrDefaultAsync(n => n.NewItemRequestID == requestId)
+                ?? throw new KeyNotFoundException("Requisition not found.");
+
+            if (request.RequestedByUserID == actingUserId)
+                throw new UnauthorizedAccessException("You cannot handle your own requisition. Another officer, or an Administrator, does.");
+            if (request.ItemKind != CategoryKind.Asset)
+                throw new InvalidOperationException("Consumables are taken out of stock when the requisition is sent; there are no units to pick.");
+            if (request.RequestStatus is not (NewItemStatus.Procuring or NewItemStatus.AwaitingArrival or NewItemStatus.Arrived))
+                throw new InvalidOperationException("Units are picked before a requisition is sent out.");
+            return request;
+        }
+
+        public async Task<PickUnitsDTO> GetPickAsync(int requestId, int actingUserId)
+        {
+            var request = await LoadForPickingAsync(requestId, actingUserId);
+            var lines = request.Items
+                .Where(i => i.ModelID != null && i.Quantity > i.ToBuy)
+                .OrderBy(i => i.NewItemRequestItemID)
+                .ToList();
+            var modelIds = lines.Select(i => i.ModelID!.Value).Distinct().ToList();
+
+            var pickedHere = await _context.NewItemRequestUnits
+                .Where(u => u.NewItemRequestID == requestId)
+                .Select(u => new { u.AssetID, u.NewItemRequestItemID })
+                .ToListAsync();
+            var pickedIds = pickedHere.Select(p => p.AssetID).ToList();
+
+            // Available units of those models in the branch, and the ones
+            // already picked for it.
+            var units = await _context.Assets.AsNoTracking()
+                .Where(a => modelIds.Contains(a.ModelID)
+                            && (pickedIds.Contains(a.AssetID)
+                                || (a.Status == AssetStatus.Available && a.BranchID == request.Department.BranchID)))
+                .OrderBy(a => a.AssetCode)
+                .Select(a => new
+                {
+                    a.AssetID, a.ModelID, a.AssetCode, a.SerialNumber, a.Condition,
+                    Room = a.CurrentLocation != null ? a.CurrentLocation.LocationName : null
+                })
+                .ToListAsync();
+
+            return new PickUnitsDTO
+            {
+                NewItemRequestID = request.NewItemRequestID,
+                RequestedByUserName = $"{request.RequestedByUser.FirstName} {request.RequestedByUser.LastName}",
+                DepartmentName = request.Department.DepartmentName,
+                BranchName = request.Department.Branch.BranchName,
+                RequestStatus = request.RequestStatus,
+                Lines = lines.Select(i => new PickLineDTO
+                {
+                    NewItemRequestItemID = i.NewItemRequestItemID,
+                    ItemName = i.ItemName,
+                    Description = i.Description,
+                    FromStock = i.Quantity - i.ToBuy,
+                    // A unit picked on another line of the same model shows
+                    // there only.
+                    Units = units
+                        .Where(u => u.ModelID == i.ModelID
+                                    && (pickedHere.Any(p => p.AssetID == u.AssetID && p.NewItemRequestItemID == i.NewItemRequestItemID)
+                                        || !pickedIds.Contains(u.AssetID)))
+                        .Select(u => new PickUnitChoiceDTO
+                        {
+                            AssetID = u.AssetID,
+                            AssetCode = u.AssetCode,
+                            SerialNumber = u.SerialNumber,
+                            LocationName = u.Room?.Trim(),
+                            Condition = u.Condition.ToString(),
+                            Picked = pickedIds.Contains(u.AssetID)
+                        })
+                        .ToList()
+                }).ToList()
+            };
+        }
+
+        // Saves the picks: line id -> the units picked for it. Units no
+        // longer picked go back into stock.
+        public async Task<int> SetPickedUnitsAsync(int requestId, Dictionary<int, List<int>> picks, int actingUserId)
+        {
+            var request = await LoadForPickingAsync(requestId, actingUserId);
+            var lines = request.Items
+                .Where(i => i.ModelID != null && i.Quantity > i.ToBuy)
+                .ToDictionary(i => i.NewItemRequestItemID);
+
+            var wanted = (picks ?? new Dictionary<int, List<int>>())
+                .Where(p => lines.ContainsKey(p.Key))
+                .ToDictionary(p => p.Key, p => (p.Value ?? new List<int>()).Distinct().ToList());
+            foreach (var (lineId, assetIds) in wanted)
+            {
+                var line = lines[lineId];
+                if (assetIds.Count > line.Quantity - line.ToBuy)
+                    throw new ArgumentException(
+                        $"{line.ItemName}: pick at most {line.Quantity - line.ToBuy}; the rest is bought.");
+            }
+            var lineOf = new Dictionary<int, int>();
+            foreach (var (lineId, assetIds) in wanted)
+                foreach (var assetId in assetIds)
+                    if (!lineOf.TryAdd(assetId, lineId))
+                        throw new ArgumentException("A unit can only be picked once.");
+
+            var now = PhilippineTime.Now;
+            var current = await _context.NewItemRequestUnits.Where(u => u.NewItemRequestID == requestId).ToListAsync();
+
+            // Already picked: kept (on whichever line it is picked for now),
+            // or put back into stock.
+            foreach (var row in current)
+            {
+                if (lineOf.TryGetValue(row.AssetID, out var line))
+                {
+                    row.NewItemRequestItemID = line;
+                    continue;
+                }
+                var unit = await _context.Assets.FirstAsync(a => a.AssetID == row.AssetID);
+                if (unit.Status == AssetStatus.InTransit)
+                    await PropertyStock.ReturnToStockAsync(_context, unit);
+                _context.NewItemRequestUnits.Remove(row);
+            }
+
+            // Newly picked: held for the requisition.
+            var newIds = lineOf.Keys.Where(id => current.All(c => c.AssetID != id)).ToList();
+            var newUnits = await _context.Assets.Where(a => newIds.Contains(a.AssetID)).ToListAsync();
+            foreach (var assetId in newIds)
+            {
+                var unit = newUnits.FirstOrDefault(a => a.AssetID == assetId)
+                    ?? throw new KeyNotFoundException("A unit you picked no longer exists. Reload and pick again.");
+                var line = lines[lineOf[assetId]];
+                if (unit.ModelID != line.ModelID)
+                    throw new ArgumentException($"{unit.AssetCode} is not a {line.ItemName}.");
+                if (unit.Status != AssetStatus.Available || unit.BranchID != request.Department.BranchID)
+                    throw new InvalidOperationException(
+                        $"{unit.AssetCode} is no longer in stock here (someone may have just taken it). Reload and pick again.");
+
+                unit.Status = AssetStatus.InTransit;
+                _context.NewItemRequestUnits.Add(new NewItemRequestUnit
+                {
+                    NewItemRequestID = requestId,
+                    AssetID = assetId,
+                    NewItemRequestItemID = line.NewItemRequestItemID,
+                    PickedByUserID = actingUserId,
+                    PickedAt = now
+                });
+            }
+
+            await SaveWithConcurrencyGuardAsync();
+            return lineOf.Count;
+        }
+
+        // ---- Short in stock (Scripts/031) -------------------------------------
+        // At Property, stock that was there when the requisition was made has
+        // gone (borrowed, broken, used...). What is short now is added to what
+        // must be bought, and the requisition goes back to Purchasing; the
+        // units already picked stay kept for it. Returns what was short.
+        public async Task<string> SendShortToPurchasingAsync(int requestId, byte[] rowVersion, int actingUserId)
+        {
+            var (request, actor) = await LoadForActionAsync(requestId, rowVersion, actingUserId);
+            if (request.RequestStatus != NewItemStatus.Arrived)
+                throw new InvalidOperationException("Only a requisition the Property Department is getting ready can go back to Purchasing.");
+
+            var branchId = request.Department.BranchID;
+            var shorts = new List<(NewItemRequestItem Line, int Short)>();
+            if (request.ItemKind == CategoryKind.Asset)
+            {
+                var free = await RequisitionStock.FreeUnitsAsync(_context, branchId, exceptRequestId: requestId);
+                var pickedByLine = await _context.NewItemRequestUnits
+                    .Where(u => u.NewItemRequestID == requestId)
+                    .GroupBy(u => u.NewItemRequestItemID)
+                    .Select(g => new { g.Key, Count = g.Count() })
+                    .ToDictionaryAsync(x => x.Key, x => x.Count);
+                foreach (var line in request.Items.Where(i => i.ModelID != null).OrderBy(i => i.NewItemRequestItemID))
+                {
+                    var model = line.ModelID!.Value;
+                    var need = Math.Max(0, line.Quantity - line.ToBuy - pickedByLine.GetValueOrDefault(line.NewItemRequestItemID));
+                    var take = Math.Min(need, free.GetValueOrDefault(model));
+                    free[model] = free.GetValueOrDefault(model) - take;
+                    if (need > take)
+                        shorts.Add((line, need - take));
+                }
+            }
+            else
+            {
+                // Stock added for it (bought) is in Property's count too: it
+                // is kept for the bought part.
+                var free = await RequisitionStock.FreeSuppliesAsync(_context, branchId, exceptRequestId: requestId);
+                var heldForIt = await _context.SupplyTransactions
+                    .Where(t => t.NewItemRequestID == requestId
+                                && (t.Type == SupplyTransactionType.Received || t.Type == SupplyTransactionType.Opening
+                                    || t.Type == SupplyTransactionType.Issued))
+                    .GroupBy(t => t.SupplyID)
+                    .Select(g => new { g.Key, Quantity = g.Sum(t => t.QuantityChange) })
+                    .ToDictionaryAsync(x => x.Key, x => x.Quantity);
+                foreach (var line in request.Items.Where(i => i.SupplyID != null).OrderBy(i => i.NewItemRequestItemID))
+                {
+                    var supply = line.SupplyID!.Value;
+                    var need = line.Quantity - line.ToBuy;
+                    var have = Math.Max(0, free.GetValueOrDefault(supply) - heldForIt.GetValueOrDefault(supply));
+                    var take = Math.Min(need, have);
+                    free[supply] = free.GetValueOrDefault(supply) - take;
+                    if (need > take)
+                        shorts.Add((line, need - take));
+                }
+            }
+
+            if (shorts.Count == 0)
+                throw new InvalidOperationException("Nothing is short: what is still to send is in stock. Pick it and send it out.");
+
+            foreach (var (line, count) in shorts)
+                line.ToBuy += count;
+
+            var text = string.Join(", ", shorts.Select(x => $"{x.Line.ItemName} ×{x.Short}"));
+            var now = PhilippineTime.Now;
+            request.RequestStatus = NewItemStatus.Procuring;
+            request.ReviewedByUserID = actor.UserID;
+            request.ReviewDate = now;
+            request.Remarks = $"Short in stock: {text}";
+            AddStep(request, NewItemStatus.SentToPurchasing, actor.UserID, $"Short in stock: {text}", now);
+
+            var url = DetailsUrl(requestId);
+            foreach (var userId in (await ProcurerIdsAsync()).Where(id => id != actor.UserID && id != request.RequestedByUserID))
+                NotificationHelper.Queue(_context, userId, $"To buy for requisition #{requestId}: {text} (no longer in stock).", url);
+            NotificationHelper.Queue(_context, request.RequestedByUserID,
+                $"Requisition #{requestId}: {text} is no longer in stock, so it is being bought. Everything is sent together once it arrives.", url);
+
+            await SaveWithConcurrencyGuardAsync();
+            return text;
         }
 
         private async Task SaveWithConcurrencyGuardAsync()

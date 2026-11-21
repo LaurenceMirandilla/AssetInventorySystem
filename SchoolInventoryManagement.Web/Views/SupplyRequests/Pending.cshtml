@@ -15,7 +15,7 @@
     var outNow = Model.Where(r => r.Status == SupplyRequestStatus.Released)
         .OrderByDescending(r => r.DeliveryProblem is not null).ThenBy(r => r.ReleasedAt).ToList();
 
-    // Releasing and delivering is Asset Officers' and Administrators' work;
+    // Releasing and delivering is Property Officers' and Administrators' work;
     // a Principal approves and can watch the rest.
     var canManage = ViewBag.CanManage is true;
     var currentUserId = int.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)!.Value);
@@ -315,7 +315,7 @@
                             <div class="req-action">
                                 <div>
                                     <div class="req-action-title">Approved, waiting to be released</div>
-                                    <div class="req-action-note">@(canManage ? "Releasing takes you to choose which rooms the supplies come from. Stock goes down then." : "An Asset Officer releases the supplies and brings them over.")</div>
+                                    <div class="req-action-note">@(canManage ? "Releasing takes you to choose which rooms the supplies come from. Stock goes down then." : "A Property Officer releases the supplies and brings them over.")</div>
                                 </div>
                                 @if (canManage)
                                 {
@@ -366,7 +366,7 @@
                             {
                                 <div class="ni-waiting">
                                     <strong>Out for delivery</strong>
-                                    <span>An Asset Officer marks it delivered.</span>
+                                    <span>A Property Officer marks it delivered.</span>
                                 </div>
                             }
                         }

@@ -69,7 +69,7 @@ namespace SchoolInventoryManagement.BLL.Services
 
             // Same rule as the Approvals page: nobody decides a request from
             // someone with their own role, so those are not counted. Borrow
-            // and transfer requests are Property's (Asset Officers, with
+            // and transfer requests are Property's (Property Officers, with
             // Administrators as a backup), so the Principal counts supplies
             // only.
             var pending = 0;

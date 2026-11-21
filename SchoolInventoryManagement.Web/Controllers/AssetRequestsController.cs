@@ -23,7 +23,7 @@ namespace SchoolInventoryManagement.Web.Controllers
     public class AssetRequestsController : BaseController
     {
         // Borrow and transfer requests are decided by the Property
-        // Department's Asset Officers, with Administrators as a backup.
+        // Department's Property Officers, with Administrators as a backup.
         private const string ApproverRoles =
             RoleNames.AssetOfficer + "," + RoleNames.Administrator;
 
@@ -126,7 +126,7 @@ namespace SchoolInventoryManagement.Web.Controllers
         // GET /AssetRequests/History
         // Every finished request (returned, cancelled after approval, or
         // rejected), newest decision first, with
-        // filters. Asset Officers and Administrators see everyone's;
+        // filters. Property Officers and Administrators see everyone's;
         // every other role sees only their own finished requests (the
         // service enforces that).
         public async Task<IActionResult> History(RequestHistoryViewModel model)

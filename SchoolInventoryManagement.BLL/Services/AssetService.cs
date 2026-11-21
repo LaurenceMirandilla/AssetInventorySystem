@@ -188,7 +188,9 @@ namespace SchoolInventoryManagement.BLL.Services
                         n.ItemKind,
                         n.Department.BranchID,
                         n.Department.Branch.BranchName,
-                        Ordered = n.Items.Sum(i => (int?)i.Quantity) ?? 0,
+                        // Only what was bought is registered here; units
+                        // from stock are picked (Scripts/031).
+                        Ordered = n.Items.Sum(i => (int?)i.ToBuy) ?? 0,
                         Registered = n.RegisteredAssets.Count()
                     })
                     .FirstOrDefaultAsync();
@@ -197,14 +199,15 @@ namespace SchoolInventoryManagement.BLL.Services
                 if (ticket.ItemKind != CategoryKind.Asset)
                     throw new InvalidOperationException("That request is for supplies; add them to supplies stock instead.");
                 if (ticket.RequestStatus != NewItemStatus.Arrived)
-                    throw new InvalidOperationException("Units are registered for a request once it has arrived and before it is delivered.");
+                    throw new InvalidOperationException("Bought units are registered once they are received from the supplier, before the requisition is sent out.");
                 if (dto.BranchID != ticket.BranchID)
                     throw new ArgumentException(
                         $"Register them in {ticket.BranchName}, the branch of the department that asked for them.");
                 if (ticket.Registered + dto.Quantity > ticket.Ordered)
                     throw new InvalidOperationException(
-                        $"Request #{ticketId} is for {ticket.Ordered} unit{(ticket.Ordered == 1 ? "" : "s")} and {ticket.Registered} " +
-                        $"{(ticket.Registered == 1 ? "is" : "are")} already registered. Register at most {Math.Max(0, ticket.Ordered - ticket.Registered)}.");
+                        $"Requisition #{ticketId} bought {ticket.Ordered} unit{(ticket.Ordered == 1 ? "" : "s")} and {ticket.Registered} " +
+                        $"{(ticket.Registered == 1 ? "is" : "are")} already registered. Register at most {Math.Max(0, ticket.Ordered - ticket.Registered)}; " +
+                        "units from stock are picked on the requisition instead.");
 
                 departmentId = await PropertyStock.DepartmentIdAsync(_context, dto.BranchID);
                 status = AssetStatus.InTransit;

@@ -4,9 +4,11 @@ using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using SchoolInventoryManagement.BLL.DTOs;
 using SchoolInventoryManagement.BLL.Interfaces;
+using SchoolInventoryManagement.BLL.Services;
 using SchoolInventoryManagement.DAL.Constants;
 using SchoolInventoryManagement.DAL.Entities.Enums;
 using SchoolInventoryManagement.Web.Helpers;
@@ -14,12 +16,13 @@ using SchoolInventoryManagement.Web.ViewModels;
 
 namespace SchoolInventoryManagement.Web.Controllers
 {
-    // Asking for something the school does not have yet is for the people
-    // who have been allowed to ("Who can request": Requesters below).
-    // Moving a request through its stages is for the Principal, then the
-    // Asset Officers -- see NewItemRequestService. The service re-checks
-    // all of it; these attributes only stop people reaching pages they
-    // could never act on.
+    // Requisitions (Scripts/031; the URLs keep their old name). Making one is
+    // for the people who have been allowed to ("Who can request":
+    // Requesters below). Purchasing buys what is missing (PurchasingController),
+    // the Property Officers receive it, pick the rest from stock and send it,
+    // and the requester confirms -- see NewItemRequestService. The service
+    // re-checks all of it; these attributes only stop people reaching pages
+    // they could never act on.
     [Authorize]
     public class NewItemRequestsController : BaseController
     {
@@ -31,6 +34,10 @@ namespace SchoolInventoryManagement.Web.Controllers
         // choose who may request new items.
         private const string ActingRoles =
             RoleNames.Principal + "," + RoleNames.AssetOfficer + "," + RoleNames.Administrator;
+
+        // Who moves a request on or rejects it: the acting roles, and the
+        // Purchasing Officers for the buying step (the service checks the stage).
+        private const string AdvanceRoles = ActingRoles + "," + RoleNames.PurchasingOfficer;
 
         private readonly INewItemRequestService _requestService;
         private readonly IDepartmentService _departmentService;
@@ -162,7 +169,7 @@ namespace SchoolInventoryManagement.Web.Controllers
         // Supplies version.
         // ?itemName= and ?modelId= fill in the first row: the borrow form
         // and Browse items send them for a model with none in stock.
-        public async Task<IActionResult> Create(string? itemName, CategoryKind kind = CategoryKind.Asset, int? modelId = null)
+        public async Task<IActionResult> Create(string? itemName, CategoryKind kind = CategoryKind.Asset, int? modelId = null, int? supplyId = null)
         {
             // Not one of the chosen requesters: back to their list, which
             // says who to ask.
@@ -170,6 +177,17 @@ namespace SchoolInventoryManagement.Web.Controllers
                 return RedirectToAction(nameof(MyRequests));
 
             await LoadFormInfoAsync();
+
+            // ?supplyId= ("Request this" on a supply): a consumables
+            // requisition for it.
+            if (supplyId is int sid && ViewBag.Lookups is NewItemFormLookupsDTO lookups
+                && lookups.Supplies.FirstOrDefault(s => s.Id == sid) is { } supply)
+            {
+                kind = CategoryKind.Supply;
+                itemName = supply.Name;
+            }
+            else
+                supplyId = null;
             return View(new CreateNewItemRequestViewModel
             {
                 Kind = kind,
@@ -178,7 +196,7 @@ namespace SchoolInventoryManagement.Web.Controllers
                 Units = new() { "" },
                 Descriptions = new() { "" },
                 ModelIds = new() { kind == CategoryKind.Asset ? modelId : null },
-                SupplyIds = new() { null }
+                SupplyIds = new() { kind == CategoryKind.Supply ? supplyId : null }
             });
         }
 
@@ -247,7 +265,9 @@ namespace SchoolInventoryManagement.Web.Controllers
 
                 var created = await _requestService.CreateRequestAsync(dto, CurrentUserId);
 
-                TempData["StatusMessage"] = $"Request #{created.NewItemRequestID} has been sent to the Principal.";
+                TempData["StatusMessage"] = created.RequestStatus == NewItemStatus.Procuring
+                    ? $"Requisition #{created.NewItemRequestID} was made. What is not in stock goes to Purchasing to buy; everything is sent together."
+                    : $"Requisition #{created.NewItemRequestID} was made. Everything is in stock: the Property Department sends it to your department's room.";
                 return RedirectToAction(nameof(MyRequests));
             }
             catch (Exception ex)
@@ -265,7 +285,7 @@ namespace SchoolInventoryManagement.Web.Controllers
         // to the request page instead of the queue.
         [HttpPost]
         [ValidateAntiForgeryToken]
-        [Authorize(Roles = ActingRoles)]
+        [Authorize(Roles = AdvanceRoles)]
         public async Task<IActionResult> Advance(int id, string rowVersionBase64, string? remarks, string? returnTo)
         {
             try
@@ -274,22 +294,20 @@ namespace SchoolInventoryManagement.Web.Controllers
                 var stage = await _requestService.AdvanceRequestAsync(id, rowVersion, CurrentUserId, remarks);
                 TempData["StatusMessage"] = stage switch
                 {
-                    NewItemStatus.Procuring => $"Request #{id} approved and sent for procurement. The requester has been told.",
-                    NewItemStatus.AwaitingArrival => $"Request #{id} marked procured. It now waits for the item to arrive.",
-                    NewItemStatus.Arrived => $"Request #{id} marked arrived. Next, deliver it to the requester's location.",
-                    NewItemStatus.Delivered => $"Request #{id} marked delivered.",
-                    _ => $"Request #{id} moved on."
+                    NewItemStatus.Procuring => $"Requisition #{id} sent to Purchasing.",
+                    NewItemStatus.AwaitingArrival => $"Requisition #{id} marked ordered. It waits for the supplier.",
+                    NewItemStatus.Arrived => $"Requisition #{id} received from the supplier. Register what was bought, pick the rest from stock, then send it.",
+                    NewItemStatus.Delivered => $"Requisition #{id} sent out.",
+                    _ => $"Requisition #{id} moved on."
                 };
 
-                // Assets wait for the requester to confirm receipt.
+                // The requester confirms receiving it.
                 if (stage == NewItemStatus.Delivered)
                 {
-                    var delivered = await _requestService.GetRequestAsync(id, CurrentUserId);
-                    TempData["StatusMessage"] += delivered.ItemKind == CategoryKind.Asset && delivered.RegisteredUnits.Count > 0
-                        ? $" {delivered.RequestedByUserName} now confirms receipt; then the items are {delivered.DepartmentName}'s."
-                        : delivered.ItemKind == CategoryKind.Supply
-                            ? $" The supplies were handed to the {delivered.DepartmentName} out of the Property Department's stock. The request is complete."
-                            : " The request is complete.";
+                    var sent = await _requestService.GetRequestAsync(id, CurrentUserId);
+                    TempData["StatusMessage"] += sent.ItemKind == CategoryKind.Supply
+                        ? $" The consumables came out of the Property Department's stock for the {sent.DepartmentName}; {sent.RequestedByUserName} now confirms receiving them."
+                        : $" {sent.RequestedByUserName} now confirms receiving it; then the items are the {sent.DepartmentName}'s.";
                 }
             }
             catch (Exception ex)
@@ -303,7 +321,7 @@ namespace SchoolInventoryManagement.Web.Controllers
         // POST /NewItemRequests/Reject/5
         [HttpPost]
         [ValidateAntiForgeryToken]
-        [Authorize(Roles = ActingRoles)]
+        [Authorize(Roles = AdvanceRoles)]
         public async Task<IActionResult> Reject(int id, string rowVersionBase64, string? remarks, string? returnTo)
         {
             try
@@ -352,7 +370,9 @@ namespace SchoolInventoryManagement.Web.Controllers
             {
                 await _requestService.AcknowledgeReceiptAsync(id, RowVersionHelper.FromBase64(rowVersionBase64), CurrentUserId);
                 var done = await _requestService.GetRequestAsync(id, CurrentUserId);
-                TempData["StatusMessage"] = $"Thank you. The items on request #{id} are now {done.DepartmentName}'s.";
+                TempData["StatusMessage"] = done.ItemKind == CategoryKind.Supply
+                    ? $"Thank you. Requisition #{id} is complete."
+                    : $"Thank you. The items on requisition #{id} are now the {done.DepartmentName}'s.";
             }
             catch (Exception ex)
             {
@@ -364,9 +384,78 @@ namespace SchoolInventoryManagement.Web.Controllers
                 : RedirectToAction(nameof(Details), new { id });
         }
 
+        // GET /NewItemRequests/Pick/5 : Property picks the units it sends
+        // from stock (Scripts/031).
+        [Authorize(Roles = RoleNames.AssetOfficer + "," + RoleNames.Administrator)]
+        public async Task<IActionResult> Pick(int id)
+        {
+            try
+            {
+                ViewData["NavSection"] = "newitem-approvals";
+                return View(await _requestService.GetPickAsync(id, CurrentUserId));
+            }
+            catch (KeyNotFoundException)
+            {
+                return NotFound();
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException)
+            {
+                TempData["ErrorMessage"] = UserMessageFor(ex);
+                return RedirectToAction(nameof(Details), new { id });
+            }
+        }
+
+        // POST /NewItemRequests/Pick/5 : the ticked units, as "unit_{lineId}"
+        // lists of asset ids.
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        [Authorize(Roles = RoleNames.AssetOfficer + "," + RoleNames.Administrator)]
+        public async Task<IActionResult> Pick(int id, IFormCollection form)
+        {
+            var picks = new Dictionary<int, List<int>>();
+            foreach (var key in form.Keys.Where(k => k.StartsWith("unit_")))
+                if (int.TryParse(key["unit_".Length..], out var lineId))
+                    picks[lineId] = form[key].Select(v => int.TryParse(v, out var a) ? a : 0).Where(a => a > 0).ToList();
+            foreach (var key in form.Keys.Where(k => k.StartsWith("line_")))
+                if (int.TryParse(key["line_".Length..], out var lineId) && !picks.ContainsKey(lineId))
+                    picks[lineId] = new List<int>();
+
+            try
+            {
+                var count = await _requestService.SetPickedUnitsAsync(id, picks, CurrentUserId);
+                TempData["StatusMessage"] = $"{count} unit{(count == 1 ? "" : "s")} picked for requisition #{id}. They are kept for it until it is sent.";
+                return RedirectToAction(nameof(Details), new { id });
+            }
+            catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or KeyNotFoundException
+                                           or ConcurrencyConflictException or UnauthorizedAccessException)
+            {
+                TempData["ErrorMessage"] = UserMessageFor(ex);
+                return RedirectToAction(nameof(Pick), new { id });
+            }
+        }
+
+        // POST /NewItemRequests/ShortInStock/5 : what is no longer in stock
+        // goes back to Purchasing to buy (Scripts/031).
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        [Authorize(Roles = RoleNames.AssetOfficer + "," + RoleNames.Administrator)]
+        public async Task<IActionResult> ShortInStock(int id, string rowVersionBase64, string? returnTo)
+        {
+            try
+            {
+                var shortText = await _requestService.SendShortToPurchasingAsync(id, RowVersionHelper.FromBase64(rowVersionBase64), CurrentUserId);
+                TempData["StatusMessage"] = $"Sent to Purchasing to buy: {shortText}. The units already picked stay kept for requisition #{id}.";
+            }
+            catch (Exception ex)
+            {
+                TempData["ErrorMessage"] = UserMessageFor(ex);
+            }
+            return BackTo(id, returnTo);
+        }
+
         private IActionResult BackTo(int id, string? returnTo) =>
-            returnTo == "details"
-                ? RedirectToAction(nameof(Details), new { id })
-                : RedirectToAction(nameof(Pending));
+            returnTo == "details" ? RedirectToAction(nameof(Details), new { id })
+            : returnTo == "purchasing" ? RedirectToAction("Index", "Purchasing")
+            : RedirectToAction(nameof(Pending));
     }
 }

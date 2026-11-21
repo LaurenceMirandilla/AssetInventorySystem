@@ -79,7 +79,7 @@
         </p>
     </div>
     <div class="sab-page-actions">
-        <a asp-controller="SupplyRequests" asp-action="Create" class="btn btn-outline-secondary">Request supplies</a>
+        <a asp-controller="NewItemRequests" asp-action="Create" asp-route-kind="Supply" class="btn btn-outline-secondary">Requisition</a>
         @if (canManage)
         {
             <div class="dropdown">

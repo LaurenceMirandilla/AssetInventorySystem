@@ -31,40 +31,20 @@ namespace SchoolInventoryManagement.Web.Controllers
             return View(await _requests.GetMineAsync(CurrentUserId));
         }
 
-        // GET /SupplyRequests/Create[?supplyId=5]
-        public async Task<IActionResult> Create(int? supplyId)
-        {
-            await PopulateAsync();
-            var dto = new CreateSupplyRequestDTO();
-            dto.Items.Add(new SupplyRequestLineDTO { SupplyID = supplyId, Quantity = 1 });
-            return View(dto);
-        }
+        // GET /SupplyRequests/Create[?supplyId=5] : supplies are asked for on
+        // a requisition now (Scripts/031), consumables kind.
+        public IActionResult Create(int? supplyId) =>
+            RedirectToAction("Create", "NewItemRequests", new { kind = "Supply", supplyId });
 
+        // An old form sent after the change makes nothing: it opens the
+        // requisition form instead.
         [HttpPost]
         [ValidateAntiForgeryToken]
-        [OneTimeSubmit]
-        public async Task<IActionResult> Create(CreateSupplyRequestDTO dto)
+        [ActionName("Create")]
+        public IActionResult CreatePost()
         {
-            if (ModelState.IsValid)
-            {
-                try
-                {
-                    var id = await _requests.CreateAsync(dto, CurrentUserId);
-                    TempData["SuccessMessage"] = "Request sent. You will be told when it is approved.";
-                    return RedirectToAction(nameof(Details), new { id });
-                }
-                catch (Exception ex)
-                {
-                    HandleServiceException(ex);
-                }
-            }
-
-            if (!ModelState.IsValid && ModelState[string.Empty] is null)
-                ModelState.AddModelError(string.Empty, "Pick where to deliver, enter a whole number for every quantity, and check the date.");
-            await PopulateAsync();
-            if (dto.Items.Count == 0)
-                dto.Items.Add(new SupplyRequestLineDTO { Quantity = 1 });
-            return View(dto);
+            TempData["ErrorMessage"] = "Supplies are asked for on a requisition now. Nothing was sent: please fill in this form instead.";
+            return RedirectToAction("Create", "NewItemRequests", new { kind = "Supply" });
         }
 
         // GET /SupplyRequests/Details/5

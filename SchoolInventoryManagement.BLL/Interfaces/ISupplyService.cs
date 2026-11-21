@@ -17,14 +17,14 @@ namespace SchoolInventoryManagement.BLL.Interfaces
 
         // The branch a user is limited to when looking at supplies, or
         // null when they see every branch (Principal, Administrator,
-        // Asset Officer).
+        // Property Officer).
         Task<int?> GetBranchScopeAsync(int userId);
 
         // How many supplies the user can see, for the "Supplies - n" tab.
         Task<int> CountSuppliesAsync(int? scopeBranchId = null);
 
         // Adds a supply with its opening quantity in one storage room.
-        // Asset Officer and Administrator only.
+        // Property Officer and Administrator only.
         Task<int> CreateSupplyAsync(CreateSupplyDTO dto, int actingUserId);
 
         // Every supply, for the Add stock form.
@@ -32,7 +32,7 @@ namespace SchoolInventoryManagement.BLL.Interfaces
 
         // Adds each line's quantity to its room and writes a "Received"
         // line in the stock history. All lines are saved together or not
-        // at all. Asset Officer and Administrator only. Returns how many
+        // at all. Property Officer and Administrator only. Returns how many
         // units were added.
         Task<int> AddStockAsync(AddStockDTO dto, int actingUserId);
 
@@ -42,7 +42,7 @@ namespace SchoolInventoryManagement.BLL.Interfaces
         Task<List<SupplyStockChoiceDTO>> GetStockChoicesAsync();
 
         // Takes the quantity out of one location and puts it in another,
-        // in any branch. Asset Officer and Administrator only.
+        // in any branch. Property Officer and Administrator only.
         Task MoveStockAsync(MoveStockDTO dto, int actingUserId);
 
         // Takes unusable stock out (damaged, expired, lost...), with a
@@ -54,7 +54,7 @@ namespace SchoolInventoryManagement.BLL.Interfaces
 
         // Sets each counted line to the number counted and writes an
         // "Adjusted" history line with the reason. Returns how many lines
-        // changed. Asset Officer and Administrator only.
+        // changed. Property Officer and Administrator only.
         Task<int> SaveCountAsync(SaveSupplyCountDTO dto, int actingUserId);
 
         Task<SupplyReportDTO> GetReportAsync(DateTime? fromDate, DateTime? toDate, int? branchId, int? departmentId);
@@ -68,7 +68,7 @@ namespace SchoolInventoryManagement.BLL.Interfaces
         Task<SupplyDetailsDTO?> GetSupplyDetailsAsync(int supplyId, int historyRows = 50, int? scopeBranchId = null);
 
         // Name, category, unit, price, description and low-stock level.
-        // Never the quantity. Asset Officer and Administrator only.
+        // Never the quantity. Property Officer and Administrator only.
         Task UpdateSupplyAsync(int supplyId, UpdateSupplyDTO dto, int actingUserId);
 
         // Only while the supply has no stock history beyond its opening

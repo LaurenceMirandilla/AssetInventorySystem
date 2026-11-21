@@ -1,0 +1,110 @@
+@model List<SchoolInventoryManagement.BLL.DTOs.NewItemRequestResponseDTO>
+@using SchoolInventoryManagement.BLL.DTOs
+@using SchoolInventoryManagement.DAL.Constants
+@using SchoolInventoryManagement.DAL.Entities.Enums
+@{
+    ViewData["Title"] = "Purchasing";
+    var toBuy = Model.Where(r => r.RequestStatus == NewItemStatus.Procuring).ToList();
+    var ordered = Model.Where(r => r.RequestStatus == NewItemStatus.AwaitingArrival).ToList();
+}
+@* Purchasing (Scripts/031): requisitions with something Property's stock
+   could not cover. For each, what is missing and how much is already on a
+   purchase order; then the ones ordered, waiting for the supplier. *@
+
+@if (TempData["ErrorMessage"] != null)
+{
+    <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
+}
+
+<div class="sab-page-head">
+    <div>
+        <h2>Purchasing</h2>
+        <p class="sab-page-sub">What requisitions are missing, to buy from suppliers. Make a purchase order, print it and bring it to the supplier; the Property Department receives the items.</p>
+    </div>
+</div>
+
+<h3 class="h5 mt-3 mb-2">To buy <span class="text-muted">(@toBuy.Count)</span></h3>
+@if (toBuy.Count == 0)
+{
+    <div class="sab-table-card"><div class="sab-empty"><p class="mb-0">Nothing to buy right now.</p></div></div>
+}
+@foreach (var r in toBuy)
+{
+    var late = r.NeededBy is not null && r.NeededBy.Value.Date < PhilippineTime.Today;
+    <div class="asset-card mb-3">
+        <div class="rq-card-head">
+            <h3><a asp-controller="NewItemRequests" asp-action="Details" asp-route-id="@r.NewItemRequestID">Requisition #@r.NewItemRequestID</a> <small class="text-muted fw-normal">· @NewItemProgress.Kind(r)</small></h3>
+            <span>@r.DepartmentName · @r.RequestedByUserName · <span class="@(late ? "text-danger fw-semibold" : "")">needed by @(r.NeededBy?.ToString("MMM d, yyyy") ?? "—")</span></span>
+        </div>
+        <div class="table-responsive">
+            <table class="table asset-table mb-0">
+                <thead>
+                    <tr><th>Item</th><th class="text-end">Asked</th><th class="text-end">From stock</th><th class="text-end">Missing</th><th class="text-end">Ordered</th><th class="text-end">Left to order</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var i in r.Items)
+                    {
+                        <tr class="@(i.ToBuy == 0 ? "text-muted" : "")">
+                            <td>@i.ItemName@if (!string.IsNullOrWhiteSpace(i.Description)) {<small class="d-block text-muted">@i.Description</small>}</td>
+                            <td class="text-end">@i.Quantity</td>
+                            <td class="text-end">@i.FromStock</td>
+                            <td class="text-end fw-semibold">@i.ToBuy</td>
+                            <td class="text-end">@i.Ordered</td>
+                            <td class="text-end @(i.LeftToOrder > 0 ? "fw-semibold" : "")">@i.LeftToOrder</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <div class="d-flex align-items-center flex-wrap p-3" style="gap:8px;">
+            @foreach (var po in r.PurchaseOrders)
+            {
+                <a asp-action="Order" asp-route-id="@po.PurchaseOrderID" class="asset-code-chip">@po.PONumber · @po.SupplierName</a>
+            }
+            <span class="ms-auto"></span>
+            @if (r.RequestedByUserID == int.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)!.Value))
+            {
+                <span class="text-muted">Your own requisition: another Purchasing Officer buys it.</span>
+            }
+            else if (r.LeftToOrder > 0)
+            {
+                <a asp-action="CreateOrder" asp-route-requestId="@r.NewItemRequestID" class="btn btn-primary btn-sm">Make purchase order</a>
+            }
+            <a asp-controller="NewItemRequests" asp-action="Details" asp-route-id="@r.NewItemRequestID" class="btn btn-outline-secondary btn-sm">View</a>
+        </div>
+    </div>
+}
+
+<h3 class="h5 mt-4 mb-2">Ordered, waiting for the supplier <span class="text-muted">(@ordered.Count)</span></h3>
+<div class="sab-table-card">
+    @if (ordered.Count == 0)
+    {
+        <div class="sab-empty"><p class="mb-0">Nothing on the way.</p></div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table asset-table mb-0">
+                <thead>
+                    <tr><th>Requisition</th><th>Bought</th><th class="d-none d-md-table-cell">For</th><th>Purchase orders</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var r in ordered)
+                    {
+                        <tr>
+                            <td><a asp-controller="NewItemRequests" asp-action="Details" asp-route-id="@r.NewItemRequestID">#@r.NewItemRequestID</a></td>
+                            <td>@string.Join(", ", r.Items.Where(i => i.ToBuy > 0).Select(i => $"{i.ItemName} ×{i.ToBuy}"))</td>
+                            <td class="d-none d-md-table-cell">@r.DepartmentName<br /><small class="text-muted">@r.RequestedByUserName</small></td>
+                            <td>
+                                @foreach (var po in r.PurchaseOrders)
+                                {
+                                    <a asp-action="Order" asp-route-id="@po.PurchaseOrderID" class="d-block">@po.PONumber · @po.SupplierName</a>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>

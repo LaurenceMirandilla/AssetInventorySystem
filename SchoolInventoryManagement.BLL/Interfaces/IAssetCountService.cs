@@ -5,7 +5,7 @@ using SchoolInventoryManagement.BLL.DTOs;
 namespace SchoolInventoryManagement.BLL.Interfaces
 {
     // Physical counts of assets, one room at a time, by the Property
-    // Department (Asset Officers and Administrators). The Principal can
+    // Department (Property Officers and Administrators). The Principal can
     // read past counts.
     public interface IAssetCountService
     {

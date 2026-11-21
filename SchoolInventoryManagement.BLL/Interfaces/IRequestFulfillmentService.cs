@@ -30,7 +30,7 @@ namespace SchoolInventoryManagement.BLL.Interfaces
 
         // InTransit -> Assigned for every unit on the ticket. Borrow: the
         // requester collected them. Transfer: they arrived at the
-        // destination. Asset Officers and Administrators only.
+        // destination. Property Officers and Administrators only.
         Task MarkAssignedAsync(int requestId, byte[] requestRowVersion, int actingUserId);
 
         // The requester confirms they received the units (handed over, not
@@ -41,13 +41,13 @@ namespace SchoolInventoryManagement.BLL.Interfaces
         Task AcknowledgeReceiptAsync(int requestId, byte[] requestRowVersion, int actingUserId);
 
         // Assigned -> Overdue for every unit past its request's ReturnBy,
-        // with alerts to the holder, Asset Officers and Administrators.
+        // with alerts to the holder, Property Officers and Administrators.
         // Runs on every page load (NotificationBellViewComponent), so it
         // needs no acting user. Returns how many units it marked.
         Task<int> MarkOverdueAsync();
 
         // Some or all of the ticket's units come back to returnLocationId.
-        // The request is Returned once none are left out. Asset Officers and
+        // The request is Returned once none are left out. Property Officers and
         // Administrators only.
         Task RecordReturnAsync(
             int requestId, List<int> assignmentIds, ConditionStatus conditionOnReturn,
@@ -58,7 +58,7 @@ namespace SchoolInventoryManagement.BLL.Interfaces
         // again and the reason is kept on the request (Remarks). Borrow:
         // putBackLocations (asset ID -> location ID) says where each unit
         // was put back, one entry per unit. Transfer units never moved, so
-        // it is ignored. Asset Officers and Administrators only.
+        // it is ignored. Property Officers and Administrators only.
         Task CancelInTransitAsync(
             int requestId, string reason, IDictionary<int, int>? putBackLocations,
             byte[] requestRowVersion, int actingUserId);

@@ -10,7 +10,7 @@ using SchoolInventoryManagement.DAL.Constants;
 namespace SchoolInventoryManagement.Web.Helpers
 {
     // The sentence on the Access denied page: "Recording returns is for
-    // Asset Officers and Administrators." Built from the page the user was
+    // Property Officers and Administrators." Built from the page the user was
     // turned away from (the ReturnUrl the sign-in cookie adds).
     //
     // Who a page is for is read from its own [Authorize(Roles = ...)]
@@ -65,7 +65,7 @@ namespace SchoolInventoryManagement.Web.Helpers
             (RoleNames.Teacher, "Teachers"),
             (RoleNames.Staff, "Staff"),
             (RoleNames.DepartmentHead, "Department Heads"),
-            (RoleNames.AssetOfficer, "Asset Officers"),
+            (RoleNames.AssetOfficer, "Property Officers"),
             (RoleNames.Principal, "Principals"),
             (RoleNames.Administrator, "Administrators"),
         };

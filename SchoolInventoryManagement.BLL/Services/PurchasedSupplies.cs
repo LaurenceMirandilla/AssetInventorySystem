@@ -9,11 +9,11 @@ using SchoolInventoryManagement.DAL.Entities.Enums;
 
 namespace SchoolInventoryManagement.BLL.Services
 {
-    // Supplies bought through a new-item request (Scripts/028). When they
-    // arrive, an officer adds them to the Property Department's stock; each
-    // history line keeps the request number. When the request is marked
-    // delivered, the same amounts are taken out of Property's stock for the
-    // department that asked, the way a released supply request is, so
+    // Consumables on a requisition (Scripts/028, 031). What had to be bought
+    // is added to the Property Department's stock when it arrives; each
+    // history line keeps the requisition number. When the requisition is
+    // sent out, everything on it -- the part from stock and the part bought --
+    // is taken out of Property's stock for the department that asked, so
     // Property's count and Reports > Supplies stay right.
     public static class PurchasedSupplies
     {
@@ -34,10 +34,11 @@ namespace SchoolInventoryManagement.BLL.Services
             return request;
         }
 
-        // Takes the request's supplies out of Property's stock for the
+        // Takes the requisition's supplies out of Property's stock for the
         // department that asked. Refuses, changing nothing, while a supply
-        // is not on the list yet or nothing was added to stock for it.
-        // Returns what was handed over, for the notice.
+        // is not on the list yet, what was bought for it is not all added to
+        // stock, or the branch has too few. Returns what was handed over,
+        // for the notice.
         public static async Task<string> IssueAsync(
             ApplicationDbContext context, NewItemRequest request, int actingUserId, DateTime now)
         {
@@ -64,34 +65,42 @@ namespace SchoolInventoryManagement.BLL.Services
             var names = await context.Supplies.Where(s => supplyIds.Contains(s.SupplyID))
                 .ToDictionaryAsync(s => s.SupplyID, s => new { s.SupplyName });
 
-            var notAdded = supplyIds.Where(s => Added(s) <= 0).Select(s => names[s].SupplyName).ToList();
+            // The whole line goes out; the part bought has to be in stock first.
+            int Wanted(int supplyId) => request.Items.Where(i => i.SupplyID == supplyId).Sum(i => i.Quantity);
+            int Bought(int supplyId) => request.Items.Where(i => i.SupplyID == supplyId).Sum(i => i.ToBuy);
+
+            var notAdded = supplyIds.Where(s => Added(s) < Bought(s))
+                .Select(s => $"{names[s].SupplyName} ({Added(s)} of {Bought(s)} added)").ToList();
             if (notAdded.Count > 0)
                 throw new InvalidOperationException(
-                    $"Add the supplies that arrived to stock first: {Join(notAdded)}. Use \"Add to supplies stock\" on this request.");
+                    $"Add what was bought to stock first: {Join(notAdded)}. Use \"Add to supplies stock\" on this requisition.");
 
-            var department = await context.Departments.Where(d => d.DepartmentID == request.DepartmentID)
-                .Select(d => d.DepartmentName).FirstAsync();
+            var departmentInfo = await context.Departments.Where(d => d.DepartmentID == request.DepartmentID)
+                .Select(d => new { d.DepartmentName, d.BranchID }).FirstAsync();
+            var department = departmentInfo.DepartmentName;
             var deliveredTo = request.DeliverToLocationID is null ? null
                 : await context.Locations.Where(l => l.LocationID == request.DeliverToLocationID)
                     .Select(l => l.LocationName.Trim()).FirstOrDefaultAsync();
 
-            // Taken from the rooms they were put in first, then from the
-            // Property Department's other rooms in the same branch.
+            // Taken from the rooms the bought ones were put in first, then
+            // from the Property Department's other rooms in the branch.
             var addedRooms = lines.Where(l => l.QuantityChange > 0).Select(l => l.LocationID).Distinct().ToList();
             var branches = await context.Locations.Where(l => addedRooms.Contains(l.LocationID))
                 .Select(l => l.BranchID).Distinct().ToListAsync();
+            if (!branches.Contains(departmentInfo.BranchID))
+                branches.Add(departmentInfo.BranchID);
             var stock = await context.SupplyStock
                 .Include(k => k.Location)
                 .Where(k => supplyIds.Contains(k.SupplyID) && branches.Contains(k.Location.BranchID) && k.Department.IsProperty)
                 .ToListAsync();
 
             var handed = new List<string>();
-            var note = $"New-item request #{id} for {department}" + (deliveredTo is null ? "" : $" · delivered to {deliveredTo}");
+            var note = $"Requisition #{id} for {department}" + (deliveredTo is null ? "" : $" · sent to {deliveredTo}");
             if (note.Length > 255) note = note[..255];
 
             foreach (var supplyId in supplyIds)
             {
-                var toIssue = Added(supplyId) - Issued(supplyId);
+                var toIssue = Wanted(supplyId) - Issued(supplyId);
                 if (toIssue <= 0)
                     continue;
 
@@ -102,8 +111,8 @@ namespace SchoolInventoryManagement.BLL.Services
                 var have = rows.Sum(k => k.Quantity);
                 if (have < toIssue)
                     throw new InvalidOperationException(
-                        $"{names[supplyId].SupplyName}: {toIssue} were added for this request, but the Property Department only has {have} " +
-                        "in that branch now. Find the rest, or add them to stock, before marking it delivered.");
+                        $"{names[supplyId].SupplyName}: {toIssue} to send, but the Property Department only has {have} in that branch now. " +
+                        "Use \"Short in stock: buy the rest\", or add them to stock, before sending it.");
 
                 var left = toIssue;
                 foreach (var row in rows)

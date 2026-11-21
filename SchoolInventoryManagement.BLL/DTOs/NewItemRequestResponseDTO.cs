@@ -64,10 +64,21 @@ namespace SchoolInventoryManagement.BLL.DTOs
         // How many units the ticket's lines ask for.
         public int OrderedUnits => Items.Sum(i => i.Quantity);
 
-        // Delivered assets the requester has not confirmed yet.
+        // Sent out and not confirmed yet: consumables always, fixed assets
+        // once units were sent with it.
         public bool AwaitsAcknowledgment =>
-            ItemKind == CategoryKind.Asset && RequestStatus == NewItemStatus.Delivered
-            && AcknowledgedAt is null && RegisteredUnits.Count > 0;
+            RequestStatus == NewItemStatus.Delivered && AcknowledgedAt is null
+            && (ItemKind == CategoryKind.Supply || RegisteredUnits.Count > 0);
+
+        // Requisitions (Scripts/031): something on it has to be bought, so
+        // it goes through Procurement before Property.
+        public bool NeedsPurchase => Items.Any(i => i.ToBuy > 0);
+
+        // Units still to buy that are on no purchase order yet.
+        public int LeftToOrder => Items.Sum(i => i.LeftToOrder);
+
+        // Its purchase orders, oldest first. Filled by the service where shown.
+        public List<PurchaseOrderSummaryDTO> PurchaseOrders { get; set; } = new();
 
         // Every stage so far, oldest first. Filled on the details page only.
         public List<NewItemRequestStepDTO> Steps { get; set; } = new();
@@ -84,6 +95,18 @@ namespace SchoolInventoryManagement.BLL.DTOs
         public string AssetName { get; set; } = null!;
         public int ModelID { get; set; }
         public AssetStatus Status { get; set; }
+
+        // Picked from Property's stock (true) or bought for the request.
+        public bool FromStock { get; set; }
+    }
+
+    public class PurchaseOrderSummaryDTO
+    {
+        public int PurchaseOrderID { get; set; }
+        public string PONumber { get; set; } = null!;
+        public string SupplierName { get; set; } = null!;
+        public DateTime OrderDate { get; set; }
+        public decimal Total { get; set; }
     }
 
     public class NewItemRequestStepDTO
@@ -117,5 +140,19 @@ namespace SchoolInventoryManagement.BLL.DTOs
         // Supplies requests: how many were added to stock for this request
         // so far (Scripts/028).
         public int AddedToStock { get; set; }
+
+        // Requisitions (Scripts/031): how many must be bought; the rest
+        // comes from Property's stock.
+        public int ToBuy { get; set; }
+        public int FromStock => Quantity - ToBuy;
+
+        // On purchase orders so far, and still to put on one.
+        public int Ordered { get; set; }
+        public int LeftToOrder => Math.Max(0, ToBuy - Ordered);
+
+        // Fixed assets: units picked from stock, and units bought and
+        // registered, for this line.
+        public int Picked { get; set; }
+        public int Registered { get; set; }
     }
 }

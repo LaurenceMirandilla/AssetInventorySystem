@@ -47,13 +47,15 @@
       data-live-seen="@liveSeen" data-live-notifications="@(liveOn ? Url.Action("Index", "Notifications") : null)">
 @{
     var isAuthed = User.Identity?.IsAuthenticated == true;
-    var isApprover = User.IsInRole("Asset Officer") || User.IsInRole("Administrator") || User.IsInRole("Principal");
+    var isApprover = User.IsInRole("Property Officer") || User.IsInRole("Administrator") || User.IsInRole("Principal");
     var isUserManager = User.IsInRole("Administrator") || User.IsInRole("Principal");
-    var isAssetManager = User.IsInRole("Asset Officer") || User.IsInRole("Administrator");
+    var isAssetManager = User.IsInRole("Property Officer") || User.IsInRole("Administrator");
     // Teachers and Staff browse models, not units (AssetsController.IsRequesterOnly).
     var isRequesterOnly = User.IsInRole("Teacher") || User.IsInRole("Staff");
-    // Who has new-item requests to act on (NewItemRequestsController.Pending).
-    var actsOnNewItems = isAssetManager || User.IsInRole("Principal");
+    // Who makes requisitions: the people chosen under "Who can request"
+    // (the page itself says so to everyone else).
+    // Purchasing: the Purchasing Officers' page (and the Administrators').
+    var seesPurchasing = User.IsInRole("Purchasing Officer") || User.IsInRole("Administrator");
     var roleName = User.FindFirst(ClaimTypes.Role)?.Value;
     var displayName = User.Identity?.Name ?? "";
     var initials = string.Concat(displayName.Split(' ', StringSplitOptions.RemoveEmptyEntries)
@@ -105,6 +107,7 @@
             "approvals" => "<path d='M9 11l3 3 7-7'/><path d='M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11'/>",
             "history"   => "<circle cx='12' cy='12' r='9'/><path d='M12 7v5l3 2'/>",
             "check"     => "<path d='M20 6 9 17l-5-5'/>",
+            "cart"      => "<circle cx='9' cy='20' r='1.5'/><circle cx='18' cy='20' r='1.5'/><path d='M2 3h3l2.7 12.4a1.5 1.5 0 0 0 1.5 1.1h8.9a1.5 1.5 0 0 0 1.5-1.1L22 7H6'/>",
             "reports"   => "<path d='M3 3v18h18'/><path d='M7 15l4-5 3 3 5-7'/>",
             "categories"=> "<path d='M20.6 13.4 12 22l-9-9V3h10z'/><circle cx='7.5' cy='7.5' r='1.4'/>",
             "models"    => "<path d='M12 2 2 7l10 5 10-5z'/><path d='M2 17l10 5 10-5'/><path d='M2 12l10 5 10-5'/>",
@@ -175,47 +178,53 @@
                             <span class="sab-nav-label">@Html.Raw(navIcon("myassets"))My Assets</span>
                         </a>
                     </li>
+                    @* Requisitions (Scripts/031): fixed assets and consumables for
+                       the department, from stock or bought. Older supply
+                       requests open under it too. *@
                     <li class="sab-nav-item">
-                        <a class="sab-nav-link @((inRequests && !onApprovals && !onRequestHistory) || (isActive(new[]{"SupplyRequests"}) && !onSupplyApprovals) ? "active" : "")" asp-controller="AssetRequests" asp-action="MyRequests">
-                            <span class="sab-nav-label">@Html.Raw(navIcon("requests"))My Requests</span>
+                        <a class="sab-nav-link @((inNewItemRequests && !onNewItemApprovals && !onNewItemAll) || (isActive(new[]{"SupplyRequests"}) && !onSupplyApprovals) ? "active" : "")" asp-controller="NewItemRequests" asp-action="MyRequests">
+                            <span class="sab-nav-label">@Html.Raw(navIcon("plus"))Requisitions</span>
                         </a>
                     </li>
+                    @* Borrowing: borrows and returns, from the Property Department. *@
                     <li class="sab-nav-item">
-                        <a class="sab-nav-link @(inNewItemRequests && !onNewItemApprovals && !onNewItemAll ? "active" : "")" asp-controller="NewItemRequests" asp-action="MyRequests">
-                            <span class="sab-nav-label">@Html.Raw(navIcon("plus"))New-Item Requests</span>
+                        <a class="sab-nav-link @(inRequests && !onApprovals && !onRequestHistory ? "active" : "")" asp-controller="AssetRequests" asp-action="MyRequests">
+                            <span class="sab-nav-label">@Html.Raw(navIcon("requests"))Borrowing</span>
+                        </a>
+                    </li>
+                    @* Everyone has a history: managers see all finished borrows,
+                       everyone else their own. *@
+                    <li class="sab-nav-item">
+                        <a class="sab-nav-link @(onRequestHistory ? "active" : "")" asp-controller="AssetRequests" asp-action="History">
+                            <span class="sab-nav-label">@Html.Raw(navIcon("history"))Borrow History</span>
                         </a>
                     </li>
 
-                    @if (isApprover || actsOnNewItems)
+                    @if (isApprover || seesPurchasing)
                     {
                         <li class="sab-nav-divider" role="separator"></li>
                     }
-                    @if (isApprover)
+                    @if (seesPurchasing)
                     {
                         <li class="sab-nav-item">
-                            @* Borrow and transfer approvals are Property's; the
-                               Principal's Approvals are the supply requests. *@
-                            <a class="sab-nav-link @(onApprovals || onSupplyApprovals ? "active" : "")" asp-controller="@(isAssetManager ? "AssetRequests" : "SupplyRequests")" asp-action="Pending">
-                                <span class="sab-nav-label">@Html.Raw(navIcon("approvals"))Approvals</span>
-                                @await Component.InvokeAsync("ApprovalsBadge")
+                            <a class="sab-nav-link @(isActive(new[]{"Purchasing"}) ? "active" : "")" asp-controller="Purchasing" asp-action="Index">
+                                <span class="sab-nav-label">@Html.Raw(navIcon("cart"))Purchasing</span>
                             </a>
                         </li>
                     }
-                    @* Everyone has a history: managers see all finished requests,
-                       everyone else their own. *@
-                    @if (true)
+                    @if (isAssetManager)
                     {
-                        <li class="sab-nav-item">
-                            <a class="sab-nav-link @(onRequestHistory ? "active" : "")" asp-controller="AssetRequests" asp-action="History">
-                                <span class="sab-nav-label">@Html.Raw(navIcon("history"))Request History</span>
-                            </a>
-                        </li>
-                    }
-                    @if (actsOnNewItems)
-                    {
+                        @* The Property Department's work: requisitions to receive,
+                           get ready and send; borrows to approve and returns. *@
                         <li class="sab-nav-item">
                             <a class="sab-nav-link @(onNewItemApprovals ? "active" : "")" asp-controller="NewItemRequests" asp-action="Pending">
-                                <span class="sab-nav-label">@Html.Raw(navIcon("check"))New-Item Approvals</span>
+                                <span class="sab-nav-label">@Html.Raw(navIcon("check"))Requisition Queue</span>
+                            </a>
+                        </li>
+                        <li class="sab-nav-item">
+                            <a class="sab-nav-link @(onApprovals || onSupplyApprovals ? "active" : "")" asp-controller="AssetRequests" asp-action="Pending">
+                                <span class="sab-nav-label">@Html.Raw(navIcon("approvals"))Borrow Approvals</span>
+                                @await Component.InvokeAsync("ApprovalsBadge")
                             </a>
                         </li>
                     }
@@ -223,7 +232,7 @@
                     {
                         <li class="sab-nav-item">
                             <a class="sab-nav-link @(onNewItemAll ? "active" : "")" asp-controller="NewItemRequests" asp-action="All">
-                                <span class="sab-nav-label">@Html.Raw(navIcon("requests"))All New-Item Requests</span>
+                                <span class="sab-nav-label">@Html.Raw(navIcon("requests"))All Requisitions</span>
                             </a>
                         </li>
                         <li class="sab-nav-item">
@@ -293,7 +302,8 @@
                     <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8" /><circle cx="12" cy="12" r="1.8" /><circle cx="19" cy="12" r="1.8" /></svg>
                 </button>
                 <ul class="dropdown-menu dropdown-menu-end">
-                    <li><a class="dropdown-item" asp-controller="AssetRequests" asp-action="Create">+ New request</a></li>
+                    <li><a class="dropdown-item" asp-controller="NewItemRequests" asp-action="Create">+ New requisition</a></li>
+                    <li><a class="dropdown-item" asp-controller="AssetRequests" asp-action="Create">+ New borrow</a></li>
                     <li><a class="dropdown-item" asp-controller="Users" asp-action="ChangePassword">Change password</a></li>
                     <li><hr class="dropdown-divider" /></li>
                     <li>

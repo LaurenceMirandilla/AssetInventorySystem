@@ -25,13 +25,13 @@ namespace SchoolInventoryManagement.BLL.Services
     //          assignment, so nobody else can take it) and reads In transit.
     //          Borrow: set aside at the pickup location. Transfer: stays
     //          where it is until carried to the destination.
-    // Mark assigned (Asset Officer / Administrator): every unit on the
+    // Mark assigned (Property Officer / Administrator): every unit on the
     //          ticket now reads Assigned. Borrow -- collected. Transfer --
     //          delivered, and recorded at the destination.
     // Confirm  (the requester): they received the units. Recorded on any
     //          request; on a permanent Transfer it is what hands the units
     //          to their department for good.
-    // Return   (Asset Officer / Administrator): some or all of the units
+    // Return   (Property Officer / Administrator): some or all of the units
     //          come back to a location staff choose. The ticket is Returned
     //          when the last one is back.
     public class RequestFulfillmentService : IRequestFulfillmentService

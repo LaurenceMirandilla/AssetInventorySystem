@@ -278,7 +278,7 @@ namespace SchoolInventoryManagement.BLL.Services
         public async Task<RequestHistoryResultDTO> GetDecisionHistoryAsync(
             RequestHistoryFilterDTO filter, int actingUserId)
         {
-            // Asset Officers and Administrators see everyone's finished
+            // Property Officers and Administrators see everyone's finished
             // requests. Everybody else sees only their own, whatever the
             // filter asks for, including ones they cancelled themselves.
             var actor = await PermissionHelper.GetUserOrThrowAsync(_context, actingUserId);

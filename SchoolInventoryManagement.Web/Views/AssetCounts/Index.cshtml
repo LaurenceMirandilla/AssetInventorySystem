@@ -1,7 +1,7 @@
 ﻿@model List<SchoolInventoryManagement.BLL.DTOs.AssetCountSummaryDTO>
 @{
     ViewData["Title"] = "Counts";
-    var canCount = User.IsInRole("Asset Officer") || User.IsInRole("Administrator");
+    var canCount = User.IsInRole("Property Officer") || User.IsInRole("Administrator");
 }
 
 <div class="sab-page-head">

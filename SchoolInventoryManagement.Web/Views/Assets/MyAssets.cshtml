@@ -139,7 +139,7 @@
         <div class="asset-detail-sub">
             <span>
                 Everything @dept has, shared by everyone in it: what any member borrowed (with who borrowed it), and what the department keeps.
-                Borrowed items stay here until an Asset Officer records their return.
+                Borrowed items stay here until a Property Officer records their return.
             </span>
         </div>
     </div>
@@ -312,14 +312,14 @@ else
                     {
                         <div class="myassets-alert">
                             <strong>@e.DaysLate day@(e.DaysLate == 1 ? "" : "s") late.</strong>
-                            Bring @(unitCount == 1 ? "it" : "these") to the Asset Officer so the return can be recorded.
+                            Bring @(unitCount == 1 ? "it" : "these") to the Property Officer so the return can be recorded.
                         </div>
                     }
                     else if (e.Group == "transit")
                     {
                         <div class="myassets-alert is-transit">
                             <strong>Ready for you.</strong>
-                            @(unitCount == 1 ? "It has" : "These have") been set aside — collect @(unitCount == 1 ? "it" : "them") from the Asset Officer.
+                            @(unitCount == 1 ? "It has" : "These have") been set aside — collect @(unitCount == 1 ? "it" : "them") from the Property Officer.
                         </div>
                     }
 

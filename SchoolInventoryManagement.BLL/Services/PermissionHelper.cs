@@ -43,7 +43,7 @@ namespace SchoolInventoryManagement.BLL.Services
                 user.Role.RoleName != RoleNames.Administrator)
             {
                 throw new UnauthorizedAccessException(
-                    "Only Asset Officers or Administrators can perform this action.");
+                    "Only Property Officers or Administrators can perform this action.");
             }
 
             return user;
@@ -57,7 +57,7 @@ namespace SchoolInventoryManagement.BLL.Services
         };
 
         // Borrow and transfer requests are the Property Department's: its
-        // Asset Officers decide them, with Administrators as a backup. The
+        // Property Officers decide them, with Administrators as a backup. The
         // Principal decides supplies and purchases (ApproverRoles), not
         // borrows.
         public static readonly string[] AssetRequestApproverRoles =
@@ -74,7 +74,7 @@ namespace SchoolInventoryManagement.BLL.Services
             if (Array.IndexOf(AssetRequestApproverRoles, user.Role.RoleName) < 0)
             {
                 throw new UnauthorizedAccessException(
-                    "Borrow and transfer requests are approved by the Property Department's Asset Officers.");
+                    "Borrow and transfer requests are approved by the Property Department's Property Officers.");
             }
 
             return user;
@@ -88,7 +88,7 @@ namespace SchoolInventoryManagement.BLL.Services
             if (Array.IndexOf(ApproverRoles, user.Role.RoleName) < 0)
             {
                 throw new UnauthorizedAccessException(
-                    "Only Asset Officers, Administrators, or Principals can perform this action.");
+                    "Only Property Officers, Administrators, or Principals can perform this action.");
             }
 
             return user;
@@ -114,7 +114,7 @@ namespace SchoolInventoryManagement.BLL.Services
             if (Array.IndexOf(ReportViewerRoles, user.Role.RoleName) < 0)
             {
                 throw new UnauthorizedAccessException(
-                    "Only Asset Officers, Administrators, or Principals can view reports.");
+                    "Only Property Officers, Administrators, or Principals can view reports.");
             }
 
             return user;

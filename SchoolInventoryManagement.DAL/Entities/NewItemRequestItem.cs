@@ -39,6 +39,12 @@ namespace SchoolInventoryManagement.DAL.Entities
         public int? ModelID { get; set; }
         public int? SupplyID { get; set; }
 
+        // Requisitions (Scripts/031): how many of Quantity must be bought,
+        // because Property's stock could not cover them when it was made
+        // (or Property found them short later). The rest comes from stock.
+        // A new item is all to buy.
+        public int ToBuy { get; set; }
+
         [ForeignKey(nameof(ModelID))]
         public Model? Model { get; set; }
 

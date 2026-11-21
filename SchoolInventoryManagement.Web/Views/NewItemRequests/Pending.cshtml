@@ -4,7 +4,7 @@
 @using SchoolInventoryManagement.DAL.Entities.Enums
 @using SchoolInventoryManagement.Web.Helpers
 @{
-    ViewData["Title"] = "New-Item Approvals";
+    ViewData["Title"] = "Requisition queue";
     // What this page shows, for the live updates (_Layout, site.js).
     ViewData["LiveScope"] = "newitems";
 
@@ -20,10 +20,9 @@
     var today = PhilippineTime.Today;
     var stages = new[]
     {
-        (Status: NewItemStatus.AwaitingBudget, Label: "Principal"),
-        (Status: NewItemStatus.Procuring, Label: "Procurement"),
-        (Status: NewItemStatus.AwaitingArrival, Label: "Arrival"),
-        (Status: NewItemStatus.Arrived, Label: "Delivery")
+        (Status: NewItemStatus.Procuring, Label: "To buy"),
+        (Status: NewItemStatus.AwaitingArrival, Label: "Ordered"),
+        (Status: NewItemStatus.Arrived, Label: "At Property")
     };
     var canManage = User.IsInRole(RoleNames.AssetOfficer) || User.IsInRole(RoleNames.Administrator);
 
@@ -51,14 +50,14 @@
 
 <div class="asset-detail-head mb-3 pb-0 border-0">
     <div>
-        <h2 class="asset-detail-title">New-Item Approvals</h2>
-        <div class="asset-detail-sub">@Model.Count request@(Model.Count == 1 ? "" : "s") awaiting a decision from you.</div>
+        <h2 class="asset-detail-title">Requisition queue</h2>
+        <div class="asset-detail-sub">@Model.Count requisition@(Model.Count == 1 ? "" : "s") waiting on you.</div>
     </div>
     @if (seesAll)
     {
         <div class="asset-detail-actions">
             <a asp-action="Requesters" class="btn btn-outline-secondary">Who can request</a>
-            <a asp-action="All" class="btn btn-outline-secondary">All New-Item Requests</a>
+            <a asp-action="All" class="btn btn-outline-secondary">All requisitions</a>
         </div>
     }
 </div>
@@ -83,7 +82,7 @@
                 <div class="md-toolbar">
                     <label class="asset-search">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
-                        <input type="text" data-md-search autocomplete="off" placeholder="Item, requester or #..." aria-label="Search new-item requests" />
+                        <input type="text" data-md-search autocomplete="off" placeholder="Item, requester or #..." aria-label="Search requisitions" />
                     </label>
                     <div class="dropdown">
                         <button type="button" class="asset-tool-btn" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
@@ -135,7 +134,7 @@
                                 <span class="myassets-item-sub">@Title(r)</span>
                                 <span class="myassets-item-sub">@NewItemProgress.Kind(r) · @Units(r)</span>
                                 <span class="md-tags">
-                                    <span class="md-tag is-newitem">@(mine ? "New item" : NewItemProgress.Short(r.RequestStatus))</span>
+                                    <span class="md-tag is-newitem">@(mine ? "Requisition" : NewItemProgress.Short(r.RequestStatus))</span>
                                     @r.DepartmentName
                                 </span>
                             </span>
@@ -172,9 +171,9 @@
                                 <span class="md-avatar md-avatar-lg">@NewItemProgress.Initials(r.RequestedByUserName)</span>
                                 <div class="min-w-0">
                                     <div class="myassets-panel-meta">
-                                        <span class="md-tag is-newitem">New item</span>
+                                        <span class="md-tag is-newitem">Requisition</span>
                                         <span class="md-tag">@NewItemProgress.Kind(r)</span>
-                                        <span>Request #@r.NewItemRequestID · submitted @r.RequestDate.ToString("MMM d, h:mm tt")</span>
+                                        <span>Requisition #@r.NewItemRequestID · submitted @r.RequestDate.ToString("MMM d, h:mm tt")</span>
                                     </div>
                                     <h3 class="md-person-name">@r.RequestedByUserName <small>· @(r.RequestedByRoleName ?? "") · @r.DepartmentName</small></h3>
                                 </div>
@@ -197,7 +196,7 @@
                             <div><span>Stage</span><strong>@(current >= 0 ? stages[current].Label : NewItemProgress.Short(r.RequestStatus))</strong></div>
                             <div class="@(late ? "is-late" : "")"><span>Needed by</span><strong>@DisplayText.Or(r.NeededBy?.ToString("MMM d, yyyy"), "No date given")</strong></div>
                             <div><span>Items</span><strong>@r.Items.Count · @units unit@(units == 1 ? "" : "s")</strong></div>
-                            <div><span>Deliver to</span><strong>@DisplayText.Or(r.DeliverToText, "Not given")</strong></div>
+                            <div><span>Sent to</span><strong>@DisplayText.Or(r.DeliverToText, "Not given")</strong></div>
                         </div>
 
                         <h4 class="md-section-title">What they're asking for</h4>
@@ -211,20 +210,34 @@
                         @if (delivering && canManage)
                         {
                             @* It is at the school: put it on record before it goes out. *@
+                            var rFromStock = r.Items.Sum(i => i.FromStock);
+                            var rToBuy = r.Items.Sum(i => i.ToBuy);
                             <div class="req-note">
-                                <strong>Before delivering:</strong>
+                                <strong>Before sending:</strong>
                                 @if (r.ItemKind == CategoryKind.Supply)
                                 {
-                                    <a asp-controller="Supplies" asp-action="AddStock" asp-route-newItemRequestId="@r.NewItemRequestID">add the supplies to stock</a>
+                                    if (rToBuy > 0)
+                                    {
+                                        <a asp-controller="Supplies" asp-action="AddStock" asp-route-newItemRequestId="@r.NewItemRequestID">add what was bought to stock</a>
+                                        <span>if that is not done yet; the rest comes out of stock when it is sent.</span>
+                                    }
+                                    else
+                                    {
+                                        <span>everything comes out of stock when it is sent.</span>
+                                    }
                                 }
                                 else
                                 {
-                                    <a asp-controller="Assets" asp-action="BulkCreate" asp-route-newItemRequestId="@r.NewItemRequestID">register the assets</a>
-                                    <span>(@r.RegisteredUnits.Count of @r.OrderedUnits registered; all of them are needed before it can be delivered).</span>
-                                }
-                                @if (r.ItemKind == CategoryKind.Supply)
-                                {
-                                    <span>if that is not done yet.</span>
+                                    if (rFromStock > 0)
+                                    {
+                                        <a asp-action="Pick" asp-route-id="@r.NewItemRequestID">pick from stock</a>
+                                        <span>(@r.RegisteredUnits.Count(u => u.FromStock) of @rFromStock)</span>
+                                    }
+                                    if (rToBuy > 0)
+                                    {
+                                        <a asp-controller="Assets" asp-action="BulkCreate" asp-route-newItemRequestId="@r.NewItemRequestID">register the bought units</a>
+                                        <span>(@r.RegisteredUnits.Count(u => !u.FromStock) of @rToBuy)</span>
+                                    }
                                 }
                             </div>
                         }
@@ -245,21 +258,31 @@
                                 <input type="hidden" name="rowVersionBase64" value="@RowVersionHelper.ToBase64(r.RowVersion)" />
                                 <div class="ni-decision-title">Your decision</div>
                                 <textarea name="remarks" maxlength="500" rows="2" class="form-control"
-                                          placeholder="@(delivering ? "Remarks, shown in the history. Required if it was not delivered." : "Remarks, shown in the history. Required if you reject.")" aria-label="Remarks"></textarea>
+                                          placeholder="@(delivering ? "Remarks, shown in the history. Required if it could not be sent or you reject." : "Remarks, shown in the history. Required if you reject.")" aria-label="Remarks"></textarea>
                                 <div class="ni-decision-row">
                                     <div class="req-action-buttons">
-                                        <button type="submit" class="btn btn-primary">&#10003; @DisplayText.AdvanceButton(r.RequestStatus)</button>
+                                        @if (r.RequestStatus == NewItemStatus.Procuring && r.LeftToOrder > 0)
+                                        {
+                                            <a asp-controller="Purchasing" asp-action="CreateOrder" asp-route-requestId="@r.NewItemRequestID" class="btn btn-primary">Make purchase order</a>
+                                        }
+                                        else
+                                        {
+                                            <button type="submit" class="btn btn-primary">&#10003; @DisplayText.AdvanceButton(r.RequestStatus)</button>
+                                        }
                                         @if (canReject)
                                         {
                                             <button type="submit" class="btn btn-outline-danger"
                                                     formaction="@Url.Action("Reject", new { id = r.NewItemRequestID })"
-                                                    onclick="var r=this.form.querySelector('[name=remarks]'); if(!r.value.trim()){ r.classList.add('is-invalid'); r.focus(); alert('Give a reason for rejecting, so the requester knows why.'); return false; } return confirm('Reject request #@r.NewItemRequestID and every item on it?');">Reject</button>
+                                                    onclick="var r=this.form.querySelector('[name=remarks]'); if(!r.value.trim()){ r.classList.add('is-invalid'); r.focus(); alert('Give a reason for rejecting, so the requester knows why.'); return false; } return confirm('Reject requisition #@r.NewItemRequestID and every item on it?');">Reject</button>
                                         }
                                         @if (delivering)
                                         {
+                                            <button type="submit" class="btn btn-outline-secondary"
+                                                    formaction="@Url.Action("ShortInStock", new { id = r.NewItemRequestID })"
+                                                    onclick="return confirm('Send what is no longer in stock back to Purchasing to buy?');">Short in stock</button>
                                             <button type="submit" class="btn btn-outline-danger"
                                                     formaction="@Url.Action("NotDelivered", new { id = r.NewItemRequestID })"
-                                                    onclick="var r=this.form.querySelector('[name=remarks]'); if(!r.value.trim()){ r.classList.add('is-invalid'); r.focus(); alert('Say why it could not be delivered, so the requester knows.'); return false; } return true;">Not delivered</button>
+                                                    onclick="var r=this.form.querySelector('[name=remarks]'); if(!r.value.trim()){ r.classList.add('is-invalid'); r.focus(); alert('Say why it could not be sent, so the requester knows.'); return false; } return true;">Not sent</button>
                                         }
                                     </div>
                                     <span class="req-action-note">@NewItemProgress.NextNote(r.RequestStatus)</span>

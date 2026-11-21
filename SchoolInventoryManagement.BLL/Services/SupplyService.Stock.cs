@@ -344,6 +344,44 @@ namespace SchoolInventoryManagement.BLL.Services
                 }))
                 .ToListAsync();
 
+            // Consumables asked for on requisitions (Scripts/031) count the
+            // same way: sent = handed out, the rest by what became of it.
+            var askedOnRequisitions = await _context.NewItemRequestItems.AsNoTracking()
+                .Where(i => i.SupplyID != null && i.Request.ItemKind == CategoryKind.Supply
+                            && (from == null || i.Request.RequestDate >= from)
+                            && (until == null || i.Request.RequestDate < until)
+                            && (branchId == null || i.Request.Department.BranchID == branchId)
+                            && (departmentId == null || i.Request.DepartmentID == departmentId))
+                .Select(i => new
+                {
+                    Id = i.NewItemRequestID,
+                    i.Request.RequestStatus,
+                    i.Request.Department.DepartmentName,
+                    SupplyID = i.SupplyID!.Value,
+                    i.Supply!.SupplyName,
+                    i.Supply.Unit,
+                    i.Quantity
+                })
+                .ToListAsync();
+            asked.AddRange(askedOnRequisitions.Select(r => new
+            {
+                // Negative: kept apart from supply request numbers when counting.
+                SupplyRequestID = -r.Id,
+                Status = r.RequestStatus switch
+                {
+                    NewItemStatus.Delivered => SupplyRequestStatus.Delivered,
+                    NewItemStatus.Rejected => SupplyRequestStatus.Rejected,
+                    NewItemStatus.Cancelled => SupplyRequestStatus.Cancelled,
+                    _ => SupplyRequestStatus.Pending
+                },
+                r.DepartmentName,
+                r.SupplyID,
+                r.SupplyName,
+                r.Unit,
+                QuantityRequested = r.Quantity,
+                Approved = r.RequestStatus == NewItemStatus.Delivered ? r.Quantity : 0
+            }));
+
             SupplyDemandDTO Tally(string department, IEnumerable<(int Request, SupplyRequestStatus Status, int Asked, int Approved)> rows)
             {
                 var d = new SupplyDemandDTO { DepartmentName = department };

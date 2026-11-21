@@ -2,7 +2,7 @@
 @using SchoolInventoryManagement.BLL.DTOs
 @{
     // Who can request new items: every department's people, each with a
-    // switch. Administrator, Principal and Asset Officer
+    // switch. Administrator, Principal and Property Officer
     // (NewItemRequestsController.Requesters).
     ViewData["Title"] = "Who Can Request New Items";
     var allowedTotal = Model.Sum(d => d.People.Count(p => p.CanRequest));
@@ -17,13 +17,13 @@
 <div class="asset-detail-head mb-3 pb-0 border-0">
     <div>
         <nav class="asset-crumbs" aria-label="Breadcrumb">
-            <a asp-action="Pending">New-Item Approvals</a>
+            <a asp-action="All">All requisitions</a>
             <span aria-hidden="true">&rsaquo;</span>
             <span>Who can request</span>
         </nav>
-        <h2 class="asset-detail-title">Who can request new items</h2>
+        <h2 class="asset-detail-title">Who can make requisitions</h2>
         <div class="asset-detail-sub">
-            <span id="allowedTotal">@allowedTotal</span> people can request. Only they see the "Request new items" button.
+            <span id="allowedTotal">@allowedTotal</span> people can make requisitions. Only they see the "New requisition" button.
             Everyone can still borrow, transfer and request supplies that are in stock.
         </div>
     </div>
@@ -118,7 +118,7 @@ else
 
                     <div class="asset-card register-step mt-3">
                         <div class="register-step-head">
-                            <div class="register-step-title flex-grow-1">Who can request new items</div>
+                            <div class="register-step-title flex-grow-1">Who can make requisitions</div>
                             <span class="nr-head-note" data-panel-count="@d.DepartmentID">@allowed of @d.People.Count</span>
                         </div>
                         @if (!d.People.Any())
@@ -135,7 +135,7 @@ else
                                 <span class="rq-person-state @(p.CanRequest ? "is-on" : "")" data-state>@(p.CanRequest ? "Can request" : "Cannot request")</span>
                                 <span class="form-check form-switch m-0 p-0">
                                     <input class="form-check-input" type="checkbox" role="switch" data-user="@p.UserID" data-dept="@d.DepartmentID"
-                                           checked="@p.CanRequest" aria-label="@p.Name can request new items" />
+                                           checked="@p.CanRequest" aria-label="@p.Name can make requisitions" />
                                 </span>
                             </label>
                         }

@@ -5,7 +5,7 @@
     var missing = Model.Lines.Where(l => l.Result == AssetCountResult.Missing).ToList();
     var elsewhere = Model.Lines.Where(l => l.Result == AssetCountResult.FoundElsewhere).ToList();
     var found = Model.Lines.Where(l => l.Result == AssetCountResult.Found).ToList();
-    var canCount = User.IsInRole("Asset Officer") || User.IsInRole("Administrator");
+    var canCount = User.IsInRole("Property Officer") || User.IsInRole("Administrator");
 }
 
 <div class="asset-detail-head">

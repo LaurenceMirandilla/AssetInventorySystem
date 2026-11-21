@@ -3,7 +3,7 @@
 @using SchoolInventoryManagement.DAL.Entities.Enums
 @using SchoolInventoryManagement.Web.ViewModels
 @{
-    ViewData["Title"] = "New Request";
+    ViewData["Title"] = "New Borrow";
 
     // Explicit types: a var from ViewBag would stay dynamic and break the
     // lambdas below.
@@ -43,11 +43,12 @@
 <div class="asset-detail-head">
     <div>
         <nav class="asset-crumbs" aria-label="Breadcrumb">
-            <a asp-action="MyRequests">My Requests</a>
+            <a asp-action="MyRequests">Borrowing</a>
             <span aria-hidden="true">&rsaquo;</span>
-            <span>New request</span>
+            <span>New borrow</span>
         </nav>
-        <h2 class="asset-detail-title">New request</h2>
+        <h2 class="asset-detail-title">New borrow</h2>
+        <div class="asset-detail-sub">Borrow items from the Property Department's stock for a while; they are returned when you're done. For things to keep, make a requisition.</div>
     </div>
 </div>
 
@@ -61,15 +62,16 @@
             <span class="sab-callout-label">None in stock</span>
             The Property Department has no @noneInStock.ModelName to lend right now, so it can't be borrowed.
             <a asp-controller="NewItemRequests" asp-action="Create" asp-route-kind="Asset"
-               asp-route-itemName="@noneInStock.ModelName" asp-route-modelId="@noneInStock.ModelID" class="nr-link">Request a purchase &rarr;</a>
+               asp-route-itemName="@noneInStock.ModelName" asp-route-modelId="@noneInStock.ModelID" class="nr-link">Make a requisition &rarr;</a>
         </div>
     }
 
     <div class="row g-3">
         <div class="col-lg-8">
 
-            @* ---- Kind ---- *@
-            <div class="asset-card register-step mb-3">
+            @* ---- Kind: only Borrow is left (requisitions have their own
+               page, Scripts/031). Kept, hidden, for the form's script. ---- *@
+            <div class="asset-card register-step mb-3" hidden>
                 <div class="register-step-head"><div class="register-step-title">What kind of request?</div></div>
                 <div class="register-step-body">
                     <div class="nr-kinds nr-kinds-3" role="radiogroup" aria-label="Request type">
@@ -81,22 +83,6 @@
                                 <small>Use items for a while. They are brought to your department's room, and returned when you're done.</small>
                             </span>
                         </label>
-                        @* Transfers are no longer used (Scripts/029). Supplies and
-                           purchases have their own forms: these cards open them. *@
-                        <a class="nr-kind" asp-controller="SupplyRequests" asp-action="Create">
-                            <span class="nr-kind-dot" aria-hidden="true"></span>
-                            <span>
-                                <strong>Supplies</strong>
-                                <small>Paper, markers and other things that get used up. Delivered to your department's room; nothing to return.</small>
-                            </span>
-                        </a>
-                        <a class="nr-kind" asp-controller="NewItemRequests" asp-action="Create">
-                            <span class="nr-kind-dot" aria-hidden="true"></span>
-                            <span>
-                                <strong>Purchase</strong>
-                                <small>Something the school doesn't have, or doesn't have enough of. The Principal approves buying it.</small>
-                            </span>
-                        </a>
                     </div>
                 </div>
             </div>
@@ -180,8 +166,7 @@
                     <div class="nr-hint">
                         All items go in one request, from the Property Department's stock.
                         The amount can't be more than is in stock; greyed-out models have none right now.
-                        For a Transfer, units already at the destination don't count.
-                        None in stock, or not on the list? <a asp-controller="NewItemRequests" asp-action="Create" asp-route-kind="Asset" class="nr-link">Request a purchase &rarr;</a>
+                        None in stock, or not on the list? <a asp-controller="NewItemRequests" asp-action="Create" asp-route-kind="Asset" class="nr-link">Make a requisition &rarr;</a>
                     </div>
                 </div>
             </div>

@@ -41,7 +41,8 @@ namespace SchoolInventoryManagement.BLL.Mappings
                         Description = i.Description,
                         Unit = i.Unit,
                         ModelID = i.ModelID,
-                        SupplyID = i.SupplyID
+                        SupplyID = i.SupplyID,
+                        ToBuy = i.ToBuy
                     })
                     .ToList(),
                 Reason = request.Reason,
