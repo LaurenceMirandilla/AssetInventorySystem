@@ -6,6 +6,20 @@
     ViewData["Title"] = "Purchasing";
     var toBuy = Model.Where(r => r.RequestStatus == NewItemStatus.Procuring).ToList();
     var ordered = Model.Where(r => r.RequestStatus == NewItemStatus.AwaitingArrival).ToList();
+    List<PurchaseOrderListDTO> orders = (ViewBag.Orders as List<PurchaseOrderListDTO>) ?? new List<PurchaseOrderListDTO>();
+    var tab = ViewBag.Tab as string ?? "buy";
+    int? newOrder = ViewBag.NewOrder as int?;
+    var me = int.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)!.Value);
+    string Stage(NewItemStatus s) => s switch
+    {
+        NewItemStatus.Procuring => "More to order",
+        NewItemStatus.AwaitingArrival => "Waiting for the supplier",
+        NewItemStatus.Arrived => "Received by Property",
+        NewItemStatus.Delivered => "Delivered",
+        NewItemStatus.Cancelled => "Cancelled",
+        NewItemStatus.Rejected => "Rejected",
+        _ => DisplayText.Stage(s)
+    };
 }
 @* Purchasing (Scripts/031): requisitions with something Property's stock
    could not cover. For each, what is missing and how much is already on a
@@ -23,7 +37,14 @@
     </div>
 </div>
 
-<h3 class="h5 mt-3 mb-2">To buy <span class="text-muted">(@toBuy.Count)</span></h3>
+<nav class="page-tabs" aria-label="Purchasing">
+    <a asp-action="Index" asp-route-tab="buy" class="page-tab @(tab == "buy" ? "active" : "")">To buy <span class="history-tab-count">@toBuy.Count</span></a>
+    <a asp-action="Index" asp-route-tab="ordered" class="page-tab @(tab == "ordered" ? "active" : "")">Ordered, waiting for the supplier <span class="history-tab-count">@ordered.Count</span></a>
+    <a asp-action="Index" asp-route-tab="orders" class="page-tab @(tab == "orders" ? "active" : "")">Purchase orders <span class="history-tab-count">@orders.Count</span></a>
+</nav>
+
+@if (tab == "buy")
+{
 @if (toBuy.Count == 0)
 {
     <div class="sab-table-card"><div class="sab-empty"><p class="mb-0">Nothing to buy right now.</p></div></div>
@@ -33,9 +54,10 @@
     var late = r.NeededBy is not null && r.NeededBy.Value.Date < PhilippineTime.Today;
     <div class="asset-card mb-3">
         <div class="rq-card-head">
-            <h3><a asp-controller="NewItemRequests" asp-action="Details" asp-route-id="@r.NewItemRequestID">Requisition #@r.NewItemRequestID</a> <small class="text-muted fw-normal">· @NewItemProgress.Kind(r)</small></h3>
-            <span>@r.DepartmentName · @r.RequestedByUserName · <span class="@(late ? "text-danger fw-semibold" : "")">needed by @(r.NeededBy?.ToString("MMM d, yyyy") ?? "—")</span></span>
+            <h3><a asp-controller="NewItemRequests" asp-action="Details" asp-route-id="@r.NewItemRequestID">Requisition #@r.NewItemRequestID</a> <span class="pu-kind">· @NewItemProgress.Kind(r)</span></h3>
+            <span>@r.DepartmentName · @r.RequestedByUserName · needed by @(r.NeededBy?.ToString("MMM d, yyyy") ?? "—")@if (late) {<span class="pu-late">late</span>}</span>
         </div>
+        <p class="px-3 mb-2 small text-muted">Submitted @r.RequestDate.ToString("MMM d, yyyy")@(string.IsNullOrWhiteSpace(r.Reason) ? "" : " · Reason: " + r.Reason)</p>
         <div class="table-responsive">
             <table class="table asset-table mb-0">
                 <thead>
@@ -75,7 +97,10 @@
     </div>
 }
 
-<h3 class="h5 mt-4 mb-2">Ordered, waiting for the supplier <span class="text-muted">(@ordered.Count)</span></h3>
+}
+
+@if (tab == "ordered")
+{
 <div class="sab-table-card">
     @if (ordered.Count == 0)
     {
@@ -108,3 +133,42 @@
         </div>
     }
 </div>
+}
+
+@if (tab == "orders")
+{
+    @* Every purchase order, newest first: the ones just made at the top. *@
+    <div class="sab-table-card">
+        @if (orders.Count == 0)
+        {
+            <div class="sab-empty"><p class="mb-0">No purchase orders yet. Make one from To buy.</p></div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table asset-table mb-0" id="poList">
+                    <thead>
+                        <tr><th>PO #</th><th>Date</th><th>Supplier</th><th class="d-none d-lg-table-cell">Items</th><th>For</th><th class="text-end">Total</th><th>Status</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var o in orders)
+                        {
+                            <tr class="@(o.PurchaseOrderID == newOrder ? "pu-new" : "")" data-po="@o.PurchaseOrderID">
+                                <td><a asp-action="Order" asp-route-id="@o.PurchaseOrderID" class="fw-semibold">@o.PONumber</a>@if (o.PurchaseOrderID == newOrder) {<span class="pu-new-tag">new</span>}
+                                    <small class="d-block text-muted">by @(o.PreparedByUserID == me ? "you" : o.PreparedByName)</small></td>
+                                <td>@o.OrderDate.ToString("MMM d, yyyy")</td>
+                                <td>@o.SupplierName</td>
+                                <td class="d-none d-lg-table-cell">@o.Items</td>
+                                <td><a asp-controller="NewItemRequests" asp-action="Details" asp-route-id="@o.NewItemRequestID">#@o.NewItemRequestID</a>
+                                    <small class="d-block text-muted">@o.DepartmentName · @o.RequestedByUserName</small></td>
+                                <td class="text-end">₱@o.Total.ToString("N2")</td>
+                                <td>@Stage(o.RequestStatus)</td>
+                                <td class="text-end"><a asp-action="Order" asp-route-id="@o.PurchaseOrderID" class="btn btn-outline-secondary btn-sm">Open / print</a></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+}

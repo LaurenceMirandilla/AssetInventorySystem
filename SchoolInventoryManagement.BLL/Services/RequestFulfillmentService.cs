@@ -349,7 +349,8 @@ namespace SchoolInventoryManagement.BLL.Services
         public async Task RecordReturnAsync(
             int requestId, List<int> assignmentIds, ConditionStatus conditionOnReturn,
             int returnLocationId, byte[] requestRowVersion, int actingUserId,
-            Dictionary<int, ConditionStatus>? unitConditions = null, string? remarks = null)
+            Dictionary<int, ConditionStatus>? unitConditions = null, string? remarks = null,
+            DateTime? returnedOn = null)
         {
             remarks = string.IsNullOrWhiteSpace(remarks) ? null : remarks.Trim();
             if (remarks is { Length: > 500 })
@@ -378,6 +379,24 @@ namespace SchoolInventoryManagement.BLL.Services
             if (request.RequestStatus != RequestStatus.Assigned)
                 throw new InvalidOperationException("This request has nothing out to return.");
 
+            // The borrower confirms they got the items before anything on
+            // the request can be returned.
+            if (request.AcknowledgedAt is null)
+                throw new InvalidOperationException(
+                    "The requester hasn't confirmed receiving the items yet. Record the return once they confirm.");
+
+            // When the units actually came back: now, unless staff give an
+            // earlier date and time (recorded late). Never in the future, and
+            // never before they were handed over.
+            var now = PhilippineTime.Now;
+            var returnedAt = returnedOn ?? now;
+            if (returnedAt > now.AddMinutes(5))
+                throw new ArgumentException("Returned on can't be in the future.");
+            if (request.AssignedDate is not null && returnedAt < request.AssignedDate.Value.AddMinutes(-1))
+                throw new ArgumentException(
+                    $"Returned on can't be before the items were handed over ({request.AssignedDate.Value:MMM d, yyyy h:mm tt}).");
+            if (returnedAt > now) returnedAt = now;
+
             var open = request.Assignments.Where(a => a.ReturnDate == null).ToList();
             var returning = open.Where(a => assignmentIds.Contains(a.AssignmentID)).ToList();
 
@@ -386,13 +405,12 @@ namespace SchoolInventoryManagement.BLL.Services
 
             _context.Entry(request).Property(r => r.RowVersion).OriginalValue = requestRowVersion;
 
-            var now = PhilippineTime.Now;
             foreach (var assignment in returning)
             {
                 // Its own condition tag, or the one for every ticked unit.
                 var condition = unitConditions is not null && unitConditions.TryGetValue(assignment.AssignmentID, out var tagged)
                     ? tagged : conditionOnReturn;
-                assignment.ReturnDate = now;
+                assignment.ReturnDate = returnedAt;
                 assignment.ConditionOnReturn = condition;
                 if (remarks is not null)
                 {
@@ -416,7 +434,7 @@ namespace SchoolInventoryManagement.BLL.Services
             if (allBack)
             {
                 request.RequestStatus = RequestStatus.Returned;
-                request.ReturnedDate = now;
+                request.ReturnedDate = returnedAt;
             }
             else
             {

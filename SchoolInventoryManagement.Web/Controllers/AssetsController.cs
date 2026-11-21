@@ -246,6 +246,23 @@ namespace SchoolInventoryManagement.Web.Controllers
             _ => assets
         };
 
+        // The Property page lists the Property Department's units only: its
+        // stock (any status) and its units out on a borrow (which carry the
+        // borrower's department while out). Units that belong to another
+        // department are theirs, not Property's, and are left out.
+        private async Task<List<AssetResponseDTO>> PropertyOnlyAsync(List<AssetResponseDTO> assets)
+        {
+            var propertyIds = (await _context.Departments.Where(d => d.IsProperty).Select(d => d.DepartmentID).ToListAsync()).ToHashSet();
+            return assets.Where(a => a.ActiveAssignmentID != null || a.DepartmentID is null
+                                     || propertyIds.Contains(a.DepartmentID.Value) || a.Status == AssetStatus.Disposed).ToList();
+        }
+
+        // The same set, counted in the database.
+        private IQueryable<SchoolInventoryManagement.DAL.Entities.Asset> PropertyAssets() =>
+            _context.Assets.Where(a => a.DepartmentID == null || a.Department!.IsProperty
+                                       || a.Status == AssetStatus.Disposed
+                                       || a.AssetAssignments.Any(x => x.ReturnDate == null));
+
         private static string? CleanHolder(string? holder) =>
             holder is "person" or "department" or "none" ? holder : null;
 
@@ -268,8 +285,8 @@ namespace SchoolInventoryManagement.Web.Controllers
             // what makes the tiles mirror the rows: every filter, status
             // included, narrows this set, and the tiles are just its
             // breakdown. With a status selected the others read zero.
-            var matches = ByHolder(await _assetService.SearchAssetsAsync(
-                keyword, categoryId, modelId, branchId, departmentId, status, condition, locationId, userId), holder);
+            var matches = await PropertyOnlyAsync(ByHolder(await _assetService.SearchAssetsAsync(
+                keyword, categoryId, modelId, branchId, departmentId, status, condition, locationId, userId), holder));
 
             // Disposed units are hidden unless asked for. Done here, not in
             // SearchAssetsAsync, because the request screens and barcode scan use
@@ -294,11 +311,11 @@ namespace SchoolInventoryManagement.Web.Controllers
             // needs the number, not the rows. Leaves out disposed units when
             // the list does, so the two numbers describe the same set.
             var grandTotal = showDisposed
-                ? await _context.Assets.CountAsync()
-                : await _context.Assets.CountAsync(a => a.Status != AssetStatus.Disposed);
+                ? await PropertyAssets().CountAsync()
+                : await PropertyAssets().CountAsync(a => a.Status != AssetStatus.Disposed);
             // For the Assets / Supplies switch: never counts disposed units.
             ViewBag.AssetTotal = showDisposed
-                ? await _context.Assets.CountAsync(a => a.Status != AssetStatus.Disposed)
+                ? await PropertyAssets().CountAsync(a => a.Status != AssetStatus.Disposed)
                 : grandTotal;
 
             var model = new AssetIndexViewModel
@@ -344,8 +361,8 @@ namespace SchoolInventoryManagement.Web.Controllers
             if (IsRequesterOnly)
                 return Forbid();
 
-            var assets = ByHolder(await _assetService.SearchAssetsAsync(
-                keyword, categoryId, modelId, branchId, departmentId, status, condition, locationId, userId), CleanHolder(holder));
+            var assets = await PropertyOnlyAsync(ByHolder(await _assetService.SearchAssetsAsync(
+                keyword, categoryId, modelId, branchId, departmentId, status, condition, locationId, userId), CleanHolder(holder)));
 
             // Same rule as the list, so the file matches what was on screen.
             if (!includeDisposed && status != AssetStatus.Disposed)

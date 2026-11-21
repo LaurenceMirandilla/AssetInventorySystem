@@ -2,7 +2,10 @@
 @using SchoolInventoryManagement.BLL.DTOs
 @using SchoolInventoryManagement.DAL.Entities.Enums
 @{
-    ViewData["Title"] = "Borrow History";
+    var mine = ViewBag.OwnOnly is true;
+    ViewData["Title"] = mine ? "My borrowing history" : "Borrowing history";
+    // Everyone's history belongs to Approvals (sidebar).
+    if (!mine) { ViewData["NavSection"] = "approvals"; }
     // What this page shows, for the live updates (_Layout, site.js).
     ViewData["LiveScope"] = "history";
 
@@ -66,23 +69,25 @@
         r.ItemsSummary + (r.RequestType == RequestType.Transfer && r.RequestedLocationName != null ? " → " + r.RequestedLocationName : "");
 }
 
-<partial name="_BorrowingNav" model="@("history")" />
-
 <div class="asset-detail-head mb-3 pb-0 border-0">
     <div>
-        <h2 class="asset-detail-title">@(ViewBag.OwnOnly is true ? "My Borrow History" : "Borrow History")</h2>
+        <h2 class="asset-detail-title">@(mine ? "My borrowing history" : "Borrowing history")</h2>
         <div class="asset-detail-sub">@(ViewBag.OwnOnly is true
             ? "Your own Borrow requests that are finished: returned (or delivered for good), rejected or cancelled. Newest first."
             : "Every Borrow request that is completely finished: returned (or delivered for good), rejected, or cancelled after approval. Newest decision first.")</div>
     </div>
     <div class="asset-detail-actions">
-        @if (ViewBag.OwnOnly is true)
+        @if (mine)
         {
-            <a asp-action="MyRequests" class="btn btn-outline-secondary">&larr; Back to Borrowing</a>
+            <a asp-action="MyRequests" class="btn btn-outline-secondary">&larr; My borrowing</a>
+            <a asp-action="Create" class="btn btn-primary">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+                New Borrow
+            </a>
         }
         else
         {
-            <a asp-action="Pending" class="btn btn-outline-secondary">&larr; Back to Approvals</a>
+            <a asp-action="Pending" class="btn btn-outline-secondary">&larr; Borrowing approvals</a>
         }
     </div>
 </div>
@@ -109,6 +114,10 @@
             {
                 <input type="hidden" name="decision" value="@Model.Decision" />
             }
+            @if (Model.Mine)
+            {
+                <input type="hidden" name="mine" value="true" />
+            }
             <label class="asset-search">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
                 <input type="text" name="keyword" value="@Model.Keyword" autocomplete="off" placeholder="Request #, requester or item..." aria-label="Search by request number, requester or item" />
@@ -123,11 +132,6 @@
                     }
                 </button>
                 <div class="dropdown-menu dropdown-menu-end md-filter-menu">
-                    <label class="form-label">Type</label>
-                    <select name="type" class="form-select form-select-sm mb-2">
-                        <option value="">All types</option>
-                        <option value="Borrow" selected="@(Model.Type == RequestType.Borrow)">Borrow</option>
-                    </select>
                     <label class="form-label" hidden="@(ViewBag.OwnOnly is true)">Requested by</label>
                     <div class="mb-2" hidden="@(ViewBag.OwnOnly is true)">
                     <select name="requestedBy" class="form-select form-select-sm" data-combobox>

@@ -82,6 +82,21 @@ namespace SchoolInventoryManagement.Web.Controllers
             return View(requests);
         }
 
+        // GET /NewItemRequests/History
+        // The signed-in user's own finished requisitions (received,
+        // rejected or cancelled), on the Requisition history page.
+        public async Task<IActionResult> History(string? sort)
+        {
+            var oldestFirst = sort == "oldest";
+            var mine = (await _requestService.GetMyRequestsAsync(CurrentUserId))
+                .Where(r => !NewItemProgress.IsActive(r));
+            var list = (oldestFirst ? mine.OrderBy(r => r.RequestDate) : mine.OrderByDescending(r => r.RequestDate)).ToList();
+            ViewBag.Mine = true;
+            ViewBag.Sort = oldestFirst ? "oldest" : "newest";
+            await LoadDepartmentBranchesAsync();
+            return View("All", list);
+        }
+
         // GET /NewItemRequests/Requesters
         // Who can request new items: every department's people, each with
         // an on/off switch.

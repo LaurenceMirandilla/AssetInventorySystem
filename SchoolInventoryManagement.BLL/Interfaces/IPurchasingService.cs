@@ -16,6 +16,9 @@ namespace SchoolInventoryManagement.BLL.Interfaces
 
         Task<PurchaseOrderDTO> GetOrderAsync(int purchaseOrderId, int actingUserId);
 
+        // Every purchase order, newest first.
+        Task<List<PurchaseOrderListDTO>> GetOrdersAsync(int actingUserId);
+
         // Until the items are received from the supplier. Returns the
         // requisition it was for.
         Task<int> DeleteOrderAsync(int purchaseOrderId, int actingUserId);

@@ -1,0 +1,17 @@
+@model string
+@* Approvals' pages as tabs (the sidebar has one Approvals link): the
+   overview, the requisitions waiting on Property, and the borrows. *@
+<ul class="nav nav-tabs mb-3" aria-label="Approvals">
+    <li class="nav-item">
+        <a class="nav-link @(Model == "overview" ? "active" : "")" aria-current="@(Model == "overview" ? "page" : null)"
+           asp-controller="Approvals" asp-action="Index">Approvals</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link @(Model == "requisitions" ? "active" : "")" aria-current="@(Model == "requisitions" ? "page" : null)"
+           asp-controller="NewItemRequests" asp-action="Pending">Requisitions</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link d-inline-flex align-items-center @(Model == "borrowing" ? "active" : "")" aria-current="@(Model == "borrowing" ? "page" : null)"
+           asp-controller="AssetRequests" asp-action="Pending">Borrowing @await Component.InvokeAsync("ApprovalsBadge")</a>
+    </li>
+</ul>

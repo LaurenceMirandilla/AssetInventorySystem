@@ -17,18 +17,17 @@
 
     // Borrowing: on its way to you (being bought first, waiting for the
     // Property Department, ready to receive). Returning: with you, to give
-    // back. Then what is finished.
+    // back. Finished ones are on History.
     var groups = new[]
     {
         (Key: "buying", Tab: "borrowing", Label: "Being bought first", Items: Model.Where(r => r.RequestStatus == RequestStatus.Pending && r.BeingBought).ToList()),
         (Key: "late", Tab: "borrowing", Label: "Waiting for the Property Department", Items: Model.Where(r => r.RequestStatus == RequestStatus.Pending && !r.BeingBought).ToList()),
         (Key: "transit", Tab: "borrowing", Label: "Ready to receive", Items: Model.Where(r => r.RequestStatus == RequestStatus.InTransit).ToList()),
-        (Key: "use", Tab: "returning", Label: "With you, to return", Items: Model.Where(r => r.RequestStatus == RequestStatus.Assigned).OrderBy(r => r.ReturnBy ?? DateTime.MaxValue).ToList()),
-        (Key: "done", Tab: "done", Label: "Finished", Items: Model.Where(r => r.RequestStatus is not (RequestStatus.Pending or RequestStatus.InTransit or RequestStatus.Assigned)).ToList())
+        (Key: "use", Tab: "returning", Label: "With you, to return", Items: Model.Where(r => r.RequestStatus == RequestStatus.Assigned).OrderBy(r => r.ReturnBy ?? DateTime.MaxValue).ToList())
     };
     var ordered = groups.SelectMany(g => g.Items).ToList();
     int TabCount(string tab) => groups.Where(g => g.Tab == tab).Sum(g => g.Items.Count);
-    var startTab = TabCount("borrowing") > 0 ? "borrowing" : TabCount("returning") > 0 ? "returning" : "";
+    var startTab = TabCount("borrowing") > 0 || TabCount("returning") == 0 ? "borrowing" : "returning";
 }
 
 @functions {
@@ -53,14 +52,16 @@
     <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
 }
 
-<partial name="_BorrowingNav" model="@("mine")" />
-
-<div class="asset-detail-head">
+<div class="asset-detail-head mb-3 pb-0 border-0">
     <div>
         <h2 class="asset-detail-title">Borrowing</h2>
         <div class="asset-detail-sub">Your borrows and returns. Items come from the Property Department's stock; you can cancel a borrow while it is still pending.</div>
     </div>
     <div class="asset-detail-actions">
+        <a asp-action="History" asp-route-mine="true" class="btn btn-outline-secondary">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" /><path d="M12 7v5l3 2" /></svg>
+            History
+        </a>
         <a asp-action="Create" class="btn btn-primary">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
             New Borrow
@@ -70,58 +71,48 @@
 
 
 
-@if (!Model.Any())
+@if (!ordered.Any())
 {
     <div class="sab-table-card">
         <div class="sab-empty">
-            <div class="sab-empty-title">No requests yet</div>
-            <p>Borrow asks for models to use for a while. Staff pick the units and bring them to your department's room.</p>
-            <a asp-action="Create" class="btn btn-primary">+ New Request</a>
+            <div class="sab-empty-title">Nothing borrowed right now</div>
+            <p>Borrow asks for models to use for a while. Staff pick the units and bring them to your department's room. Finished borrows are on History.</p>
+            <a asp-action="Create" class="btn btn-primary">+ New Borrow</a>
         </div>
     </div>
 }
 else
 {
     @* Borrowing and Returning, at the top: each shows its own list. *@
-    <nav class="sab-seg mb-3" aria-label="Borrowing or returning" id="borrowTabs">
-        <a href="#" data-borrow-tab="borrowing" class="@(startTab == "borrowing" ? "active" : "")">Borrowing · @TabCount("borrowing")</a>
-        <a href="#" data-borrow-tab="returning" class="@(startTab == "returning" ? "active" : "")">Returning · @TabCount("returning")</a>
-        <a href="#" data-borrow-tab="done">Finished · @TabCount("done")</a>
-        <a href="#" data-borrow-tab="" class="@(startTab == "" ? "active" : "")">All</a>
+    <nav class="page-tabs" aria-label="Borrowing or returning" id="borrowTabs">
+        <a href="#" data-borrow-tab="borrowing" class="page-tab @(startTab == "borrowing" ? "active" : "")">Borrowing <span class="history-tab-count">@TabCount("borrowing")</span></a>
+        <a href="#" data-borrow-tab="returning" class="page-tab @(startTab == "returning" ? "active" : "")">Returning <span class="history-tab-count">@TabCount("returning")</span></a>
     </nav>
 
     <div class="sab-table-card myassets" data-md data-page-size="8">
         <aside class="myassets-list" aria-label="Your requests">
             <div class="md-toolbar">
                 <select data-md-filter="tab" data-md-outside id="borrowTabFilter" hidden aria-hidden="true">
-                    <option value="" selected="@(startTab == "")"></option>
                     <option value="borrowing" selected="@(startTab == "borrowing")"></option>
                     <option value="returning" selected="@(startTab == "returning")"></option>
-                    <option value="done"></option>
                 </select>
                 <label class="asset-search">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
                     <input type="text" data-md-search autocomplete="off" placeholder="Search my requests..." aria-label="Search my requests" />
                 </label>
-                <div class="dropdown">
+                @* Borrowing has stages to filter by; Returning has none. *@
+                <div class="dropdown" id="borrowFilters" hidden="@(startTab == "returning")">
                     <button type="button" class="asset-tool-btn" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18l-7 8.5V19l-4 2v-7.5z" /></svg>
                         Filters
                     </button>
                     <div class="dropdown-menu dropdown-menu-end md-filter-menu">
                         <label class="form-label">Status</label>
-                        <select class="form-select form-select-sm mb-2" data-md-filter="stage">
+                        <select class="form-select form-select-sm" data-md-filter="stage" id="borrowStage">
                             <option value="">Any</option>
-                            <option value="buying">Being bought first</option>
-                            <option value="late">Waiting for the Property Department</option>
-                            <option value="transit">Ready to receive</option>
-                            <option value="use">With you, to return</option>
-                            <option value="done">Finished</option>
-                        </select>
-                        <label class="form-label">Type</label>
-                        <select class="form-select form-select-sm" data-md-filter="type">
-                            <option value="">Any</option>
-                            <option value="borrow">Borrow</option>
+                            <option value="buying">Waiting for purchase (@groups[0].Items.Count)</option>
+                            <option value="late">Waiting for Property (@groups[1].Items.Count)</option>
+                            <option value="transit">Waiting to be received (@groups[2].Items.Count)</option>
                         </select>
                     </div>
                 </div>
@@ -357,6 +348,11 @@ else
             e.preventDefault();
             tabs.querySelectorAll('[data-borrow-tab]').forEach(function (t) { t.classList.toggle('active', t === a); });
             filter.value = a.getAttribute('data-borrow-tab');
+            // Returning has no filters: clear the Borrowing stage and hide them.
+            var returning = filter.value === 'returning';
+            var menu = document.getElementById('borrowFilters'), stage = document.getElementById('borrowStage');
+            if (menu) menu.hidden = returning;
+            if (returning && stage && stage.value) stage.value = '';
             filter.dispatchEvent(new Event('change'));
         });
     })();

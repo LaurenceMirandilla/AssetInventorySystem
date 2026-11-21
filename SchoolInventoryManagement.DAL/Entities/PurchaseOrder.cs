@@ -41,6 +41,21 @@ namespace SchoolInventoryManagement.DAL.Entities
         [MaxLength(500)]
         public string? Notes { get; set; }
 
+        // Shipping terms and costs on the printed order (Scripts/034), all
+        // optional. Tax, shipping and other are added to the items' subtotal.
+        [MaxLength(100)]
+        public string? ShipVia { get; set; }
+        [MaxLength(100)]
+        public string? Fob { get; set; }
+        [MaxLength(150)]
+        public string? ShippingTerms { get; set; }
+        [Column(TypeName = "decimal(12,2)")]
+        public decimal Tax { get; set; }
+        [Column(TypeName = "decimal(12,2)")]
+        public decimal ShippingCost { get; set; }
+        [Column(TypeName = "decimal(12,2)")]
+        public decimal OtherCost { get; set; }
+
         public int CreatedByUserID { get; set; }
         public DateTime CreatedAt { get; set; }
 

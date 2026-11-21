@@ -32,8 +32,47 @@
     @Html.FormTicket()
     <input type="hidden" asp-for="NewItemRequestID" />
 
+    @* The whole requisition, so Purchasing has what it needs to buy it. *@
+    <div class="asset-card register-step mb-3" id="poRequest">
+        <div class="register-step-head">
+            <div class="register-step-title flex-grow-1">Requisition #@form.NewItemRequestID</div>
+            <a asp-controller="NewItemRequests" asp-action="Details" asp-route-id="@form.NewItemRequestID" class="btn btn-outline-secondary btn-sm">Open requisition</a>
+        </div>
+        <div class="register-step-body">
+            <dl class="po-facts">
+                <div><dt>Requested by</dt><dd>@form.RequestedByUserName@(string.IsNullOrWhiteSpace(form.RequesterRole) ? "" : " · " + form.RequesterRole)</dd></div>
+                <div><dt>Department</dt><dd>@form.DepartmentName@(string.IsNullOrWhiteSpace(form.BranchName) ? "" : " · " + form.BranchName)</dd></div>
+                <div><dt>Goes to</dt><dd>@(form.ForStock ? "Property Department's stock (for a borrow)" : DisplayText.Or(form.DeliverTo, form.DepartmentName + "'s room"))</dd></div>
+                <div><dt>Kind</dt><dd>@(form.ItemKind == CategoryKind.Supply ? "Consumables" : "Fixed assets")</dd></div>
+                <div><dt>Submitted</dt><dd>@form.RequestedOn.ToString("MMM d, yyyy · h:mm tt")</dd></div>
+                <div class="@(form.NeededBy is not null && form.NeededBy.Value.Date < PhilippineTime.Today ? "is-late" : "")"><dt>Needed by</dt><dd>@DisplayText.Or(form.NeededBy?.ToString("MMM d, yyyy"), "Not given")</dd></div>
+            </dl>
+            <div class="po-reason"><span>Reason</span>@DisplayText.Or(form.Reason, "No reason given")</div>
+            <div class="table-responsive mt-3">
+                <table class="table asset-table mb-0">
+                    <thead>
+                        <tr><th>What they asked for</th><th class="text-end">Asked</th><th class="text-end">From stock</th><th class="text-end">To buy</th><th class="text-end">On orders</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var i in form.AllItems)
+                        {
+                            <tr class="@(i.ToBuy == 0 ? "text-muted" : "")">
+                                <td>@i.ItemName@(form.ItemKind == CategoryKind.Supply && !string.IsNullOrWhiteSpace(i.Unit) ? $" ({i.Unit})" : "")
+                                    @if (!string.IsNullOrWhiteSpace(i.Description)) {<small class="d-block text-muted">@i.Description</small>}</td>
+                                <td class="text-end">@i.Asked</td>
+                                <td class="text-end">@i.FromStock</td>
+                                <td class="text-end fw-semibold">@i.ToBuy</td>
+                                <td class="text-end">@i.Ordered</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
     <div class="row g-3">
-        <div class="col-lg-8">
+        <div class="col-12">
             <div class="asset-card register-step mb-3">
                 <div class="register-step-head"><div class="register-step-title">Supplier</div></div>
                 <div class="register-step-body">
@@ -89,11 +128,49 @@
                                 }
                             </tbody>
                             <tfoot>
-                                <tr><th colspan="4" class="text-end">Total</th><th class="text-end" id="poTotal">₱0.00</th></tr>
+                                <tr><th colspan="4" class="text-end">Subtotal</th><th class="text-end" id="poSubtotal">₱0.00</th></tr>
                             </tfoot>
                         </table>
                     </div>
                     <p class="small text-muted p-3 mb-0">Buying from two suppliers? Put 0 for what this supplier does not have, and make another order for it.</p>
+                </div>
+            </div>
+
+            @* Shipping terms and costs (Scripts/034), all optional: they print
+               on the purchase order; tax, shipping and other add to the total. *@
+            <div class="asset-card register-step mb-3">
+                <div class="register-step-head">
+                    <div class="register-step-title flex-grow-1">Shipping and costs</div>
+                    <span class="nr-head-note">optional</span>
+                </div>
+                <div class="register-step-body">
+                    <div class="row g-2">
+                        <div class="col-md-4">
+                            <label class="form-label" for="ShipVia">Ship via</label>
+                            <input asp-for="ShipVia" class="form-control" maxlength="100" placeholder="Supplier's truck, courier..." />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label" for="Fob">F.O.B.</label>
+                            <input asp-for="Fob" class="form-control" maxlength="100" placeholder="Destination, shipping point..." />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label" for="ShippingTerms">Shipping terms</label>
+                            <input asp-for="ShippingTerms" class="form-control" maxlength="150" placeholder="Delivery in 7 days, COD..." />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label" for="Tax">Tax (₱)</label>
+                            <input asp-for="Tax" type="number" min="0" step="0.01" class="form-control" value="@(Model.Tax is null or 0 ? "" : Model.Tax.Value.ToString("0.00"))" placeholder="0.00" data-po-extra />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label" for="ShippingCost">Shipping (₱)</label>
+                            <input asp-for="ShippingCost" type="number" min="0" step="0.01" class="form-control" value="@(Model.ShippingCost is null or 0 ? "" : Model.ShippingCost.Value.ToString("0.00"))" placeholder="0.00" data-po-extra />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label" for="OtherCost">Other (₱)</label>
+                            <input asp-for="OtherCost" type="number" min="0" step="0.01" class="form-control" value="@(Model.OtherCost is null or 0 ? "" : Model.OtherCost.Value.ToString("0.00"))" placeholder="0.00" data-po-extra />
+                        </div>
+                    </div>
+                    <div class="po-grand">Total <strong id="poTotal">₱0.00</strong></div>
                 </div>
             </div>
 
@@ -105,15 +182,6 @@
             </div>
         </div>
 
-        <div class="col-lg-4">
-            <div class="asset-card nr-summary">
-                <div class="register-step-head"><div class="register-step-title">The requisition</div></div>
-                <div class="p-3">
-                    <p class="mb-2"><strong>@form.DepartmentName</strong> · @form.RequestedByUserName</p>
-                    <p class="mb-0 text-muted">@DisplayText.Or(form.Reason, "No reason given")</p>
-                </div>
-            </div>
-        </div>
     </div>
 
     <div class="register-footer">
@@ -137,9 +205,12 @@
                     row.querySelector('[data-po-amount]').textContent = q > 0 ? peso(q * p) : '—';
                     total += q * p;
                 });
+                document.getElementById('poSubtotal').textContent = peso(total);
+                document.querySelectorAll('[data-po-extra]').forEach(function (x) { total += parseFloat(x.value) || 0; });
                 document.getElementById('poTotal').textContent = peso(total);
             }
             rows.forEach(function (row) { row.addEventListener('input', sync); });
+            document.querySelectorAll('[data-po-extra]').forEach(function (x) { x.addEventListener('input', sync); });
             sync();
 
             // A supplier picked from the list fills in its address and contact.

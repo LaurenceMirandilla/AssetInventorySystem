@@ -1,0 +1,53 @@
+@{
+    ViewData["Title"] = "Approvals";
+    int reqWaiting = ViewBag.ReqWaiting, reqMoving = ViewBag.ReqMoving;
+    int borrowWaiting = ViewBag.BorrowWaiting, borrowMoving = ViewBag.BorrowMoving, borrowToReturn = ViewBag.BorrowToReturn, borrowOverdue = ViewBag.BorrowOverdue;
+    string N(int n, string one, string many) => $"{n} {(n == 1 ? one : many)}";
+}
+@* Approvals: everything waiting on the Property Department, in two
+   places: Requisitions and Borrowing. *@
+
+<partial name="_ApprovalsNav" model="@("overview")" />
+
+<div class="asset-detail-head mb-3 pb-0 border-0">
+    <div>
+        <h2 class="asset-detail-title">Approvals</h2>
+        <div class="asset-detail-sub">What is waiting on the Property Department. Open one to act on it.</div>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-md-6">
+        <a asp-controller="NewItemRequests" asp-action="Pending" class="asset-card ap-card">
+            <span class="ap-icon" aria-hidden="true">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4h6l1 2h3v15H5V6h3z" /><path d="m9 13 2 2 4-4" /></svg>
+            </span>
+            <span class="ap-body">
+                <span class="ap-title">Requisitions</span>
+                <span class="ap-sub">Fixed assets and consumables for the departments</span>
+                <span class="ap-stats">
+                    <span class="ap-stat @(reqWaiting > 0 ? "is-hot" : "")"><strong>@reqWaiting</strong> awaiting your decision</span>
+                    <span class="ap-stat"><strong>@reqMoving</strong> in progress</span>
+                </span>
+            </span>
+            <span class="ap-go" aria-hidden="true">&rarr;</span>
+        </a>
+    </div>
+    <div class="col-md-6">
+        <a asp-controller="AssetRequests" asp-action="Pending" class="asset-card ap-card">
+            <span class="ap-icon" aria-hidden="true">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" /><path d="M14 3v6h6" /></svg>
+            </span>
+            <span class="ap-body">
+                <span class="ap-title">Borrowing</span>
+                <span class="ap-sub">Borrows to approve, hand over and take back</span>
+                <span class="ap-stats">
+                    <span class="ap-stat @(borrowWaiting > 0 ? "is-hot" : "")"><strong>@borrowWaiting</strong> waiting for approval</span>
+                    <span class="ap-stat"><strong>@borrowMoving</strong> in progress</span>
+                    <span class="ap-stat @(borrowOverdue > 0 ? "is-late" : "")"><strong>@borrowToReturn</strong> to be returned@(borrowOverdue > 0 ? $" · {N(borrowOverdue, "overdue", "overdue")}" : "")</span>
+                </span>
+            </span>
+            <span class="ap-go" aria-hidden="true">&rarr;</span>
+        </a>
+    </div>
+</div>

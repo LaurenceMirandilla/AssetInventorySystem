@@ -23,6 +23,9 @@ namespace SchoolInventoryManagement.Web.ViewModels
         public DateTime? FromDate { get; set; }
         public DateTime? ToDate { get; set; }
         public int Page { get; set; } = 1;
+        // Opened from My borrowing: only the signed-in user's own borrows,
+        // even for Property Officers (who otherwise see everyone's).
+        public bool Mine { get; set; }
 
         [BindNever] public List<AssetRequestResponseDTO> Rows { get; set; } = new();
         [BindNever] public int TotalCount { get; set; }
@@ -44,6 +47,7 @@ namespace SchoolInventoryManagement.Web.ViewModels
         public Dictionary<string, string> FilterRoute()
         {
             var route = new Dictionary<string, string>();
+            if (Mine) route["mine"] = "true";
             if (Type.HasValue) route["type"] = Type.Value.ToString();
             if (!string.IsNullOrWhiteSpace(Keyword)) route["keyword"] = Keyword;
             if (DecidedBy.HasValue) route["decidedBy"] = DecidedBy.Value.ToString();

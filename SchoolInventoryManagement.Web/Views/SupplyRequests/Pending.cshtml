@@ -68,11 +68,11 @@
     <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
 }
 
-<partial name="_BorrowingNav" model="@("approvals")" />
+<partial name="_ApprovalsNav" model="@("requisitions")" />
 
 <div class="asset-detail-head mb-3 pb-0 border-0">
     <div>
-        <h2 class="asset-detail-title">Approvals</h2>
+        <h2 class="asset-detail-title">Older supply requests</h2>
         <div class="asset-detail-sub">@waiting.Count supply request@(waiting.Count == 1 ? "" : "s") awaiting a decision &middot; @ready.Count to release &middot; @outNow.Count out for delivery.</div>
     </div>
     <div class="asset-detail-actions">

@@ -26,6 +26,11 @@ namespace SchoolInventoryManagement.Web.ViewModels
         [MaxLength(500)]
         public string? Remarks { get; set; }
 
+        // When they came back (defaults to now; earlier when recorded late).
+        [Required(ErrorMessage = "Say when the units came back.")]
+        [Display(Name = "Returned on")]
+        public System.DateTime? ReturnedOn { get; set; }
+
         [Required(ErrorMessage = "Say where the units are being put back.")]
         [Display(Name = "Return to location")]
         public int? ReturnLocationID { get; set; }

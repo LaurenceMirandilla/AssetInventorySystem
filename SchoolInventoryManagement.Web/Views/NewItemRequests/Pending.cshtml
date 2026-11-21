@@ -4,7 +4,7 @@
 @using SchoolInventoryManagement.DAL.Entities.Enums
 @using SchoolInventoryManagement.Web.Helpers
 @{
-    ViewData["Title"] = "Requisition queue";
+    ViewData["Title"] = "Requisition approvals";
     // What this page shows, for the live updates (_Layout, site.js).
     ViewData["LiveScope"] = "newitems";
 
@@ -48,19 +48,23 @@
     <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
 }
 
+<partial name="_ApprovalsNav" model="@("requisitions")" />
+
 <div class="asset-detail-head mb-3 pb-0 border-0">
     <div>
-        <h2 class="asset-detail-title">Requisition queue</h2>
-        <div class="asset-detail-sub">@Model.Count requisition@(Model.Count == 1 ? "" : "s") waiting on you.</div>
+        <h2 class="asset-detail-title">Requisitions</h2>
+        <div class="asset-detail-sub">Fixed assets and consumables · @Model.Count requisition@(Model.Count == 1 ? "" : "s") waiting on you.</div>
     </div>
     @if (seesAll)
     {
         <div class="asset-detail-actions">
             <a asp-action="Requesters" class="btn btn-outline-secondary">Who can request</a>
-            <a asp-action="All" class="btn btn-outline-secondary">All requisitions</a>
+            <a asp-action="All" class="btn btn-outline-secondary">Requisition history</a>
         </div>
     }
 </div>
+
+<partial name="_ApprovalsSwitch" model="@("Requisitions")" />
 
 <div class="page-tabs" role="tablist">
     <button type="button" class="active" role="tab" aria-selected="true" data-md-tab="niAwaiting">

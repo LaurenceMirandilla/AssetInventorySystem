@@ -135,6 +135,9 @@ namespace SchoolInventoryManagement.BLL.Services
         }
 
         private static string DetailsUrl(int id) => $"/NewItemRequests/Details/{id}";
+        // Purchasing's link: straight to the purchase order for it, with the
+        // whole requisition on the page.
+        private static string PurchaseUrl(int id) => $"/Purchasing/CreateOrder?requestId={id}";
 
         private void AddStep(NewItemRequest request, NewItemStatus status, int userId, string? remarks, DateTime when)
         {
@@ -506,7 +509,7 @@ namespace SchoolInventoryManagement.BLL.Services
                 var missing = string.Join(", ", items.Where(i => i.ToBuy > 0).Select(i => $"{i.ItemName} ×{i.ToBuy}"));
                 foreach (var userId in (await ProcurerIdsAsync()).Where(id => id != actingUserId))
                     NotificationHelper.Queue(_context, userId,
-                        $"To buy for requisition #{request.NewItemRequestID} from {requesterName}: {missing}. Needed by {request.NeededBy:MMM d}.", url);
+                        $"To buy for requisition #{request.NewItemRequestID} from {requesterName}: {missing}. Needed by {request.NeededBy:MMM d}.", PurchaseUrl(request.NewItemRequestID));
             }
             else
             {
@@ -590,7 +593,7 @@ namespace SchoolInventoryManagement.BLL.Services
                         PONumber = o.PONumber,
                         SupplierName = o.SupplierName,
                         OrderDate = o.OrderDate,
-                        Total = o.Lines.Sum(l => l.Quantity * l.UnitPrice)
+                        Total = o.Lines.Sum(l => l.Quantity * l.UnitPrice) + o.Tax + o.ShippingCost + o.OtherCost
                     }
                 })
                 .ToListAsync();
@@ -921,7 +924,7 @@ namespace SchoolInventoryManagement.BLL.Services
                 // Only from before requisitions: on to Purchasing.
                 case NewItemStatus.Procuring:
                     foreach (var userId in (await ProcurerIdsAsync()).Where(id => id != actor.UserID && id != request.RequestedByUserID))
-                        NotificationHelper.Queue(_context, userId, $"To buy for requisition #{requestId}: {item}.", url);
+                        NotificationHelper.Queue(_context, userId, $"To buy for requisition #{requestId}: {item}.", PurchaseUrl(requestId));
                     break;
 
                 case NewItemStatus.AwaitingArrival:
@@ -1333,7 +1336,7 @@ namespace SchoolInventoryManagement.BLL.Services
 
             var url = DetailsUrl(requestId);
             foreach (var userId in (await ProcurerIdsAsync()).Where(id => id != actor.UserID && id != request.RequestedByUserID))
-                NotificationHelper.Queue(_context, userId, $"To buy for requisition #{requestId}: {text} (no longer in stock).", url);
+                NotificationHelper.Queue(_context, userId, $"To buy for requisition #{requestId}: {text} (no longer in stock).", PurchaseUrl(requestId));
             NotificationHelper.Queue(_context, request.RequestedByUserID,
                 $"Requisition #{requestId}: {text} is no longer in stock, so it is being bought. Everything is sent together once it arrives.", url);
 

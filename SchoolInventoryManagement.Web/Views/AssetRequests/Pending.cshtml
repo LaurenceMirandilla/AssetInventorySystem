@@ -4,7 +4,7 @@
 @using SchoolInventoryManagement.DAL.Entities.Enums
 @using SchoolInventoryManagement.Web.ViewModels
 @{
-    ViewData["Title"] = "Approvals";
+    ViewData["Title"] = "Borrowing approvals";
     // What this page shows, for the live updates (_Layout, site.js).
     ViewData["LiveScope"] = "approvals";
 
@@ -26,11 +26,12 @@
     bool IsOverdue(AssetRequestResponseDTO r) =>
         r.RequestStatus == RequestStatus.Assigned && r.ReturnBy is not null && r.ReturnBy.Value < now;
 
-    // Delivered for good, until the requester confirms receipt.
+    // Handed over, until the requester confirms receipt. Nothing can be
+    // returned before that.
     bool AwaitsConfirm(AssetRequestResponseDTO r) =>
-        r.RequestStatus == RequestStatus.Assigned && r.IsPermanent;
+        r.RequestStatus == RequestStatus.Assigned && (r.IsPermanent || r.AcknowledgedAt is null);
 
-    var overdue = inProgress.Where(IsOverdue).OrderBy(r => r.ReturnBy).ToList();
+    var overdue = inProgress.Where(r => IsOverdue(r) && !AwaitsConfirm(r)).OrderBy(r => r.ReturnBy).ToList();
     var transit = inProgress.Where(r => r.RequestStatus == RequestStatus.InTransit).ToList();
     var confirming = inProgress.Where(AwaitsConfirm).ToList();
     var outNow = inProgress.Where(r => r.RequestStatus != RequestStatus.InTransit && !IsOverdue(r) && !AwaitsConfirm(r))
@@ -42,7 +43,7 @@
     var transitGroups = new[]
     {
         (Key: "transit", Label: "Ready for pickup or delivery", Items: transit),
-        (Key: "confirm", Label: "Delivered, waiting for the requester to confirm", Items: confirming)
+        (Key: "confirm", Label: "Handed over, waiting for the requester to confirm", Items: confirming)
     };
     var returnList = overdue.Concat(outNow).ToList();
     var returnGroups = new[]
@@ -84,22 +85,21 @@
     <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
 }
 
-<partial name="_BorrowingNav" model="@("approvals")" />
+<partial name="_ApprovalsNav" model="@("borrowing")" />
 
 <div class="asset-detail-head mb-3 pb-0 border-0">
     <div>
-        <h2 class="asset-detail-title">Approvals</h2>
-        <div class="asset-detail-sub">@Model.Count request@(Model.Count == 1 ? "" : "s") awaiting a decision from you.</div>
+        <h2 class="asset-detail-title">Borrowing</h2>
+        <div class="asset-detail-sub">@Model.Count borrow@(Model.Count == 1 ? "" : "s") awaiting a decision from you, then handing over and returns.</div>
     </div>
     @if (canManageAssets)
     {
         <div class="asset-detail-actions">
-            <a asp-action="History" class="btn btn-outline-secondary">Borrow History</a>
+            <a asp-action="History" class="btn btn-outline-secondary">Borrowing history</a>
         </div>
     }
 </div>
 
-<partial name="_ApprovalsSwitch" model="@("Assets")" />
 
 @{
     // ?tab=progress / ?tab=return (after Picked up / Delivered or a recorded
@@ -149,11 +149,6 @@
                             Filters
                         </button>
                         <div class="dropdown-menu dropdown-menu-end md-filter-menu">
-                            <label class="form-label">Type</label>
-                            <select class="form-select form-select-sm mb-2" data-md-filter="type">
-                                <option value="">Any</option>
-                                <option value="borrow">Borrow</option>
-                            </select>
                             <label class="form-label">Branch</label>
                             <div class="mb-2">
                             <select class="form-select form-select-sm" data-md-filter="branch" data-combobox>
@@ -347,18 +342,13 @@
                             Filters
                         </button>
                         <div class="dropdown-menu dropdown-menu-end md-filter-menu">
-                            <label class="form-label">Type</label>
-                            <select class="form-select form-select-sm mb-2" data-md-filter="type">
-                                <option value="">Any</option>
-                                <option value="borrow">Borrow</option>
-                            </select>
                             @if (!returns)
                             {
                                 <label class="form-label">Stage</label>
                                 <select class="form-select form-select-sm mb-2" data-md-filter="stage">
                                     <option value="">Any</option>
-                                    <option value="pickup">Pick up</option>
-                                    <option value="delivery">Delivery</option>
+                                    <option value="transit">Waiting to be picked up</option>
+                                    <option value="confirm">Waiting for the borrower to confirm</option>
                                 </select>
                             }
                             else
@@ -402,7 +392,7 @@
                             var late = g.Key == "late";
                             <button type="button" class="myassets-item" data-entry="@prefix-@r.RequestID" data-search="@Search(r)"
                                     data-type="@r.RequestType.ToString().ToLowerInvariant()" data-dept="@(r.DepartmentName?.ToLowerInvariant() ?? "")" data-branch="@BranchOf(r).ToLowerInvariant()"
-                                    data-stage="@(isBorrow ? "pickup" : "delivery")" data-timing="@(late ? "overdue" : "ontime")">
+                                    data-stage="@g.Key" data-timing="@(late ? "overdue" : "ontime")">
                                 <span class="md-avatar @(late ? "is-dark" : "")">@Initials(r.RequestedByUser.FullName)</span>
                                 <span class="myassets-item-main">
                                     <span class="myassets-item-title">@r.RequestedByUser.FullName</span>
@@ -415,7 +405,7 @@
                                         }
                                         else if (g.Key == "confirm")
                                         {
-                                            @("delivered to " + (r.RequestedLocationName ?? "the destination"))
+                                            @(isBorrow ? "picked up, not confirmed yet" : "delivered to " + (r.RequestedLocationName ?? "the destination"))
                                         }
                                         else
                                         {
@@ -588,7 +578,8 @@
                                     </div>
                                     <div class="req-action-note">
                                         @(inTransit ? "Not handed over yet: mark it done, or cancel to put the units back."
-                                            : toConfirm ? $"Delivered for good. The items become {r.DepartmentName}'s once the requester confirms. If something was wrong, record a return to take them back."
+                                            : toConfirm && isBorrow ? "Picked up. The return can be recorded once the borrower confirms they received the items."
+                                            : toConfirm ? $"Delivered for good. The items become {r.DepartmentName}'s once the requester confirms."
                                             : "Record the return when the units come back.")
                                     </div>
                                 </div>
@@ -603,7 +594,7 @@
                                         </form>
                                         <a asp-action="Cancel" asp-route-id="@r.RequestID" class="btn btn-outline-danger">Cancel</a>
                                     }
-                                    else if (r.UnitsOut > 0)
+                                    else if (r.UnitsOut > 0 && r.AcknowledgedAt is not null)
                                     {
                                         <a asp-action="RecordReturn" asp-route-id="@r.RequestID" asp-route-from="approvals" class="btn btn-primary">Record return &rarr;</a>
                                     }

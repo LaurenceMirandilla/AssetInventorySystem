@@ -204,6 +204,34 @@ document.addEventListener('change', function (e) {
                 }
             });
 
+            // data-combo-new="value": typing a name that is not on the list
+            // offers it as a new item. Picking it selects that value and
+            // fires "combo-new" with the typed text.
+            var newValue = select.dataset.comboNew;
+            if (newValue && q && !Array.from(select.options).some(function (o) { return !o.hidden && o.text.trim().toLowerCase() === q; })) {
+                var typed = (query || '').trim();
+                var nli = document.createElement('li');
+                var nb = document.createElement('button');
+                nb.type = 'button';
+                nb.className = 'dropdown-item combo-add';
+                nb.setAttribute('role', 'option');
+                nb.tabIndex = -1;
+                nb.dataset.value = newValue;
+                nb.dataset.newText = typed;
+                var nm = document.createElement('span');
+                nm.className = 'combo-main';
+                nm.textContent = '+ Add "' + typed + '" as a new item';
+                nb.appendChild(nm);
+                var ns = document.createElement('small');
+                ns.className = 'combo-sub';
+                ns.textContent = 'not in the system yet: it is bought';
+                nb.appendChild(ns);
+                nb.addEventListener('mousedown', function (e) { e.preventDefault(); pick(newValue, typed); });
+                nli.appendChild(nb);
+                list.appendChild(nli);
+                shown++;
+            }
+
             if (!shown) {
                 var none = document.createElement('li');
                 none.className = 'dropdown-item-text text-muted small';
@@ -248,11 +276,12 @@ document.addEventListener('change', function (e) {
             input.setAttribute('aria-expanded', 'false');
         }
 
-        function pick(value) {
+        function pick(value, newText) {
             if (select.value !== value) {
                 select.value = value;
                 select.dispatchEvent(new Event('change', { bubbles: true }));
             }
+            if (newText) select.dispatchEvent(new CustomEvent('combo-new', { bubbles: true, detail: { text: newText } }));
             syncText();
             close();
         }
@@ -273,7 +302,7 @@ document.addEventListener('change', function (e) {
                 if (list.classList.contains('show')) {
                     e.preventDefault();
                     var target = all[active] || (all.length === 1 ? all[0] : null);
-                    if (target) pick(target.dataset.value);
+                    if (target) pick(target.dataset.value, target.dataset.newText);
                 }
             } else if (e.key === 'Escape') {
                 close();
@@ -292,7 +321,9 @@ document.addEventListener('change', function (e) {
         syncText();
     }
 
-    function init() { document.querySelectorAll('select[data-combobox]').forEach(enhance); }
+    // Once each: a page script may have set some up already (New
+    // requisition's rows), and doing it twice showed two boxes.
+    function init() { document.querySelectorAll('select[data-combobox]').forEach(function (s) { if (!s.closest('.combo')) enhance(s); }); }
     // For rows added later (New request's "+ Add another item").
     window.sabCombobox = function (select) { if (!select.closest('.combo')) enhance(select); };
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();

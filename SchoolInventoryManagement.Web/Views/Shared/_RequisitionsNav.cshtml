@@ -1,0 +1,20 @@
+@model string
+@* Requisitions' pages as tabs (the sidebar has one Requisitions link):
+   your own, and everyone's for those who see them all. The ones waiting
+   on Property are under Approvals (_ApprovalsNav). *@
+@{
+    var seesAll = User.IsInRole("Property Officer") || User.IsInRole("Administrator") || User.IsInRole("Principal");
+}
+<ul class="nav nav-tabs mb-3" aria-label="Requisitions">
+    <li class="nav-item">
+        <a class="nav-link @(Model == "mine" ? "active" : "")" aria-current="@(Model == "mine" ? "page" : null)"
+           asp-controller="NewItemRequests" asp-action="MyRequests">My requisitions</a>
+    </li>
+    @if (seesAll)
+    {
+        <li class="nav-item">
+            <a class="nav-link @(Model == "all" ? "active" : "")" aria-current="@(Model == "all" ? "page" : null)"
+               asp-controller="NewItemRequests" asp-action="All">All requisitions</a>
+        </li>
+    }
+</ul>

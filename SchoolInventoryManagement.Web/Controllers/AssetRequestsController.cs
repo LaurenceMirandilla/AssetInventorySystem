@@ -131,14 +131,18 @@ namespace SchoolInventoryManagement.Web.Controllers
         // service enforces that).
         public async Task<IActionResult> History(RequestHistoryViewModel model)
         {
-            ViewBag.OwnOnly = !(User.IsInRole(RoleNames.AssetOfficer) || User.IsInRole(RoleNames.Administrator));
+            var officer = User.IsInRole(RoleNames.AssetOfficer) || User.IsInRole(RoleNames.Administrator);
+            // Everyone's history is Approvals' (officers); from My borrowing
+            // (mine=true), and for everybody else, only their own.
+            model.Mine = model.Mine || !officer;
+            ViewBag.OwnOnly = model.Mine;
             var result = await _requestService.GetDecisionHistoryAsync(new RequestHistoryFilterDTO
             {
                 Decision = model.Decision,
                 Type = model.Type,
                 Keyword = model.Keyword,
                 DecidedByUserId = model.DecidedBy,
-                RequestedByUserId = model.RequestedBy,
+                RequestedByUserId = model.Mine ? CurrentUserId : model.RequestedBy,
                 DepartmentId = model.DepartmentId,
                 BranchId = model.BranchId,
                 FromDate = model.FromDate,
@@ -324,14 +328,14 @@ namespace SchoolInventoryManagement.Web.Controllers
             }
 
             await BuildApprovalLinesAsync(request, null);
-            await PopulateBorrowApprovalDropdownsAsync();
+            var pickup = await PickupForAsync(request);
+            ViewBag.PickupName = pickup?.Name;
 
             return View("ApproveBorrow", new ApproveBorrowRequestViewModel
             {
                 RequestID = id,
                 DepartmentID = request.DepartmentID,
-                // The requester's department room (Scripts/029).
-                PickupLocationID = request.RequestedLocationID,
+                PickupLocationID = pickup?.Id,
                 RowVersionBase64 = RowVersionHelper.ToBase64(request.RowVersion)
             });
         }
@@ -346,24 +350,16 @@ namespace SchoolInventoryManagement.Web.Controllers
             if (request is null)
                 return NotFound();
 
-            // The requester's preferred pickup point wins when they gave
-            // one; otherwise the approver has to choose.
-            var pickupLocationId = request.RequestedLocationID ?? model.PickupLocationID;
+            // Where they go and where they are collected both come from the
+            // requester's department: its department, and its room
+            // (Scripts/029). Never taken from the form.
+            model.DepartmentID = request.DepartmentID;
+            ModelState.Remove(nameof(model.DepartmentID));
+            var pickup = await PickupForAsync(request);
+            var pickupLocationId = pickup?.Id;
             if (pickupLocationId is null)
-                ModelState.AddModelError(nameof(model.PickupLocationID), "Say where the requester can collect it.");
-
-            // Same for the department: a requester who named the location
-            // gets the units in their own department, and the approver is
-            // not asked. Set here rather than trusted from the form.
-            if (request.RequestedLocationID is not null)
-            {
-                model.DepartmentID = request.DepartmentID;
-                ModelState.Remove(nameof(model.DepartmentID));
-            }
-            else if (model.DepartmentID <= 0)
-            {
-                ModelState.AddModelError(nameof(model.DepartmentID), "Choose the department the units go to.");
-            }
+                ModelState.AddModelError(string.Empty,
+                    $"The {request.DepartmentName} has no room yet, so there is nowhere to collect the units. Add its room on the Departments page first.");
 
             if (!ModelState.IsValid)
                 return await RedisplayBorrowApprovalAsync(id, model);
@@ -447,6 +443,20 @@ namespace SchoolInventoryManagement.Web.Controllers
                 : RedirectToAction(nameof(Details), new { id });
         }
 
+        // GET /AssetRequests/Borrowers
+        // Property's view of who has its items right now: every borrow that
+        // is out (or ready to be picked up), its units, and when it is due.
+        [Authorize(Roles = AssetManagerRoles)]
+        public async Task<IActionResult> Borrowers()
+        {
+            var borrows = (await _requestService.GetInProgressRequestsAsync(CurrentUserId))
+                .Where(r => r.RequestType == RequestType.Borrow)
+                .OrderBy(r => r.ReturnBy ?? DateTime.MaxValue)
+                .ThenBy(r => r.RequestedByUser.FullName)
+                .ToList();
+            return View(borrows);
+        }
+
         // GET /AssetRequests/RecordReturn/5
         // Units coming back on a request -- all of them are ticked to start.
         [Authorize(Roles = AssetManagerRoles)]
@@ -471,6 +481,13 @@ namespace SchoolInventoryManagement.Web.Controllers
                 return RedirectToAction(nameof(Details), new { id });
             }
 
+            // The borrower confirms receipt first.
+            if (request.AcknowledgedAt is null)
+            {
+                TempData["ErrorMessage"] = $"{request.RequestedByUser.FullName} hasn't confirmed receiving the items yet. The return can be recorded once they confirm.";
+                return RedirectToAction(nameof(Details), new { id });
+            }
+
             ViewBag.Request = request;
             await PopulateReturnLocationsAsync();
 
@@ -481,7 +498,8 @@ namespace SchoolInventoryManagement.Web.Controllers
                     .Where(u => u.ReturnDate == null)
                     .Select(u => u.AssignmentID)
                     .ToList(),
-                RowVersionBase64 = RowVersionHelper.ToBase64(request.RowVersion)
+                RowVersionBase64 = RowVersionHelper.ToBase64(request.RowVersion),
+                ReturnedOn = PhilippineTime.Now
             });
         }
 
@@ -508,7 +526,8 @@ namespace SchoolInventoryManagement.Web.Controllers
                         model.UnitConditions
                             .Where(u => Enum.TryParse<ConditionStatus>(u.Value, out _))
                             .ToDictionary(u => u.Key, u => Enum.Parse<ConditionStatus>(u.Value)),
-                        model.Remarks);
+                        model.Remarks,
+                        model.ReturnedOn);
 
                     TempData["StatusMessage"] =
                         $"{model.AssignmentIDs.Count} unit{(model.AssignmentIDs.Count == 1 ? "" : "s")} returned.";
@@ -808,6 +827,33 @@ namespace SchoolInventoryManagement.Web.Controllers
             return lines;
         }
 
+        // The pickup point for a borrow: the room the requester named, or
+        // else their department's room.
+        // A department with no room yet: collected at its branch's Property
+        // Department instead (said on the page).
+        private async Task<(int Id, string Name)?> PickupForAsync(AssetRequestResponseDTO request)
+        {
+            if (request.RequestedLocationID is int named)
+                return (named, request.RequestedLocationName ?? "");
+            var locations = await _locationService.GetAllLocationsAsync();
+            var departments = await _departmentService.GetAllDepartmentsAsync();
+            (int, string)? RoomOf(DepartmentDTO? d)
+            {
+                if (d is null) return null;
+                var room = locations.FirstOrDefault(l => l.LocationID == d.MainLocationID)
+                           ?? locations.Where(l => l.DepartmentID == d.DepartmentID).OrderBy(l => l.LocationID).FirstOrDefault();
+                return room is null ? null : (room.LocationID, room.LocationName);
+            }
+            var own = departments.FirstOrDefault(d => d.DepartmentID == request.DepartmentID);
+            var mine = RoomOf(own);
+            if (mine is not null)
+                return mine;
+            var property = RoomOf(departments.FirstOrDefault(d => d.IsProperty && d.BranchID == own?.BranchID));
+            if (property is not null)
+                ViewBag.PickupNote = $"The {request.DepartmentName} has no room yet, so it is collected at the Property Department.";
+            return property;
+        }
+
         private async Task PopulateBorrowApprovalDropdownsAsync()
         {
             // "Where they go": a branch first, then that branch's rooms and
@@ -844,7 +890,7 @@ namespace SchoolInventoryManagement.Web.Controllers
 
             ViewBag.Request = request;
             await BuildApprovalLinesAsync(request, model.AssetIDs);
-            await PopulateBorrowApprovalDropdownsAsync();
+            ViewBag.PickupName = (await PickupForAsync(request))?.Name;
             ViewBag.ModelCategories = await ModelCategoriesAsync();
             return View("ApproveBorrow", model);
         }

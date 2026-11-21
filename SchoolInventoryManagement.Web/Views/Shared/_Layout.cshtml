@@ -90,7 +90,8 @@
     var onNewItemApprovals = inNewItemRequests
         && (newItemApprovalActions.Contains(currentAction, StringComparer.OrdinalIgnoreCase) || navSection == "newitem-approvals");
     // Property: the stock pages (items, supplies, counts, red tags).
-    var onProperty = isActive(new[] { "Assets", "Supplies", "AssetCounts" }) && currentAction != "MyAssets";
+    var onBorrowers = inRequests && string.Equals(currentAction, "Borrowers", StringComparison.OrdinalIgnoreCase);
+    var onProperty = (isActive(new[] { "Assets", "Supplies", "AssetCounts" }) && currentAction != "MyAssets") || onBorrowers;
     var onNewItemAll = inNewItemRequests
         && string.Equals(currentAction, "All", StringComparison.OrdinalIgnoreCase);
 
@@ -188,36 +189,36 @@
                     @* Requisitions: fixed assets and consumables for the
                        department, from stock or bought (Scripts/031). *@
                     <li class="sab-nav-item">
-                        <a class="sab-nav-link @((inNewItemRequests && !onNewItemApprovals && !onNewItemAll) || (isActive(new[]{"SupplyRequests"}) && !onSupplyApprovals) ? "active" : "")" asp-controller="NewItemRequests" asp-action="MyRequests">
+                        <a class="sab-nav-link @((inNewItemRequests && !onNewItemApprovals) || (isActive(new[]{"SupplyRequests"}) && !onSupplyApprovals) ? "active" : "")" asp-controller="NewItemRequests" asp-action="MyRequests">
                             <span class="sab-nav-label">@Html.Raw(navIcon("plus"))Requisitions</span>
                         </a>
                     </li>
                     @* Borrowing: borrows and returns; for Property its approvals
                        and the history are tabs on the same page. *@
                     <li class="sab-nav-item">
-                        <a class="sab-nav-link @(inRequests || onSupplyApprovals ? "active" : "")" asp-controller="AssetRequests" asp-action="MyRequests">
+                        <a class="sab-nav-link @(inRequests && !(isAssetManager && (onApprovals || onBorrowers)) ? "active" : "")" asp-controller="AssetRequests" asp-action="MyRequests">
                             <span class="sab-nav-label">@Html.Raw(navIcon("requests"))Borrowing</span>
-                            @if (isAssetManager)
-                            {
-                                @await Component.InvokeAsync("ApprovalsBadge")
-                            }
                         </a>
                     </li>
 
                     @if (isAssetManager)
                     {
+                        @* Approvals: what is waiting on Property, apart from
+                           everyone's own Requisitions and Borrowing above. *@
+                        <li class="sab-nav-divider" role="separator"></li>
+                        <li class="sab-nav-item">
+                            <a class="sab-nav-link @(isActive(new[]{"Approvals"}) || onNewItemApprovals || onApprovals || onSupplyApprovals ? "active" : "")" asp-controller="Approvals" asp-action="Index">
+                                <span class="sab-nav-label">@Html.Raw(navIcon("check"))Approvals</span>
+                                @await Component.InvokeAsync("ApprovalsBadge")
+                            </a>
+                        </li>
+
                         @* The Property Department: its stock (item encoding, import,
-                           red tags), the requisitions it fills, and the lists
-                           items are described with. *@
+                           red tags, borrowers) and the lists items are described with. *@
                         <li class="sab-nav-divider" role="separator"></li>
                         <li class="sab-nav-item">
                             <a class="sab-nav-link @(onProperty ? "active" : "")" asp-controller="Assets" asp-action="Index">
                                 <span class="sab-nav-label">@Html.Raw(navIcon("assets"))Property</span>
-                            </a>
-                        </li>
-                        <li class="sab-nav-item">
-                            <a class="sab-nav-link @(onNewItemApprovals ? "active" : "")" asp-controller="NewItemRequests" asp-action="Pending">
-                                <span class="sab-nav-label">@Html.Raw(navIcon("check"))Requisition</span>
                             </a>
                         </li>
                         <li class="sab-nav-item">
@@ -259,11 +260,16 @@
                     }
                     @if (isApprover)
                     {
-                        <li class="sab-nav-item">
-                            <a class="sab-nav-link @(onNewItemAll ? "active" : "")" asp-controller="NewItemRequests" asp-action="All">
-                                <span class="sab-nav-label">@Html.Raw(navIcon("requests"))All Requisitions</span>
-                            </a>
-                        </li>
+                        @* Everyone's requisitions: Requisition history, under Approvals
+                           for Property; the Principal (no Approvals) gets a link. *@
+                        @if (!isAssetManager)
+                        {
+                            <li class="sab-nav-item">
+                                <a class="sab-nav-link @(onNewItemAll ? "active" : "")" asp-controller="NewItemRequests" asp-action="All">
+                                    <span class="sab-nav-label">@Html.Raw(navIcon("requests"))Requisition history</span>
+                                </a>
+                            </li>
+                        }
                         <li class="sab-nav-item">
                             <a class="sab-nav-link @(isActive(new[]{"Reports"}) ? "active" : "")" asp-controller="Reports" asp-action="Index">
                                 <span class="sab-nav-label">@Html.Raw(navIcon("reports"))Reports</span>

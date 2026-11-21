@@ -32,7 +32,7 @@
     // Where "back" goes: your list, Purchasing, or the queue.
     var backAction = isMine ? "MyRequests" : "Pending";
     var backController = !isMine && buying && User.IsInRole("Purchasing Officer") ? "Purchasing" : "NewItemRequests";
-    var backText = isMine ? "Requisitions" : backController == "Purchasing" ? "Purchasing" : "Requisition queue";
+    var backText = isMine ? "Requisitions" : backController == "Purchasing" ? "Purchasing" : "Requisition approvals";
     if (backController == "Purchasing") { backAction = "Index"; }
     var units = Model.Items.Sum(i => i.Quantity);
     // The item lines saved with the ticket are already in the table above

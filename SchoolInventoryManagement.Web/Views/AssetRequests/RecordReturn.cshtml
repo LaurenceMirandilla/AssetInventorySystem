@@ -153,6 +153,32 @@
                 </div>
             </div>
 
+            @* ---- When: Returned on (now, or earlier when recorded late) and Due back ---- *@
+            <div class="asset-card register-step mb-3">
+                <div class="register-step-head">
+                    <div class="register-step-title flex-grow-1">Return date</div>
+                    <span class="nr-head-note" id="lateNote"></span>
+                </div>
+                <div class="register-step-body">
+                    <div class="row g-3">
+                        <div class="col-sm-6">
+                            <label class="form-label" for="ReturnedOn">Returned on</label>
+                            <input type="datetime-local" class="form-control" id="ReturnedOn" name="ReturnedOn" required
+                                   value="@((Model.ReturnedOn ?? PhilippineTime.Now).ToString("yyyy-MM-ddTHH:mm"))"
+                                   max="@PhilippineTime.Now.AddMinutes(5).ToString("yyyy-MM-ddTHH:mm")"
+                                   min="@(request?.AssignedDate?.ToString("yyyy-MM-ddTHH:mm") ?? "")" />
+                            <span asp-validation-for="ReturnedOn" class="text-danger"></span>
+                            <div class="nr-hint mt-1">Now, or earlier if the units came back before today's recording.</div>
+                        </div>
+                        <div class="col-sm-6">
+                            <span class="form-label d-block">Due back</span>
+                            <div class="form-control bg-light" id="dueBack" data-due="@(request?.ReturnBy?.ToString("yyyy-MM-ddTHH:mm") ?? "")">@DisplayText.Or(request?.ReturnBy?.ToString("MMM d, yyyy · h:mm tt"), "No due date")</div>
+                            <div class="nr-hint mt-1">@(request?.AssignedDate is null ? "" : (request.RequestType == SchoolInventoryManagement.DAL.Entities.Enums.RequestType.Borrow ? "Borrowed " : "Delivered ") + request.AssignedDate.Value.ToString("MMM d, yyyy · h:mm tt"))</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             @* ---- Condition ---- *@
             <div class="asset-card register-step mb-3">
                 <div class="register-step-head">
@@ -284,7 +310,14 @@
                 boxes.forEach(function (b) { var t = b.closest('.rr-tile'); t.classList.toggle('is-picked', b.checked); t.classList.toggle('is-off', !b.checked); });
             }
 
-            form.addEventListener('change', function (e) { if (e.target.classList.contains('rr-box')) refresh(); });
+            form.addEventListener('change', function (e) {
+                // Tagging a unit with its own condition means it is coming back: tick it.
+                if (e.target.classList.contains('rr-cond') && e.target.value) {
+                    var b = e.target.closest('.rr-tile').querySelector('.rr-box');
+                    if (!b.checked) { b.checked = true; refresh(); }
+                }
+                if (e.target.classList.contains('rr-box')) refresh();
+            });
             document.getElementById('tickAll').addEventListener('click', function () { boxes.forEach(function (b) { b.checked = true; }); refresh(); });
             document.getElementById('tickNone').addEventListener('click', function () { boxes.forEach(function (b) { b.checked = false; }); refresh(); });
 
@@ -335,6 +368,20 @@
                 hint: function (b) { return b ? 'Search a location' : '-- Pick a branch first --'; },
                 lock: function (b) { return !b; }
             });
+
+            // Returned on vs Due back: on time, or how late.
+            var when = document.getElementById('ReturnedOn');
+            var due = document.getElementById('dueBack').dataset.due;
+            function lateness() {
+                var note = document.getElementById('lateNote');
+                if (!due || !when.value) { note.textContent = ''; return; }
+                var d = new Date(when.value) - new Date(due);
+                var days = Math.ceil(d / 86400000);
+                note.textContent = d <= 0 ? 'on time' : days <= 1 ? 'returned late (less than a day)' : 'returned ' + days + ' days late';
+                note.classList.toggle('text-danger', d > 0);
+            }
+            when.addEventListener('input', lateness);
+            lateness();
 
             refresh();
         })();

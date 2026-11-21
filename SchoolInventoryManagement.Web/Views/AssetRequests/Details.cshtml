@@ -399,7 +399,14 @@
            the request is cancelled instead. *@
         @if (isAssigned && canManageAssets && Model.UnitsOut > 0)
         {
-            <a asp-action="RecordReturn" asp-route-id="@Model.RequestID" class="btn btn-primary">Record return</a>
+            @if (Model.AcknowledgedAt is null)
+            {
+                <span class="text-muted small align-self-center">Record return opens once @Model.RequestedByUser.FullName confirms receiving the items.</span>
+            }
+            else
+            {
+                <a asp-action="RecordReturn" asp-route-id="@Model.RequestID" class="btn btn-primary">Record return</a>
+            }
         }
     </div>
 </div>

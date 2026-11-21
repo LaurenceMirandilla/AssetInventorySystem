@@ -43,11 +43,19 @@ namespace SchoolInventoryManagement.BLL.DTOs
     {
         public int NewItemRequestID { get; set; }
         public string RequestedByUserName { get; set; } = null!;
+        public string? RequesterRole { get; set; }
         public string DepartmentName { get; set; } = null!;
+        public string? BranchName { get; set; }
+        // Bought for the Property Department's own stock (a borrow short of stock).
+        public bool ForStock { get; set; }
+        // The requester's room, where it ends up.
+        public string? DeliverTo { get; set; }
+        public DateTime RequestedOn { get; set; }
         public DateTime? NeededBy { get; set; }
         public string? Reason { get; set; }
         public CategoryKind ItemKind { get; set; }
         public List<PurchaseOrderFormLineDTO> Lines { get; set; } = new();
+        public List<PurchaseOrderFormLineDTO> AllItems { get; set; } = new();
         // The supplier list, to pick from (Scripts/033).
         public List<SupplierDTO> Suppliers { get; set; } = new();
     }
@@ -58,6 +66,8 @@ namespace SchoolInventoryManagement.BLL.DTOs
         public string ItemName { get; set; } = null!;
         public string? Description { get; set; }
         public string? Unit { get; set; }
+        public int Asked { get; set; }
+        public int FromStock => Math.Max(0, Asked - ToBuy);
         public int ToBuy { get; set; }
         public int Ordered { get; set; }
         public int Left => Math.Max(0, ToBuy - Ordered);
@@ -71,6 +81,13 @@ namespace SchoolInventoryManagement.BLL.DTOs
         public string? SupplierContact { get; set; }
         public DateTime OrderDate { get; set; }
         public string? Notes { get; set; }
+        public string? ShipVia { get; set; }
+        public string? Fob { get; set; }
+        public string? ShippingTerms { get; set; }
+        // Blank = none.
+        public decimal? Tax { get; set; }
+        public decimal? ShippingCost { get; set; }
+        public decimal? OtherCost { get; set; }
         public List<CreatePurchaseOrderLineDTO> Lines { get; set; } = new();
     }
 
@@ -98,16 +115,31 @@ namespace SchoolInventoryManagement.BLL.DTOs
         public int NewItemRequestID { get; set; }
         public NewItemStatus RequestStatus { get; set; }
         public string RequestedByUserName { get; set; } = null!;
+        public string? RequesterRole { get; set; }
         public string DepartmentName { get; set; } = null!;
+        public bool ForStock { get; set; }
+        public DateTime RequestedOn { get; set; }
+        public string? Reason { get; set; }
+        public string? RequesterRoom { get; set; }
         public DateTime? NeededBy { get; set; }
 
         // Where the supplier delivers: the Property Department of the
         // requisition's branch, at its main room.
         public string BranchName { get; set; } = null!;
+        public string? BranchAddress { get; set; }
+        public string? BranchContact { get; set; }
         public string? DeliverTo { get; set; }
 
+        public string? ShipVia { get; set; }
+        public string? Fob { get; set; }
+        public string? ShippingTerms { get; set; }
+        public decimal Tax { get; set; }
+        public decimal ShippingCost { get; set; }
+        public decimal OtherCost { get; set; }
+
         public List<PurchaseOrderLineDTO> Lines { get; set; } = new();
-        public decimal Total => Lines.Sum(l => l.Amount);
+        public decimal Subtotal => Lines.Sum(l => l.Amount);
+        public decimal Total => Subtotal + Tax + ShippingCost + OtherCost;
 
         // Can still be deleted: not received from the supplier yet.
         public bool CanDelete { get; set; }
@@ -161,5 +193,22 @@ namespace SchoolInventoryManagement.BLL.DTOs
         public string? Address { get; set; }
         public string? Contact { get; set; }
         public string? Notes { get; set; }
+    }
+
+    // One purchase order on Purchasing's list.
+    public class PurchaseOrderListDTO
+    {
+        public int PurchaseOrderID { get; set; }
+        public string PONumber { get; set; } = null!;
+        public DateTime OrderDate { get; set; }
+        public string SupplierName { get; set; } = null!;
+        public int NewItemRequestID { get; set; }
+        public NewItemStatus RequestStatus { get; set; }
+        public string RequestedByUserName { get; set; } = null!;
+        public string DepartmentName { get; set; } = null!;
+        public string Items { get; set; } = "";
+        public decimal Total { get; set; }
+        public int PreparedByUserID { get; set; }
+        public string PreparedByName { get; set; } = null!;
     }
 }

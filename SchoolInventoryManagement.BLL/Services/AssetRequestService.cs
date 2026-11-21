@@ -236,7 +236,7 @@ namespace SchoolInventoryManagement.BLL.Services
                 foreach (var b in toTell.Where(b => b.UserID != actingUserId))
                     NotificationHelper.Queue(_context, b.UserID,
                         $"To buy for borrow request #{request.RequestID} (requisition #{purchase.NewItemRequestID}): {missingText}. Needed {request.NeededFrom:MMM d}.",
-                        $"/NewItemRequests/Details/{purchase.NewItemRequestID}");
+                        $"/Purchasing/CreateOrder?requestId={purchase.NewItemRequestID}");
                 await _context.SaveChangesAsync();
             }
 

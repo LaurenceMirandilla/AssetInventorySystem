@@ -52,7 +52,8 @@ namespace SchoolInventoryManagement.BLL.Interfaces
         Task RecordReturnAsync(
             int requestId, List<int> assignmentIds, ConditionStatus conditionOnReturn,
             int returnLocationId, byte[] requestRowVersion, int actingUserId,
-            Dictionary<int, ConditionStatus>? unitConditions = null, string? remarks = null);
+            Dictionary<int, ConditionStatus>? unitConditions = null, string? remarks = null,
+            DateTime? returnedOn = null);
 
         // In Transit -> Cancelled: approved, but called off before anything
         // was picked up or delivered. The reserved units become Available

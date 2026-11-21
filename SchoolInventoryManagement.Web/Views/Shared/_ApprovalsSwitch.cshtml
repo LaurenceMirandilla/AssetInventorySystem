@@ -1,22 +1,16 @@
-﻿@model string
+@model string
 @inject SchoolInventoryManagement.BLL.Interfaces.ISupplyRequestService SupplyRequests
 @{
     var open = await SupplyRequests.CountOpenAsync();
 }
-@* Approvals: asset requests (borrow and transfer) or supply requests. *@
-@* Borrow and transfer requests are the Property Department's: the
-   Principal only approves supplies here. *@
-<nav class="sab-seg mb-3" aria-label="Kind of request">
-    @if (User.IsInRole("Property Officer") || User.IsInRole("Administrator"))
-    {
-        <a asp-controller="AssetRequests" asp-action="Pending" class="@(Model == "Assets" ? "active" : "")"
-           aria-current="@(Model == "Assets" ? "page" : null)">Borrow</a>
-    }
-    @* Older supply requests (before requisitions, Scripts/031): shown while
-       some are still on their way. *@
-    @if (open > 0 || Model == "Supplies")
-    {
+@* Approvals > Requisitions: the requisitions, and the older supply requests
+   (before requisitions, Scripts/031) while some are still on their way. *@
+@if (open > 0 || Model == "Supplies")
+{
+    <nav class="sab-seg mb-3" aria-label="Kind of request">
+        <a asp-controller="NewItemRequests" asp-action="Pending" class="@(Model == "Requisitions" ? "active" : "")"
+           aria-current="@(Model == "Requisitions" ? "page" : null)">Requisitions</a>
         <a asp-controller="SupplyRequests" asp-action="Pending" class="@(Model == "Supplies" ? "active" : "")"
            aria-current="@(Model == "Supplies" ? "page" : null)">Older supply requests@(open > 0 ? " · " + open : "")</a>
-    }
-</nav>
+    </nav>
+}

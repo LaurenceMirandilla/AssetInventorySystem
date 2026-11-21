@@ -101,6 +101,7 @@
             <a asp-controller="AssetAssignments" asp-action="Department" class="btn btn-outline-secondary">Assign to department</a>
             <a asp-action="BulkCreate" class="btn btn-outline-secondary">+ Bulk register</a>
             <a asp-action="Import" class="btn btn-outline-secondary">Import items</a>
+            <a asp-controller="AssetRequests" asp-action="Borrowers" class="btn btn-outline-secondary">Borrowers</a>
             @* Red tag mode: rows get a tick box; tick the units and red-tag them together. *@
             <button type="button" class="btn btn-outline-danger" id="redTagMode" aria-pressed="false">Red tag</button>
             <partial name="_NewItemMenu" />
@@ -259,9 +260,8 @@
                         <label for="fHolder" class="form-label">Held by</label>
                         <select name="holder" id="fHolder" class="form-select form-select-sm">
                             <option value="">Anyone or nobody</option>
-                            <option value="person" selected="@(Model.Holder == "person")">A person</option>
-                            <option value="department" selected="@(Model.Holder == "department")">A department (no person)</option>
-                            <option value="none" selected="@(Model.Holder == "none")">Nobody</option>
+                            <option value="person" selected="@(Model.Holder == "person")">Out with a borrower</option>
+                            <option value="none" selected="@(Model.Holder == "none")">In Property stock</option>
                         </select>
                     </div>
 
@@ -491,7 +491,11 @@
     @* The red tag bar: shown in red tag mode. *@
     <form id="redTagForm" asp-action="RedTagMany" method="post" class="register-footer rt-bar" hidden>
         @Html.AntiForgeryToken()
-        <strong class="text-danger"><span id="rtCount">0</span> ticked</strong>
+        <strong class="text-danger text-nowrap"><span id="rtCount">0</span> ticked<small class="fw-normal text-muted" id="rtElsewhere"></small></strong>
+        <span class="rt-tools">
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="rtTickPage">Tick all on this page</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="rtUntickAll">Untick all</button>
+        </span>
         <input type="text" name="reason" class="form-control" maxlength="500" required placeholder="Why they are red tagged (broken beyond repair, obsolete...)" aria-label="Reason for red tagging" />
         <button type="button" class="btn btn-outline-secondary" id="rtCancel">Cancel</button>
         <button type="submit" class="btn btn-danger" id="rtGo" disabled
@@ -502,30 +506,82 @@
 @section Scripts {
     <script>
         // Red tag mode (Property): tick box column and the bar at the bottom.
+        // Clicking anywhere on a row ticks it (no opening the item while in
+        // the mode). The mode, the ticks and the reason are kept while moving
+        // between pages and filters (this tab's sessionStorage) until they
+        // are red tagged, cancelled or unticked.
         (function () {
             var toggle = document.getElementById('redTagMode');
             var bar = document.getElementById('redTagForm');
             if (!toggle || !bar) return;
+            var KEY = 'sab-redtag';
             var boxes = Array.from(document.querySelectorAll('.rt-box'));
             var all = document.getElementById('rtAll');
+            var reason = bar.querySelector('input[name=reason]');
+            var col = document.querySelector('.rt-col');
+            var table = col ? col.closest('table') : null;
+            var state = { on: false, ids: [], reason: '' };
+            try { state = Object.assign(state, JSON.parse(sessionStorage.getItem(KEY) || '{}')); } catch (e) { }
+            var ticked = new Set((state.ids || []).map(String));
+            function save() {
+                try {
+                    if (!state.on) sessionStorage.removeItem(KEY);
+                    else sessionStorage.setItem(KEY, JSON.stringify({ on: true, ids: Array.from(ticked), reason: reason.value }));
+                } catch (e) { }
+            }
             function count() {
-                var n = boxes.filter(function (b) { return b.checked; }).length;
-                document.getElementById('rtCount').textContent = n;
-                document.getElementById('rtGo').disabled = n === 0;
+                boxes.forEach(function (b) { b.closest('tr').classList.toggle('rt-ticked', b.checked); });
+                var here = boxes.filter(function (b) { return b.checked; }).length;
+                var elsewhere = Array.from(ticked).filter(function (id) { return !boxes.some(function (b) { return b.value === id; }); }).length;
+                document.getElementById('rtCount').textContent = ticked.size;
+                document.getElementById('rtElsewhere').textContent = elsewhere ? ' (' + elsewhere + ' on other pages)' : '';
+                document.getElementById('rtGo').disabled = ticked.size === 0;
+                if (all) all.checked = boxes.length > 0 && here === boxes.length;
+                save();
             }
             function setMode(on) {
+                state.on = on;
                 toggle.setAttribute('aria-pressed', on ? 'true' : 'false');
                 toggle.classList.toggle('btn-danger', on);
                 toggle.classList.toggle('btn-outline-danger', !on);
                 document.querySelectorAll('.rt-col').forEach(function (c) { c.hidden = !on; });
+                if (table) table.classList.toggle('rt-on', on);
                 bar.hidden = !on;
-                if (!on) { boxes.forEach(function (b) { b.checked = false; }); if (all) all.checked = false; }
+                if (!on) { ticked.clear(); boxes.forEach(function (b) { b.checked = false; }); reason.value = ''; }
                 count();
             }
-            toggle.addEventListener('click', function () { setMode(toggle.getAttribute('aria-pressed') !== 'true'); });
+            function setBox(b, on) { b.checked = on; if (on) ticked.add(b.value); else ticked.delete(b.value); }
+            toggle.addEventListener('click', function () { setMode(!state.on); });
             document.getElementById('rtCancel').addEventListener('click', function () { setMode(false); });
-            boxes.forEach(function (b) { b.addEventListener('change', count); });
-            if (all) all.addEventListener('change', function () { boxes.forEach(function (b) { b.checked = all.checked; }); count(); });
+            document.getElementById('rtTickPage').addEventListener('click', function () { boxes.forEach(function (b) { setBox(b, true); }); count(); });
+            document.getElementById('rtUntickAll').addEventListener('click', function () { ticked.clear(); boxes.forEach(function (b) { b.checked = false; }); count(); });
+            boxes.forEach(function (b) { b.addEventListener('change', function () { setBox(b, b.checked); count(); }); });
+            if (all) all.addEventListener('change', function () { boxes.forEach(function (b) { setBox(b, all.checked); }); count(); });
+            reason.addEventListener('input', save);
+            // A row click ticks the row instead of opening the item.
+            if (table) table.addEventListener('click', function (e) {
+                if (!state.on) return;
+                var tr = e.target.closest('tbody tr');
+                if (!tr || !table.contains(tr)) return;
+                var box = tr.querySelector('.rt-box');
+                if (e.target === box) return;
+                e.preventDefault(); e.stopPropagation();
+                if (box) { setBox(box, !box.checked); count(); }
+            }, true);
+            // Ticks from other pages go with the form; then the mode ends.
+            bar.addEventListener('submit', function () {
+                Array.from(ticked).forEach(function (id) {
+                    if (boxes.some(function (b) { return b.value === id && b.checked; })) return;
+                    var h = document.createElement('input');
+                    h.type = 'hidden'; h.name = 'assetIds'; h.value = id;
+                    bar.appendChild(h);
+                });
+                try { sessionStorage.removeItem(KEY); } catch (e) { }
+            });
+            // Back in the mode where it was left.
+            boxes.forEach(function (b) { b.checked = ticked.has(b.value); });
+            if (state.reason) reason.value = state.reason;
+            setMode(!!state.on);
         })();
     </script>
     <script>

@@ -111,7 +111,7 @@
                         <div class="ni2-grid ni2-row item-row">
                             <span class="nr-row-num"></span>
                             <div class="ni2-name">
-                                <select class="form-select ni-pick" aria-label="Item">
+                                <select class="form-select ni-pick" aria-label="Item" data-combo-new="new">
                                     <option value="">Search the list...</option>
                                     @foreach (var g in lookups.Models.GroupBy(m => m.Category).OrderBy(g => g.Key))
                                     {
@@ -133,7 +133,7 @@
                                             }
                                         </optgroup>
                                     }
-                                    <option value="new" data-sub="not on the list: type its name below; it is bought">+ Something new</option>
+                                    <option value="new" data-sub="not in the system yet: type its name below; it is bought">+ Something new (not on the list)</option>
                                 </select>
                                 <input type="text" name="ItemNames" maxlength="150" autocomplete="off" class="form-control ni-name mt-2"
                                        placeholder="Name of the new item" aria-label="Name of the new item" hidden />
@@ -163,6 +163,7 @@
 
                     <div class="ni-add-row">
                         <button type="button" id="addItemRow" class="nr-add my-0">+ Add another item</button>
+                        <button type="button" id="addNewItemRow" class="nr-add my-0">+ Item not on the list</button>
                         <span class="nr-hint" id="searchHint"></span>
                     </div>
                     <span asp-validation-for="ItemNames" class="text-danger d-block"></span>
@@ -328,8 +329,8 @@
                     ? 'you confirm you received it'
                     : "you confirm you received it; then the items are your department's to look after";
                 document.getElementById('searchHint').textContent = supplies
-                    ? 'Pick a consumable from the list, in stock or not, or "+ Something new" at the end.'
-                    : 'Pick a fixed asset from the list, in stock or not, or "+ Something new" at the end.';
+                    ? 'Pick a consumable from the list, in stock or not. Not in the system yet? Type its name and choose "+ Add ... as a new item", or use "+ Item not on the list".'
+                    : 'Pick a fixed asset from the list, in stock or not. Not in the system yet? Type its name and choose "+ Add ... as a new item", or use "+ Item not on the list".';
             }
             kinds.forEach(function (k) {
                 k.addEventListener('change', function () {
@@ -422,6 +423,15 @@
                 }
                 update();
             });
+            // A name typed into the list and added as a new item fills the
+            // name box.
+            rowsBox.addEventListener('combo-new', function (e) {
+                var row = e.target.closest('.item-row');
+                var name = row.querySelector('.ni-name');
+                name.value = e.detail.text;
+                delete name.dataset.fromList;
+                update();
+            });
             rowsBox.addEventListener('input', function (e) {
                 var desc = e.target.closest('.ni-desc');
                 if (desc) { desc.style.height = 'auto'; desc.style.height = desc.scrollHeight + 2 + 'px'; }
@@ -433,6 +443,21 @@
                 update();
                 var input = row.querySelector('.combo-input');
                 if (input) input.focus();
+            });
+
+            // "+ Item not on the list": a row ready for a new item's name
+            // (the empty first row is used when there is one).
+            document.getElementById('addNewItemRow').addEventListener('click', function () {
+                var rows = allRows();
+                var last = rows[rows.length - 1];
+                var row = last && !last.querySelector('.ni-pick').value ? last : rows.length < maxRows ? addRow(null) : null;
+                if (!row) return;
+                var select = row.querySelector('.ni-pick');
+                select.value = 'new';
+                applyPick(row);
+                select.dispatchEvent(new Event('combo-sync'));
+                update();
+                row.querySelector('.ni-name').focus();
             });
 
             rowsBox.addEventListener('click', function (e) {

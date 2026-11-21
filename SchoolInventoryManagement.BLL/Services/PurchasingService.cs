@@ -47,8 +47,9 @@ namespace SchoolInventoryManagement.BLL.Services
         {
             var request = await _context.NewItemRequests
                 .Include(n => n.Items)
-                .Include(n => n.Department)
-                .Include(n => n.RequestedByUser)
+                .Include(n => n.Department).ThenInclude(d => d.Branch)
+                .Include(n => n.RequestedByUser).ThenInclude(u => u.Role)
+                .Include(n => n.DeliverToLocation)
                 .FirstOrDefaultAsync(n => n.NewItemRequestID == requestId)
                 ?? throw new KeyNotFoundException("Requisition not found.");
             if (request.RequestedByUserID == actingUserId)
@@ -84,6 +85,7 @@ namespace SchoolInventoryManagement.BLL.Services
                     ItemName = i.ItemName,
                     Description = i.Description,
                     Unit = i.Unit,
+                    Asked = i.Quantity,
                     ToBuy = i.ToBuy,
                     Ordered = ordered.GetValueOrDefault(i.NewItemRequestItemID)
                 })
@@ -97,11 +99,27 @@ namespace SchoolInventoryManagement.BLL.Services
             {
                 NewItemRequestID = request.NewItemRequestID,
                 RequestedByUserName = $"{request.RequestedByUser.FirstName} {request.RequestedByUser.LastName}",
+                RequesterRole = request.RequestedByUser.Role?.RoleName,
                 DepartmentName = request.Department.DepartmentName,
+                BranchName = request.Department.Branch?.BranchName,
+                ForStock = request.Department.IsProperty,
+                DeliverTo = request.DeliverToLocation?.LocationName,
+                RequestedOn = request.RequestDate,
                 NeededBy = request.NeededBy,
                 Reason = request.Reason,
                 ItemKind = request.ItemKind,
                 Lines = lines,
+                // Everything on the requisition, the in-stock lines too.
+                AllItems = request.Items.OrderBy(i => i.NewItemRequestItemID).Select(i => new PurchaseOrderFormLineDTO
+                {
+                    NewItemRequestItemID = i.NewItemRequestItemID,
+                    ItemName = i.ItemName,
+                    Description = i.Description,
+                    Unit = i.Unit,
+                    Asked = i.Quantity,
+                    ToBuy = i.ToBuy,
+                    Ordered = ordered.GetValueOrDefault(i.NewItemRequestItemID)
+                }).ToList(),
                 Suppliers = await SupplierListAsync()
             };
         }
@@ -125,6 +143,14 @@ namespace SchoolInventoryManagement.BLL.Services
             var address = Clean(dto.SupplierAddress, 250, "supplier address");
             var contact = Clean(dto.SupplierContact, 100, "supplier contact");
             var notes = Clean(dto.Notes, 500, "note");
+            var shipVia = Clean(dto.ShipVia, 100, "ship via");
+            var fob = Clean(dto.Fob, 100, "F.O.B.");
+            var terms = Clean(dto.ShippingTerms, 150, "shipping terms");
+            decimal Amount(decimal value, string what) =>
+                value < 0 || value > 99_999_999.99m ? throw new ArgumentException($"Enter the {what} from 0, or leave it blank.") : Math.Round(value, 2);
+            var tax = Amount(dto.Tax ?? 0, "tax");
+            var shipping = Amount(dto.ShippingCost ?? 0, "shipping");
+            var other = Amount(dto.OtherCost ?? 0, "other cost");
             var orderDate = dto.OrderDate == default ? PhilippineTime.Today : dto.OrderDate.Date;
 
             var items = request.Items.ToDictionary(i => i.NewItemRequestItemID);
@@ -180,6 +206,12 @@ namespace SchoolInventoryManagement.BLL.Services
                 SupplierContact = contact,
                 OrderDate = orderDate,
                 Notes = notes,
+                ShipVia = shipVia,
+                Fob = fob,
+                ShippingTerms = terms,
+                Tax = tax,
+                ShippingCost = shipping,
+                OtherCost = other,
                 CreatedByUserID = actingUserId,
                 CreatedAt = PhilippineTime.Now,
                 Lines = lines.Select(l => new PurchaseOrderLine
@@ -233,14 +265,21 @@ namespace SchoolInventoryManagement.BLL.Services
                 .Select(x => new
                 {
                     x.PurchaseOrderID, x.PONumber, x.OrderDate, x.SupplierName, x.SupplierAddress, x.SupplierContact,
-                    x.Notes, x.CreatedAt,
+                    x.Notes, x.CreatedAt, x.ShipVia, x.Fob, x.ShippingTerms, x.Tax, x.ShippingCost, x.OtherCost,
+                    BranchAddress = x.Request.Department.Branch.Address,
+                    BranchContact = x.Request.Department.Branch.ContactInfo,
                     PreparedBy = x.CreatedByUser.FirstName + " " + x.CreatedByUser.LastName,
                     PreparedRole = x.CreatedByUser.Role.RoleName,
                     x.NewItemRequestID,
                     x.Request.RequestStatus,
                     Requester = x.Request.RequestedByUser.FirstName + " " + x.Request.RequestedByUser.LastName,
+                    RequesterRole = x.Request.RequestedByUser.Role.RoleName,
                     Department = x.Request.Department.DepartmentName,
+                    ForStock = x.Request.Department.IsProperty,
                     x.Request.NeededBy,
+                    x.Request.RequestDate,
+                    x.Request.Reason,
+                    Room = x.Request.DeliverToLocation != null ? x.Request.DeliverToLocation.LocationName : null,
                     BranchID = x.Request.Department.BranchID,
                     Branch = x.Request.Department.Branch.BranchName,
                     Lines = x.Lines.OrderBy(l => l.PurchaseOrderLineID).Select(l => new PurchaseOrderLineDTO
@@ -276,14 +315,63 @@ namespace SchoolInventoryManagement.BLL.Services
                 NewItemRequestID = o.NewItemRequestID,
                 RequestStatus = o.RequestStatus,
                 RequestedByUserName = o.Requester,
+                RequesterRole = o.RequesterRole,
                 DepartmentName = o.Department,
+                ForStock = o.ForStock,
+                RequestedOn = o.RequestDate,
+                Reason = o.Reason,
+                RequesterRoom = o.Room,
                 NeededBy = o.NeededBy,
                 BranchName = o.Branch,
+                BranchAddress = o.BranchAddress,
+                BranchContact = o.BranchContact,
+                ShipVia = o.ShipVia,
+                Fob = o.Fob,
+                ShippingTerms = o.ShippingTerms,
+                Tax = o.Tax,
+                ShippingCost = o.ShippingCost,
+                OtherCost = o.OtherCost,
                 DeliverTo = room is null ? "Property Department" : $"Property Department, {room.Trim()}",
                 Lines = o.Lines,
                 CanDelete = BuyerRoles.Contains(actor.Role.RoleName)
                             && o.RequestStatus is NewItemStatus.Procuring or NewItemStatus.AwaitingArrival
             };
+        }
+
+        // Every purchase order, newest first, for Purchasing's list.
+        public async Task<List<PurchaseOrderListDTO>> GetOrdersAsync(int actingUserId)
+        {
+            await EnsureRoleAsync(actingUserId, ReaderRoles,
+                "Only Purchasing, Property, the Principal and Administrators see purchase orders.");
+            var rows = await _context.PurchaseOrders.AsNoTracking()
+                .OrderByDescending(o => o.OrderDate).ThenByDescending(o => o.PurchaseOrderID)
+                .Select(o => new
+                {
+                    o.PurchaseOrderID, o.PONumber, o.OrderDate, o.SupplierName, o.NewItemRequestID,
+                    o.Request.RequestStatus,
+                    Requester = o.Request.RequestedByUser.FirstName + " " + o.Request.RequestedByUser.LastName,
+                    Department = o.Request.Department.DepartmentName,
+                    Items = o.Lines.Select(l => new { l.Item.ItemName, l.Quantity, l.UnitPrice }).ToList(),
+                    Extra = o.Tax + o.ShippingCost + o.OtherCost,
+                    o.CreatedByUserID,
+                    PreparedBy = o.CreatedByUser.FirstName + " " + o.CreatedByUser.LastName
+                })
+                .ToListAsync();
+            return rows.Select(o => new PurchaseOrderListDTO
+            {
+                PurchaseOrderID = o.PurchaseOrderID,
+                PONumber = o.PONumber,
+                OrderDate = o.OrderDate,
+                SupplierName = o.SupplierName,
+                NewItemRequestID = o.NewItemRequestID,
+                RequestStatus = o.RequestStatus,
+                RequestedByUserName = o.Requester,
+                DepartmentName = o.Department,
+                Items = string.Join(", ", o.Items.Select(i => $"{i.ItemName} ×{i.Quantity}")),
+                Total = o.Items.Sum(i => i.Quantity * i.UnitPrice) + o.Extra,
+                PreparedByUserID = o.CreatedByUserID,
+                PreparedByName = o.PreparedBy
+            }).ToList();
         }
 
         // ---- Suppliers (Scripts/033) --------------------------------------------

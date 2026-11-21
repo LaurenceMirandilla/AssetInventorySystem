@@ -9,15 +9,6 @@
     var name = request?.RequestedByUser.FullName ?? "";
     var initials = string.Concat(name.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(p => p[0])).ToUpperInvariant();
     if (initials.Length > 2) { initials = initials[..2]; }
-    // For choosing the pickup point when the requester left it open.
-    List<LocationDTO> pickupList = (ViewBag.PickupLocationList as List<LocationDTO>) ?? new List<LocationDTO>();
-    List<DepartmentDTO> deptList = (ViewBag.DepartmentList as List<DepartmentDTO>) ?? new List<DepartmentDTO>();
-    List<(int BranchID, string BranchName)> branchList = (ViewBag.BranchList as List<(int BranchID, string BranchName)>) ?? new List<(int BranchID, string BranchName)>();
-    // Starts at the branch of the pickup point or department already chosen
-    // (the requester's own department, at first).
-    var startBranch = pickupList.FirstOrDefault(l => l.LocationID == Model.PickupLocationID)?.BranchID
-        ?? deptList.FirstOrDefault(d => d.DepartmentID == Model.DepartmentID)?.BranchID;
-    var choosePickup = request?.RequestedLocationID is null;
     var days = request?.NeededFrom is not null && request.ReturnBy is not null
         ? Math.Max(1, (int)Math.Ceiling((request.ReturnBy.Value - request.NeededFrom.Value).TotalDays))
         : (int?)null;
@@ -67,28 +58,6 @@
 
             <partial name="_ApprovalUnitPicker" model="lines" />
 
-            @if (request?.RequestedLocationID is null)
-            {
-                @* The requester left the pickup point to the approver: it is
-                   chosen in "The request" card; the department follows the
-                   branch picked there. *@
-                <div class="asset-card register-step mb-3">
-                    <div class="register-step-head"><div class="register-step-title">Department the units go to</div></div>
-                    <div class="register-step-body">
-                        <label asp-for="DepartmentID" class="form-label visually-hidden">Department</label>
-                        <select asp-for="DepartmentID" class="form-select" data-combobox>
-                            <option value="">-- Pick a branch first --</option>
-                            @foreach (var d in deptList)
-                            {
-                                <option value="@d.DepartmentID" data-branch="@d.BranchID"
-                                        selected="@(d.DepartmentID == Model.DepartmentID)">@d.DepartmentName</option>
-                            }
-                        </select>
-                        <span asp-validation-for="DepartmentID" class="text-danger"></span>
-                    </div>
-                </div>
-            }
-
             <div class="asset-card register-step mb-3">
                 <div class="register-step-head"><div class="register-step-title">Notes</div></div>
                 <div class="register-step-body">
@@ -104,42 +73,11 @@
                     <div class="asset-card-title">The request</div>
                     <div class="approve-side-body">
                         <div class="register-side-label mb-2">Pickup at</div>
-                        @if (choosePickup)
-                        {
-                            @* A branch first, then one of its rooms, both typeable. The
-                               branch is not posted: it only narrows the rooms and the
-                               departments. *@
-                            <div class="pickup-picker">
-                                <label for="branchSelect" class="visually-hidden">Branch</label>
-                                <select id="branchSelect" class="form-select pickup-branch" data-combobox>
-                                    <option value="">Select a branch</option>
-                                    @foreach (var b in branchList)
-                                    {
-                                        var rooms = pickupList.Count(l => l.BranchID == b.BranchID);
-                                        <option value="@b.BranchID" selected="@(b.BranchID == startBranch)">@b.BranchName · @rooms location@(rooms == 1 ? "" : "s")</option>
-                                    }
-                                </select>
-                                <label for="PickupLocationID" class="visually-hidden">Pickup location</label>
-                                <div class="input-icon">
-                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 21s-7-6.2-7-12a7 7 0 0 1 14 0c0 5.8-7 12-7 12z" /><circle cx="12" cy="9" r="2.5" /></svg>
-                                    <select asp-for="PickupLocationID" class="form-select" data-combobox>
-                                        <option value="">-- Pick a branch first --</option>
-                                        @foreach (var l in pickupList)
-                                        {
-                                            <option value="@l.LocationID" data-branch="@l.BranchID" data-name="@l.LocationName"
-                                                    data-sub="@l.Description" selected="@(l.LocationID == Model.PickupLocationID)">@l.LocationName</option>
-                                        }
-                                    </select>
-                                </div>
-                                <span asp-validation-for="PickupLocationID" class="text-danger"></span>
-                            </div>
-                        }
-                        else
-                        {
-                            <div class="approve-place">
-                                <strong>@request.RequestedLocationName</strong>
-                            </div>
-                        }
+                        @* The requester's department room (Scripts/029), automatically. *@
+                        <div class="approve-place">
+                            <strong>@DisplayText.Or(ViewBag.PickupName as string, "No room yet")</strong>
+                            <small class="d-block text-muted">@(ViewBag.PickupNote as string ?? request.DepartmentName + "'s room") · the units go to the @request.DepartmentName</small>
+                        </div>
                         <dl class="approve-facts">
                             <div><dt>Needed from</dt><dd>@DisplayText.Or(request.NeededFrom?.ToString("MMM d · h:mm tt"), "Not given")</dd></div>
                             <div><dt>Until</dt><dd>@DisplayText.Or(request.ReturnBy?.ToString("MMM d · h:mm tt"), "Not given")</dd></div>
@@ -185,27 +123,6 @@
             }
             document.addEventListener('picker-change', function (e) { label(e.detail.total); });
 
-            // Pickup at: the branch narrows the rooms and the departments
-            // (rebuilt, not hidden -- some browsers ignore "hidden" on
-            // <option>).
-            var branch = document.getElementById('branchSelect');
-            var pickup = document.getElementById('PickupLocationID');
-            var dept = document.getElementById('DepartmentID');
-            if (!branch || !pickup || !dept) return;
-
-            // Both lists follow the branch (site.js); a choice from another
-            // branch is cleared.
-            var pickupFilter = sabFilterByBranch(pickup, branch, {
-                auto: false, notify: true,
-                hint: function (b) { return b ? 'Search a location' : '-- Pick a branch first --'; },
-                lock: function (b) { return !b; }
-            });
-            var deptFilter = sabFilterByBranch(dept, branch, {
-                auto: false, notify: true,
-                hint: function (b) { return b ? 'Select one' : '-- Pick a branch first --'; },
-                lock: function (b) { return !b; }
-            });
-            branch.addEventListener('change', function () { pickupFilter.refresh(); deptFilter.refresh(); });
             label(document.querySelectorAll('#unitPicker .unit-box:checked').length);
         })();
     </script>

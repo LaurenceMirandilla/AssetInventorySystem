@@ -1,0 +1,112 @@
+@model List<SchoolInventoryManagement.BLL.DTOs.AssetRequestResponseDTO>
+@using SchoolInventoryManagement.BLL.DTOs
+@using SchoolInventoryManagement.DAL.Entities.Enums
+@{
+    ViewData["Title"] = "Borrowers";
+    var now = PhilippineTime.Now;
+
+    // Where a borrow stands, for the Status column and filter.
+    (string Key, string Label, string Css) StateOf(AssetRequestResponseDTO r) =>
+        r.RequestStatus == RequestStatus.InTransit ? ("pickup", "To be picked up", "is-muted")
+        : r.AcknowledgedAt is null ? ("confirm", "Not confirmed yet", "is-warn")
+        : r.ReturnBy is not null && r.ReturnBy.Value < now ? ("overdue", "Overdue", "is-late")
+        : ("out", "Out", "is-ok");
+
+    var people = Model.Select(r => r.RequestedByUser.UserID).Distinct().Count();
+    var unitsOut = Model.Sum(r => r.UnitsOut);
+    var overdue = Model.Count(r => StateOf(r).Key == "overdue");
+}
+@* Property > Borrowers: who has the Property Department's items right now
+   (every borrow that is out, or ready to be picked up). *@
+
+<div class="sab-page-head">
+    <div>
+        <nav class="asset-crumbs" aria-label="Breadcrumb">
+            <a asp-controller="Assets" asp-action="Index">Property</a>
+            <span aria-hidden="true">&rsaquo;</span>
+            <span>Borrowers</span>
+        </nav>
+        <h2>Borrowers</h2>
+        <p class="sab-page-sub">@people @(people == 1 ? "person has" : "people have") @unitsOut unit@(unitsOut == 1 ? "" : "s") borrowed@(overdue > 0 ? $" · {overdue} overdue" : "").</p>
+    </div>
+</div>
+
+<div class="sab-table-card">
+    <div class="bw-toolbar">
+        <label class="asset-search">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+            <input type="search" id="bwSearch" autocomplete="off" placeholder="Name, department, item or code..." aria-label="Search borrowers" />
+        </label>
+        <select class="form-select form-select-sm" id="bwStatus" aria-label="Status">
+            <option value="">Any status</option>
+            <option value="overdue">Overdue</option>
+            <option value="out">Out</option>
+            <option value="confirm">Not confirmed yet</option>
+            <option value="pickup">To be picked up</option>
+        </select>
+    </div>
+
+    @if (!Model.Any())
+    {
+        <div class="sab-empty"><p class="mb-0">Nobody has anything borrowed right now.</p></div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table asset-table mb-0">
+                <thead>
+                    <tr>
+                        <th>Borrower</th>
+                        <th>Items</th>
+                        <th class="d-none d-md-table-cell">Borrowed on</th>
+                        <th>Due back</th>
+                        <th>Status</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var r in Model)
+                    {
+                        var st = StateOf(r);
+                        var codes = r.Units.Where(u => u.ReturnDate == null).Select(u => u.AssetCode).ToList();
+                        <tr data-bw data-status="@st.Key"
+                            data-search="@($"{r.RequestedByUser.FullName} {r.DepartmentName} {r.ItemsSummary} {string.Join(' ', codes)} #{r.RequestID}".ToLowerInvariant())">
+                            <td>
+                                <div class="fw-semibold">@r.RequestedByUser.FullName</div>
+                                <small class="text-muted">@r.DepartmentName</small>
+                            </td>
+                            <td>
+                                <div>@r.ItemsSummary</div>
+                                <small class="text-muted">@(codes.Count == 0 ? "no units yet" : string.Join(", ", codes.Take(6)) + (codes.Count > 6 ? $" +{codes.Count - 6} more" : ""))</small>
+                            </td>
+                            <td class="d-none d-md-table-cell">@DisplayText.Or(r.AssignedDate?.ToString("MMM d, yyyy"), "Not yet")</td>
+                            <td class="@(st.Key == "overdue" ? "text-danger fw-semibold" : "")">@DisplayText.Or(r.ReturnBy?.ToString("MMM d, yyyy · h:mm tt"), "No date")</td>
+                            <td><span class="bw-status @st.Css">@st.Label</span></td>
+                            <td class="text-end"><a asp-action="Details" asp-route-id="@r.RequestID" class="btn btn-outline-secondary btn-sm">#@r.RequestID</a></td>
+                        </tr>
+                    }
+                    <tr id="bwNone" hidden><td colspan="6" class="text-center text-muted py-4">No borrowers match.</td></tr>
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@section Scripts {
+    <script>
+        (function () {
+            var q = document.getElementById('bwSearch'), s = document.getElementById('bwStatus');
+            var rows = Array.from(document.querySelectorAll('[data-bw]'));
+            var none = document.getElementById('bwNone');
+            function apply() {
+                var term = q.value.trim().toLowerCase(), want = s.value, shown = 0;
+                rows.forEach(function (r) {
+                    var ok = (!term || r.dataset.search.indexOf(term) >= 0) && (!want || r.dataset.status === want);
+                    r.hidden = !ok; if (ok) shown++;
+                });
+                if (none) none.hidden = shown > 0 || rows.length === 0;
+            }
+            q.addEventListener('input', apply); s.addEventListener('change', apply);
+        })();
+    </script>
+}

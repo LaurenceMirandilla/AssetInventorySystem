@@ -39,9 +39,14 @@ namespace SchoolInventoryManagement.Web.Controllers
 
         // GET /Purchasing : to buy (with what is missing), and ordered.
         [Authorize(Roles = BuyerRoles)]
-        public async Task<IActionResult> Index()
+        // tab = buy / ordered / orders (the purchase orders); po = one just
+        // saved, picked out on the list.
+        public async Task<IActionResult> Index(string? tab, int? po)
         {
             var requests = await _requestService.GetPurchasingQueueAsync(CurrentUserId);
+            ViewBag.Orders = await _purchasing.GetOrdersAsync(CurrentUserId);
+            ViewBag.Tab = tab is "ordered" or "orders" ? tab : "buy";
+            ViewBag.NewOrder = po;
             return View(requests);
         }
 
@@ -92,7 +97,9 @@ namespace SchoolInventoryManagement.Web.Controllers
                 TempData["StatusMessage"] = order.RequestStatus == DAL.Entities.Enums.NewItemStatus.AwaitingArrival
                     ? $"{order.PONumber} saved. Everything missing on requisition #{order.NewItemRequestID} is ordered; Property receives it from the supplier."
                     : $"{order.PONumber} saved. Requisition #{order.NewItemRequestID} still has items to order.";
-                return RedirectToAction(nameof(Order), new { id = order.PurchaseOrderID });
+                // Back to Purchasing, on its purchase orders, with this one
+                // picked out (Open / print from there).
+                return RedirectToAction(nameof(Index), new { tab = "orders", po = order.PurchaseOrderID });
             }
             catch (KeyNotFoundException)
             {
