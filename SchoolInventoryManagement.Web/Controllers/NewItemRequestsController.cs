@@ -305,6 +305,9 @@ namespace SchoolInventoryManagement.Web.Controllers
                 if (stage == NewItemStatus.Delivered)
                 {
                     var sent = await _requestService.GetRequestAsync(id, CurrentUserId);
+                    if (sent.ForStock)
+                        TempData["StatusMessage"] = $"Requisition #{id}: the units are in the Property Department's stock now. The borrow they were bought for can be approved.";
+                    else
                     TempData["StatusMessage"] += sent.ItemKind == CategoryKind.Supply
                         ? $" The consumables came out of the Property Department's stock for the {sent.DepartmentName}; {sent.RequestedByUserName} now confirms receiving them."
                         : $" {sent.RequestedByUserName} now confirms receiving it; then the items are the {sent.DepartmentName}'s.";

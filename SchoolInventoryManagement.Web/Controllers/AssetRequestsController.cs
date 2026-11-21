@@ -279,6 +279,9 @@ namespace SchoolInventoryManagement.Web.Controllers
                 };
 
                 var created = await _requestService.CreateRequestAsync(dto, CurrentUserId);
+                TempData["StatusMessage"] = created.PurchaseRequestID is int purchaseId
+                    ? $"Borrow request #{created.RequestID} sent. {created.ToBuy} {(created.ToBuy == 1 ? "is" : "are")} not in stock and will be bought first (requisition #{purchaseId}); the Property Department then prepares it."
+                    : $"Borrow request #{created.RequestID} sent. The Property Department prepares it.";
                 return RedirectToAction(nameof(Details), new { id = created.RequestID });
             }
             catch (Exception ex)

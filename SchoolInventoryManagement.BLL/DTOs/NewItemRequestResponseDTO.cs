@@ -67,8 +67,12 @@ namespace SchoolInventoryManagement.BLL.DTOs
         // Sent out and not confirmed yet: consumables always, fixed assets
         // once units were sent with it.
         public bool AwaitsAcknowledgment =>
-            RequestStatus == NewItemStatus.Delivered && AcknowledgedAt is null
+            !ForStock && RequestStatus == NewItemStatus.Delivered && AcknowledgedAt is null
             && (ItemKind == CategoryKind.Supply || RegisteredUnits.Count > 0);
+
+        // Bought for the Property Department's own stock (a borrow that was
+        // short, Scripts/032): put in stock instead of sent to someone.
+        public bool ForStock { get; set; }
 
         // Requisitions (Scripts/031): something on it has to be bought, so
         // it goes through Procurement before Property.

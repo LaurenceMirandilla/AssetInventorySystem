@@ -15,14 +15,20 @@
     bool IsLate(AssetRequestResponseDTO r) =>
         r.RequestStatus == RequestStatus.Assigned && r.ReturnBy is not null && r.ReturnBy.Value < now;
 
+    // Borrowing: on its way to you (being bought first, waiting for the
+    // Property Department, ready to receive). Returning: with you, to give
+    // back. Then what is finished.
     var groups = new[]
     {
-        (Key: "late", Label: "Waiting for approval", Items: Model.Where(r => r.RequestStatus == RequestStatus.Pending).ToList()),
-        (Key: "transit", Label: "Ready to collect", Items: Model.Where(r => r.RequestStatus == RequestStatus.InTransit).ToList()),
-        (Key: "use", Label: "With you", Items: Model.Where(r => r.RequestStatus == RequestStatus.Assigned).OrderBy(r => r.ReturnBy ?? DateTime.MaxValue).ToList()),
-        (Key: "done", Label: "Finished", Items: Model.Where(r => r.RequestStatus is not (RequestStatus.Pending or RequestStatus.InTransit or RequestStatus.Assigned)).ToList())
+        (Key: "buying", Tab: "borrowing", Label: "Being bought first", Items: Model.Where(r => r.RequestStatus == RequestStatus.Pending && r.BeingBought).ToList()),
+        (Key: "late", Tab: "borrowing", Label: "Waiting for the Property Department", Items: Model.Where(r => r.RequestStatus == RequestStatus.Pending && !r.BeingBought).ToList()),
+        (Key: "transit", Tab: "borrowing", Label: "Ready to receive", Items: Model.Where(r => r.RequestStatus == RequestStatus.InTransit).ToList()),
+        (Key: "use", Tab: "returning", Label: "With you, to return", Items: Model.Where(r => r.RequestStatus == RequestStatus.Assigned).OrderBy(r => r.ReturnBy ?? DateTime.MaxValue).ToList()),
+        (Key: "done", Tab: "done", Label: "Finished", Items: Model.Where(r => r.RequestStatus is not (RequestStatus.Pending or RequestStatus.InTransit or RequestStatus.Assigned)).ToList())
     };
     var ordered = groups.SelectMany(g => g.Items).ToList();
+    int TabCount(string tab) => groups.Where(g => g.Tab == tab).Sum(g => g.Items.Count);
+    var startTab = TabCount("borrowing") > 0 ? "borrowing" : TabCount("returning") > 0 ? "returning" : "";
 }
 
 @functions {
@@ -74,9 +80,23 @@
 }
 else
 {
+    @* Borrowing and Returning, at the top: each shows its own list. *@
+    <nav class="sab-seg mb-3" aria-label="Borrowing or returning" id="borrowTabs">
+        <a href="#" data-borrow-tab="borrowing" class="@(startTab == "borrowing" ? "active" : "")">Borrowing · @TabCount("borrowing")</a>
+        <a href="#" data-borrow-tab="returning" class="@(startTab == "returning" ? "active" : "")">Returning · @TabCount("returning")</a>
+        <a href="#" data-borrow-tab="done">Finished · @TabCount("done")</a>
+        <a href="#" data-borrow-tab="" class="@(startTab == "" ? "active" : "")">All</a>
+    </nav>
+
     <div class="sab-table-card myassets" data-md data-page-size="8">
         <aside class="myassets-list" aria-label="Your requests">
             <div class="md-toolbar">
+                <select data-md-filter="tab" data-md-outside id="borrowTabFilter" hidden aria-hidden="true">
+                    <option value="" selected="@(startTab == "")"></option>
+                    <option value="borrowing" selected="@(startTab == "borrowing")"></option>
+                    <option value="returning" selected="@(startTab == "returning")"></option>
+                    <option value="done"></option>
+                </select>
                 <label class="asset-search">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
                     <input type="text" data-md-search autocomplete="off" placeholder="Search my requests..." aria-label="Search my requests" />
@@ -90,9 +110,10 @@ else
                         <label class="form-label">Status</label>
                         <select class="form-select form-select-sm mb-2" data-md-filter="stage">
                             <option value="">Any</option>
-                            <option value="late">Waiting for approval</option>
-                            <option value="transit">Ready to collect</option>
-                            <option value="use">With you</option>
+                            <option value="buying">Being bought first</option>
+                            <option value="late">Waiting for the Property Department</option>
+                            <option value="transit">Ready to receive</option>
+                            <option value="use">With you, to return</option>
                             <option value="done">Finished</option>
                         </select>
                         <label class="form-label">Type</label>
@@ -126,12 +147,14 @@ else
                         else if (r.RequestStatus == RequestStatus.Assigned && r.ReturnBy is not null)
                         { right = dueIn == 0 ? "due today" : dueIn == 1 ? "tomorrow" : $"in {dueIn} days"; }
                         else if (r.AwaitsAcknowledgment) { right = "to confirm"; }
+                        else if (r.BeingBought) { right = "being bought"; }
                         else { right = Status(r.RequestStatus, r.RequestType); }
                         var tone = late || r.RequestStatus is RequestStatus.Rejected ? "item-late"
                             : r.RequestStatus == RequestStatus.InTransit ? "item-transit" : "";
                         <button type="button" class="myassets-item @tone" data-entry="r-@r.RequestID"
                                 data-type="@r.RequestType.ToString().ToLowerInvariant()"
                                 data-stage="@g.Key"
+                                data-tab="@g.Tab"
                                 data-search="@($"#{r.RequestID} {r.RequestID} {Title(r)} {r.RequestType} {Status(r.RequestStatus, r.RequestType)}".ToLowerInvariant())">
                             <span class="myassets-badge">
                                 <strong>#@r.RequestID</strong>
@@ -163,24 +186,34 @@ else
                 var stopped = st is RequestStatus.Rejected or RequestStatus.Cancelled;
                 var handedOver = st is RequestStatus.Assigned or RequestStatus.Returned or RequestStatus.Fulfilled;
                 var units = r.Units.Count > 0 ? r.Units.Count : r.TotalQuantity;
+                var receiving = st == RequestStatus.InTransit || r.AwaitsAcknowledgment;
                 var steps = new List<RequestStep>
                 {
-                    new("Submitted", r.RequestDate.ToString("MMM d"), RequestStepState.Done),
-                    new(st == RequestStatus.Rejected ? "Rejected" : st == RequestStatus.Cancelled ? "Cancelled" : "Approval",
-                        st == RequestStatus.Pending ? "waiting" : r.ApprovalDate?.ToString("MMM d"),
-                        st == RequestStatus.Pending ? RequestStepState.Current : stopped ? RequestStepState.Stopped : RequestStepState.Done),
-                    new(isBorrow ? "Pick up" : "Delivery",
-                        handedOver ? r.AssignedDate?.ToString("MMM d") : isBorrow ? (r.PickupLocationName ?? r.RequestedLocationName) : r.RequestedLocationName,
-                        handedOver ? RequestStepState.Done : st == RequestStatus.InTransit ? RequestStepState.Current : RequestStepState.Todo),
-                    // A permanent Transfer (no return date) never comes back:
-                    // it is the department's once the requester confirms.
-                    r.IsPermanent
+                    new("Submitted", r.RequestDate.ToString("MMM d"), RequestStepState.Done)
+                };
+                // More than Property had: bought for its stock first.
+                if (r.PurchaseRequestID is not null)
+                    steps.Add(r.BeingBought
+                        ? new RequestStep("Procurement", "being bought", RequestStepState.Current)
+                        : r.PurchaseStatus == NewItemStatus.Delivered
+                            ? new RequestStep("Procurement", "in stock", RequestStepState.Done)
+                            : new RequestStep("Procurement", "not bought", RequestStepState.Stopped));
+                steps.Add(new(st == RequestStatus.Rejected ? "Rejected" : st == RequestStatus.Cancelled ? "Cancelled" : "Property",
+                    st == RequestStatus.Pending ? (r.BeingBought ? null : "waiting") : r.ApprovalDate?.ToString("MMM d"),
+                    st == RequestStatus.Pending ? (r.BeingBought ? RequestStepState.Todo : RequestStepState.Current)
+                        : stopped ? RequestStepState.Stopped : RequestStepState.Done));
+                steps.Add(new("Receiving",
+                    st == RequestStatus.InTransit ? "at " + (r.PickupLocationName ?? r.RequestedLocationName)
+                        : r.AwaitsAcknowledgment ? "confirm receipt"
+                        : handedOver ? r.AssignedDate?.ToString("MMM d") : null,
+                    receiving ? RequestStepState.Current : handedOver ? RequestStepState.Done : RequestStepState.Todo));
+                steps.Add(r.IsPermanent
                         ? new RequestStep("You confirm", r.AcknowledgedAt?.ToString("MMM d") ?? "receipt",
                             st == RequestStatus.Fulfilled ? RequestStepState.Done : st == RequestStatus.Assigned ? RequestStepState.Current : RequestStepState.Todo)
                         : new RequestStep("Return",
                             st == RequestStatus.Returned ? r.ReturnedDate?.ToString("MMM d") : r.ReturnBy is not null ? "by " + r.ReturnBy.Value.ToString("MMM d") : null,
-                            st == RequestStatus.Returned ? RequestStepState.Done : late ? RequestStepState.Late : st == RequestStatus.Assigned ? RequestStepState.Current : RequestStepState.Todo)
-                };
+                            st == RequestStatus.Returned ? RequestStepState.Done : late ? RequestStepState.Late
+                                : st == RequestStatus.Assigned && !r.AwaitsAcknowledgment ? RequestStepState.Current : RequestStepState.Todo));
                 var pillCss = late ? "st-overdue" : st switch
                 {
                     RequestStatus.Pending => "st-disposed",
@@ -308,3 +341,21 @@ else
         <partial name="_CancelRequestModal" model="r" />
     }
 }
+
+<script>
+    // Borrowing / Returning / Finished: each tab narrows the list (the hidden
+    // "tab" filter of the list above).
+    (function () {
+        var tabs = document.getElementById('borrowTabs');
+        var filter = document.getElementById('borrowTabFilter');
+        if (!tabs || !filter) return;
+        tabs.addEventListener('click', function (e) {
+            var a = e.target.closest('[data-borrow-tab]');
+            if (!a) return;
+            e.preventDefault();
+            tabs.querySelectorAll('[data-borrow-tab]').forEach(function (t) { t.classList.toggle('active', t === a); });
+            filter.value = a.getAttribute('data-borrow-tab');
+            filter.dispatchEvent(new Event('change'));
+        });
+    })();
+</script>

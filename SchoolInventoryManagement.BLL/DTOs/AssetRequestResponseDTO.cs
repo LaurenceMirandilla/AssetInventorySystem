@@ -68,6 +68,15 @@ namespace SchoolInventoryManagement.BLL.DTOs
         // Handed over and not yet confirmed by the requester.
         public bool AwaitsAcknowledgment => RequestStatus == RequestStatus.Assigned && AcknowledgedAt is null;
 
+        // More than Property had (Scripts/032): the requisition buying the
+        // missing units for stock, and where it has got to. Being bought
+        // until it is in stock (or was rejected).
+        public int? PurchaseRequestID { get; set; }
+        public NewItemStatus? PurchaseStatus { get; set; }
+        public int ToBuy { get; set; }
+        public bool BeingBought => PurchaseRequestID is not null
+            && PurchaseStatus is not (NewItemStatus.Delivered or NewItemStatus.Rejected or NewItemStatus.Cancelled);
+
         public UserSummaryDTO? ApprovedByUser { get; set; }
         public DateTime? ApprovalDate { get; set; }
         public string? Remarks { get; set; }

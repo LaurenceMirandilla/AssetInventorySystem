@@ -295,7 +295,16 @@
                                     <div class="req-action-note">Approving takes you to pick the units; rejecting asks for a reason.</div>
                                 </div>
                                 <div class="req-action-buttons">
-                                    <a asp-action="Approve" asp-route-id="@r.RequestID" class="btn btn-primary">Approve &amp; pick units &rarr;</a>
+                                    @if (r.BeingBought)
+                                    {
+                                        @* Short of stock (Scripts/032): approved once what is missing is in stock. *@
+                                        <span class="text-muted me-2">@r.ToBuy being bought first:
+                                            <a asp-controller="NewItemRequests" asp-action="Details" asp-route-id="@r.PurchaseRequestID">requisition #@r.PurchaseRequestID</a></span>
+                                    }
+                                    else
+                                    {
+                                        <a asp-action="Approve" asp-route-id="@r.RequestID" class="btn btn-primary">Approve &amp; pick units &rarr;</a>
+                                    }
                                     <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#reject-@r.RequestID">Reject</button>
                                 </div>
                             </div>

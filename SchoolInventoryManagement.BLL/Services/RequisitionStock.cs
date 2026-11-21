@@ -8,10 +8,11 @@ using SchoolInventoryManagement.DAL.Entities.Enums;
 
 namespace SchoolInventoryManagement.BLL.Services
 {
-    // What the Property Department of a branch can still hand out on a new
-    // requisition (Scripts/031): what it has, less what open requisitions
-    // already count on and have not been sent yet. Per model for fixed
-    // assets, per supply for consumables.
+    // What the Property Department can still hand out on a new requisition
+    // (Scripts/031): what it has -- in every branch, the same count as Items
+    // and the borrow form -- less what open requisitions already count on
+    // and have not been sent yet. Per model for fixed assets, per supply for
+    // consumables. A branch can be given to count only that branch.
     //
     // A requisition decides from this, line by line, what comes from stock
     // and what Purchasing must buy (NewItemRequestItem.ToBuy).
@@ -28,10 +29,10 @@ namespace SchoolInventoryManagement.BLL.Services
         // in-stock part of open requisitions not picked yet (picked units
         // are no longer Available, so they are already out of the count).
         public static async Task<Dictionary<int, int>> FreeUnitsAsync(
-            ApplicationDbContext context, int branchId, int? exceptRequestId = null)
+            ApplicationDbContext context, int? branchId = null, int? exceptRequestId = null)
         {
             var free = await context.Assets
-                .Where(a => a.Status == AssetStatus.Available && a.BranchID == branchId)
+                .Where(a => a.Status == AssetStatus.Available && (branchId == null || a.BranchID == branchId))
                 .GroupBy(a => a.ModelID)
                 .Select(g => new { ModelID = g.Key, Count = g.Count() })
                 .ToDictionaryAsync(x => x.ModelID, x => x.Count);
@@ -40,7 +41,7 @@ namespace SchoolInventoryManagement.BLL.Services
                 .Where(i => i.ModelID != null && i.Quantity > i.ToBuy
                             && i.Request.ItemKind == CategoryKind.Asset
                             && NotSent.Contains(i.Request.RequestStatus)
-                            && i.Request.Department.BranchID == branchId
+                            && (branchId == null || i.Request.Department.BranchID == branchId)
                             && (exceptRequestId == null || i.NewItemRequestID != exceptRequestId.Value))
                 .Select(i => new
                 {
@@ -61,10 +62,10 @@ namespace SchoolInventoryManagement.BLL.Services
         // in-stock part of open requisitions and what was added to stock for
         // them (bought for them) and not handed over yet.
         public static async Task<Dictionary<int, int>> FreeSuppliesAsync(
-            ApplicationDbContext context, int branchId, int? exceptRequestId = null)
+            ApplicationDbContext context, int? branchId = null, int? exceptRequestId = null)
         {
             var free = await context.SupplyStock
-                .Where(k => k.Department.IsProperty && k.Location.BranchID == branchId)
+                .Where(k => k.Department.IsProperty && (branchId == null || k.Location.BranchID == branchId))
                 .GroupBy(k => k.SupplyID)
                 .Select(g => new { SupplyID = g.Key, Quantity = g.Sum(k => k.Quantity) })
                 .ToDictionaryAsync(x => x.SupplyID, x => x.Quantity);
@@ -72,7 +73,7 @@ namespace SchoolInventoryManagement.BLL.Services
             var open = context.NewItemRequests
                 .Where(n => n.ItemKind == CategoryKind.Supply
                             && NotSent.Contains(n.RequestStatus)
-                            && n.Department.BranchID == branchId
+                            && (branchId == null || n.Department.BranchID == branchId)
                             && (exceptRequestId == null || n.NewItemRequestID != exceptRequestId.Value))
                 .Select(n => n.NewItemRequestID);
 

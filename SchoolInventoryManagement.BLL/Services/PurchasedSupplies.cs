@@ -83,15 +83,12 @@ namespace SchoolInventoryManagement.BLL.Services
                     .Select(l => l.LocationName.Trim()).FirstOrDefaultAsync();
 
             // Taken from the rooms the bought ones were put in first, then
-            // from the Property Department's other rooms in the branch.
+            // from the Property Department's rooms in the department's
+            // branch, then from its other branches.
             var addedRooms = lines.Where(l => l.QuantityChange > 0).Select(l => l.LocationID).Distinct().ToList();
-            var branches = await context.Locations.Where(l => addedRooms.Contains(l.LocationID))
-                .Select(l => l.BranchID).Distinct().ToListAsync();
-            if (!branches.Contains(departmentInfo.BranchID))
-                branches.Add(departmentInfo.BranchID);
             var stock = await context.SupplyStock
                 .Include(k => k.Location)
-                .Where(k => supplyIds.Contains(k.SupplyID) && branches.Contains(k.Location.BranchID) && k.Department.IsProperty)
+                .Where(k => supplyIds.Contains(k.SupplyID) && k.Department.IsProperty)
                 .ToListAsync();
 
             var handed = new List<string>();
@@ -106,12 +103,13 @@ namespace SchoolInventoryManagement.BLL.Services
 
                 var rows = stock.Where(k => k.SupplyID == supplyId)
                     .OrderByDescending(k => addedRooms.Contains(k.LocationID))
+                    .ThenByDescending(k => k.Location.BranchID == departmentInfo.BranchID)
                     .ThenByDescending(k => k.Quantity)
                     .ToList();
                 var have = rows.Sum(k => k.Quantity);
                 if (have < toIssue)
                     throw new InvalidOperationException(
-                        $"{names[supplyId].SupplyName}: {toIssue} to send, but the Property Department only has {have} in that branch now. " +
+                        $"{names[supplyId].SupplyName}: {toIssue} to send, but the Property Department only has {have} now. " +
                         "Use \"Short in stock: buy the rest\", or add them to stock, before sending it.");
 
                 var left = toIssue;

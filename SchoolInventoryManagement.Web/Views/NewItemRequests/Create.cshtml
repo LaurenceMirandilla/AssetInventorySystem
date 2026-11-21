@@ -2,7 +2,7 @@
 @using SchoolInventoryManagement.BLL.DTOs
 @using SchoolInventoryManagement.DAL.Entities.Enums
 @{
-    ViewData["Title"] = "Request New Items";
+    ViewData["Title"] = "New Requisition";
 
     var lookups = ViewBag.Lookups as NewItemFormLookupsDTO
         ?? new NewItemFormLookupsDTO { DepartmentName = "", BranchName = "" };
@@ -23,6 +23,9 @@
     var commonUnits = new[] { "piece", "box", "ream", "bottle", "pack", "roll", "set", "gallon" };
     var units = lookups.Supplies.Select(s => s.Unit).Concat(commonUnits)
         .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+    // The rows to start with, built by the script from the template.
+    var startRows = rows.Select(r => new { name = r.Name, qty = r.Quantity, unit = r.Unit, desc = r.Description, modelId = r.ModelId, supplyId = r.SupplyId });
 }
 
 <div class="asset-detail-head">
@@ -90,44 +93,67 @@
                 <div class="register-step-body ni2-box @(isSupplies ? "is-supplies" : "")" id="itemsBox">
                     <div class="ni2-grid ni2-head" aria-hidden="true">
                         <span></span>
-                        <span>Item <small>type to search</small></span>
+                        <span>Item <small>pick from the list</small></span>
                         <span>Quantity</span>
                         <span class="ni2-unit-head">Unit</span>
                         <span>Description <small>optional</small></span>
                         <span></span>
                     </div>
 
-                    <div id="itemRows">
-                        @foreach (var row in rows)
-                        {
-                            <div class="ni2-grid ni2-row item-row">
-                                <span class="nr-row-num"></span>
-                                <div class="ni2-name">
-                                    <div class="position-relative">
-                                        <input type="text" name="ItemNames" value="@row.Name" maxlength="150" autocomplete="off"
-                                               class="form-control ni-name" placeholder="Type to search, or type a new item" aria-label="Item"
-                                               role="combobox" aria-autocomplete="list" aria-expanded="false" />
-                                        <ul class="dropdown-menu w-100 combo-list ni-suggest-list" role="listbox"></ul>
-                                    </div>
-                                    <input type="hidden" name="ModelIds" class="ni-model-id" value="@row.ModelId" />
-                                    <input type="hidden" name="SupplyIds" class="ni-supply-id" value="@row.SupplyId" />
-                                    <div class="nr-hint ni-picked" aria-live="polite"></div>
-                                    <div class="nr-hint ni-stock fw-semibold"></div>
-                                </div>
-                                <div class="qty-stepper ni-qty">
-                                    <button type="button" class="qty-btn" data-step="-1" aria-label="Fewer">&minus;</button>
-                                    <input type="number" name="Quantities" value="@row.Quantity" min="1" max="1000" step="1"
-                                           class="form-control qty-input" aria-label="Quantity" required />
-                                    <button type="button" class="qty-btn" data-step="1" aria-label="More">+</button>
-                                </div>
-                                <input type="text" name="Units" value="@row.Unit" maxlength="30" list="unitList" autocomplete="off"
-                                       class="form-control ni-unit" placeholder="e.g. box" aria-label="Unit" />
-                                <textarea name="Descriptions" rows="1" maxlength="500" class="form-control ni-desc"
-                                          placeholder="Brand, size, colour..." aria-label="Description">@row.Description</textarea>
-                                <button type="button" class="nr-remove remove-row" title="Remove this item" aria-label="Remove this item">&times;</button>
+                    <div id="itemRows"></div>
+
+                    @* One row: a typeable dropdown (data-combobox) of the school's
+                       fixed assets and consumables -- the script shows only the
+                       chosen kind -- and "Something new" with a name box.
+                       Every item can be picked, in stock or not, and any amount:
+                       what Property does not have is bought. *@
+                    <template id="rowTemplate">
+                        <div class="ni2-grid ni2-row item-row">
+                            <span class="nr-row-num"></span>
+                            <div class="ni2-name">
+                                <select class="form-select ni-pick" aria-label="Item">
+                                    <option value="">Search the list...</option>
+                                    @foreach (var g in lookups.Models.GroupBy(m => m.Category).OrderBy(g => g.Key))
+                                    {
+                                        <optgroup label="@g.Key" data-kind="Asset">
+                                            @foreach (var m in g.OrderBy(m => m.Name))
+                                            {
+                                                <option value="m@(m.Id)" data-kind="Asset" data-name="@m.Name" data-stock="@m.InStock"
+                                                        data-sub="@(m.InStock > 0 ? $"{g.Key} · {m.InStock} in stock" : $"{g.Key} · none in stock: it is bought")">@m.Name</option>
+                                            }
+                                        </optgroup>
+                                    }
+                                    @foreach (var g in lookups.Supplies.GroupBy(s => s.Category).OrderBy(g => g.Key))
+                                    {
+                                        <optgroup label="@g.Key" data-kind="Supply">
+                                            @foreach (var s in g.OrderBy(s => s.Name))
+                                            {
+                                                <option value="s@(s.Id)" data-kind="Supply" data-name="@s.Name" data-stock="@s.Quantity" data-unit="@s.Unit"
+                                                        data-sub="@(s.Quantity > 0 ? $"{g.Key} · {s.Quantity} {SupplyText.Unit(s.Quantity, s.Unit)} in stock" : $"{g.Key} · none in stock: it is bought")">@s.Name</option>
+                                            }
+                                        </optgroup>
+                                    }
+                                    <option value="new" data-sub="not on the list: type its name below; it is bought">+ Something new</option>
+                                </select>
+                                <input type="text" name="ItemNames" maxlength="150" autocomplete="off" class="form-control ni-name mt-2"
+                                       placeholder="Name of the new item" aria-label="Name of the new item" hidden />
+                                <input type="hidden" name="ModelIds" class="ni-model-id" />
+                                <input type="hidden" name="SupplyIds" class="ni-supply-id" />
+                                <div class="nr-hint ni-stock fw-semibold"></div>
                             </div>
-                        }
-                    </div>
+                            <div class="qty-stepper ni-qty">
+                                <button type="button" class="qty-btn" data-step="-1" aria-label="Fewer">&minus;</button>
+                                <input type="number" name="Quantities" value="1" min="1" max="1000" step="1"
+                                       class="form-control qty-input" aria-label="Quantity" required />
+                                <button type="button" class="qty-btn" data-step="1" aria-label="More">+</button>
+                            </div>
+                            <input type="text" name="Units" maxlength="30" list="unitList" autocomplete="off"
+                                   class="form-control ni-unit" placeholder="e.g. box" aria-label="Unit" />
+                            <textarea name="Descriptions" rows="1" maxlength="500" class="form-control ni-desc"
+                                      placeholder="Brand, size, colour..." aria-label="Description"></textarea>
+                            <button type="button" class="nr-remove remove-row" title="Remove this item" aria-label="Remove this item">&times;</button>
+                        </div>
+                    </template>
                     <datalist id="unitList">
                         @foreach (var u in units)
                         {
@@ -225,187 +251,73 @@
     }
     <script>
         (function () {
-            // What the Item box searches: the school's models for an asset
-            // request, its supplies for a supply request.
-            var MODELS = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(lookups.Models));
-            var SUPPLIES = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(lookups.Supplies));
-
+            var START = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(startRows));
             var box = document.getElementById('itemsBox');
             var rowsBox = document.getElementById('itemRows');
+            var template = document.getElementById('rowTemplate');
             var addButton = document.getElementById('addItemRow');
             var neededBy = document.getElementById('neededBy');
             var kinds = Array.from(document.querySelectorAll('input[name=Kind]'));
             var maxRows = 20; // the service refuses more than this anyway
 
             function isSupplies() { return kinds.some(function (k) { return k.checked && k.value === 'Supply'; }); }
-            function source() { return isSupplies() ? SUPPLIES : MODELS; }
+            function kind() { return isSupplies() ? 'Supply' : 'Asset'; }
             function allRows() { return Array.from(rowsBox.querySelectorAll('.item-row')); }
-            function idInput(row) { return row.querySelector(isSupplies() ? '.ni-supply-id' : '.ni-model-id'); }
-            function byId(id) { return source().filter(function (o) { return String(o.Id) === String(id); })[0]; }
-            function byName(name) {
-                var n = name.trim().toLowerCase();
-                return n ? source().filter(function (o) { return o.Name.toLowerCase() === n; })[0] : null;
+            function picked(row) { var s = row.querySelector('.ni-pick'); return s.options[s.selectedIndex] || null; }
+
+            // Only the chosen kind's items are in the list (plus "Something new").
+            function showKind(select) {
+                Array.from(select.options).forEach(function (o) {
+                    if (o.dataset.kind) o.hidden = o.dataset.kind !== kind();
+                });
             }
 
-            // Same rule as SupplyText.Unit: 1 box, 6 boxes, 42 reams.
-            function plural(u, q) {
-                if (!u || q === 1) return u || '';
-                var l = u.toLowerCase();
-                if (/s$/.test(l) && !/ss$/.test(l)) return u;
-                if (/(x|ch|sh|ss)$/.test(l)) return u + 'es';
-                return u + 's';
-            }
-            // What the Property Department can still hand out (Scripts/031).
-            function inStock(o) { return isSupplies() ? o.Quantity : o.InStock; }
-            function sub(o) {
-                return isSupplies()
-                    ? o.Category + ' · ' + o.Quantity + ' ' + plural(o.Unit, o.Quantity) + ' in stock'
-                    : o.Category + ' · ' + o.InStock + ' in stock';
-            }
-
-            // ---- A row's link to an existing model or supply ----
-            function link(row, o) {
+            // What the pick means for the posted fields: the model or supply,
+            // its name, and for a supply its unit.
+            function applyPick(row) {
+                var o = picked(row);
+                var name = row.querySelector('.ni-name');
+                var unit = row.querySelector('.ni-unit');
                 row.querySelector('.ni-model-id').value = '';
                 row.querySelector('.ni-supply-id').value = '';
-                var unit = row.querySelector('.ni-unit');
-                if (o) {
-                    idInput(row).value = o.Id;
-                    if (isSupplies()) { unit.value = o.Unit; unit.readOnly = true; }
+                unit.readOnly = false;
+                if (o && o.value === 'new') {
+                    if (!name.hidden && name.dataset.fromList) name.value = '';
+                    if (name.dataset.fromList) { name.value = ''; delete name.dataset.fromList; }
+                    name.hidden = false;
+                } else if (o && o.value) {
+                    name.value = o.dataset.name;
+                    name.dataset.fromList = '1';
+                    name.hidden = true;
+                    if (o.value.charAt(0) === 'm') row.querySelector('.ni-model-id').value = o.value.slice(1);
+                    else { row.querySelector('.ni-supply-id').value = o.value.slice(1); unit.value = o.dataset.unit; unit.readOnly = true; }
                 } else {
-                    unit.readOnly = false;
+                    name.value = '';
+                    name.hidden = true;
                 }
-                hint(row);
-            }
-            function hint(row) {
-                var el = row.querySelector('.ni-picked');
-                var name = row.querySelector('.ni-name').value.trim();
-                var o = idInput(row).value ? byId(idInput(row).value) : null;
-                el.classList.toggle('is-existing', !!o);
-                if (o) el.textContent = (isSupplies() ? 'More of a supply the school has · ' : 'More of a model the school has · ') + sub(o);
-                else el.textContent = name ? 'New item, typed in' : '';
             }
 
-            // ---- The list under the Item box ----
-            function list(row) { return row.querySelector('.ni-suggest-list'); }
-            function hide(row) {
-                list(row).classList.remove('show');
-                row.querySelector('.ni-name').setAttribute('aria-expanded', 'false');
-            }
-            function option(mainText, subText, cls) {
-                var li = document.createElement('li');
-                var b = document.createElement('button');
-                b.type = 'button';
-                b.className = 'dropdown-item' + (cls ? ' ' + cls : '');
-                var main = document.createElement('span');
-                main.className = 'combo-main';
-                main.textContent = mainText;
-                b.appendChild(main);
-                if (subText) {
-                    var small = document.createElement('small');
-                    small.className = 'combo-sub';
-                    small.textContent = subText;
-                    b.appendChild(small);
+            function addRow(d) {
+                var row = template.content.firstElementChild.cloneNode(true);
+                rowsBox.appendChild(row);
+                var select = row.querySelector('.ni-pick');
+                showKind(select);
+                if (d) {
+                    var value = d.modelId && !isSupplies() ? 'm' + d.modelId : d.supplyId && isSupplies() ? 's' + d.supplyId : '';
+                    if (value && select.querySelector('option[value="' + value + '"]')) select.value = value;
+                    else if (d.name) select.value = 'new';
+                    row.querySelector('.qty-input').value = d.qty || 1;
+                    row.querySelector('.ni-unit').value = d.unit || '';
+                    row.querySelector('.ni-desc').value = d.desc || '';
                 }
-                li.appendChild(b);
-                return li;
-            }
-            function suggest(row) {
-                var input = row.querySelector('.ni-name');
-                var q = input.value.trim().toLowerCase();
-                var ul = list(row);
-                ul.innerHTML = '';
-                if (!q) { hide(row); return; }
-
-                var matches = source().filter(function (o) {
-                    return o.Name.toLowerCase().indexOf(q) >= 0 || o.Category.toLowerCase().indexOf(q) >= 0;
-                }).slice(0, 8);
-
-                if (matches.length) {
-                    var head = document.createElement('li');
-                    head.className = 'dropdown-header combo-group';
-                    head.textContent = isSupplies() ? 'Supplies the school already has' : 'Models the school already has';
-                    ul.appendChild(head);
-                }
-                matches.forEach(function (o) {
-                    var li = option(o.Name, sub(o));
-                    li.firstChild.addEventListener('mousedown', function (e) {
-                        e.preventDefault();
-                        input.value = o.Name;
-                        link(row, o);
-                        hide(row);
-                        update();
-                    });
-                    ul.appendChild(li);
-                });
-                if (!byName(input.value)) {
-                    var typed = option('+ Use "' + input.value.trim() + '" as a new item', 'not in the school yet', 'ni-suggest-new');
-                    typed.firstChild.addEventListener('mousedown', function (e) {
-                        e.preventDefault();
-                        link(row, null);
-                        hide(row);
-                        update();
-                    });
-                    ul.appendChild(typed);
-                }
-                ul.classList.add('show');
-                input.setAttribute('aria-expanded', 'true');
-            }
-            function move(row, step) {
-                var items = Array.from(list(row).querySelectorAll('.dropdown-item'));
-                if (!items.length) return;
-                var at = items.findIndex(function (b) { return b.classList.contains('active'); });
-                if (at >= 0) items[at].classList.remove('active');
-                at = (at + step + items.length) % items.length;
-                items[at].classList.add('active');
-                items[at].scrollIntoView({ block: 'nearest' });
+                applyPick(row);
+                if (d && select.value === 'new') row.querySelector('.ni-name').value = d.name || '';
+                select.setAttribute('data-combobox', '');
+                window.sabCombobox(select);
+                return row;
             }
 
-            rowsBox.addEventListener('input', function (e) {
-                var name = e.target.closest('.ni-name');
-                if (name) {
-                    // Editing the name breaks the link, unless it still names
-                    // the same model or supply exactly.
-                    var row = name.closest('.item-row');
-                    link(row, byName(name.value) || null);
-                    suggest(row);
-                }
-                var desc = e.target.closest('.ni-desc');
-                if (desc) { desc.style.height = 'auto'; desc.style.height = desc.scrollHeight + 2 + 'px'; }
-                update();
-            });
-            rowsBox.addEventListener('focusin', function (e) {
-                var name = e.target.closest('.ni-name');
-                if (name && name.value.trim() && !idInput(name.closest('.item-row')).value) suggest(name.closest('.item-row'));
-            });
-            rowsBox.addEventListener('focusout', function (e) {
-                var name = e.target.closest('.ni-name');
-                if (!name) return;
-                var row = name.closest('.item-row');
-                hide(row);
-                // A name typed in full is written the way the school has it.
-                var o = idInput(row).value ? byId(idInput(row).value) : null;
-                if (o) name.value = o.Name;
-                hint(row);
-            });
-            rowsBox.addEventListener('keydown', function (e) {
-                var name = e.target.closest('.ni-name');
-                if (!name) return;
-                var row = name.closest('.item-row');
-                var open = list(row).classList.contains('show');
-                if (e.key === 'ArrowDown') { e.preventDefault(); if (!open) suggest(row); move(row, 1); }
-                else if (e.key === 'ArrowUp') { e.preventDefault(); move(row, -1); }
-                else if (e.key === 'Escape') { hide(row); }
-                else if (e.key === 'Enter') {
-                    // Enter picks from the list; it never submits the form
-                    // from the Item box.
-                    e.preventDefault();
-                    var active = list(row).querySelector('.dropdown-item.active');
-                    if (open && active) active.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-                    else hide(row);
-                }
-            });
-
-            // ---- Assets / Supplies ----
+            // ---- Fixed assets / consumables ----
             function applyKind() {
                 var supplies = isSupplies();
                 kinds.forEach(function (k) { k.closest('.nr-kind').classList.toggle('is-on', k.checked); });
@@ -416,61 +328,61 @@
                     ? 'you confirm you received it'
                     : "you confirm you received it; then the items are your department's to look after";
                 document.getElementById('searchHint').textContent = supplies
-                    ? 'Start typing in the Item box: matching supplies appear, or keep what you typed as a new item.'
-                    : 'Start typing in the Item box: matching models appear, or keep what you typed as a new item.';
+                    ? 'Pick a consumable from the list, in stock or not, or "+ Something new" at the end.'
+                    : 'Pick a fixed asset from the list, in stock or not, or "+ Something new" at the end.';
             }
             kinds.forEach(function (k) {
                 k.addEventListener('change', function () {
                     applyKind();
-                    // A link to a model means nothing on a supply request,
-                    // and the other way round: match each name again.
-                    allRows().forEach(function (row) { link(row, byName(row.querySelector('.ni-name').value) || null); });
+                    // An item of the other kind is cleared; new items stay.
+                    allRows().forEach(function (row) {
+                        var select = row.querySelector('.ni-pick');
+                        var o = picked(row);
+                        if (o && o.dataset.kind && o.dataset.kind !== kind()) select.value = '';
+                        showKind(select);
+                        applyPick(row);
+                        select.dispatchEvent(new Event('combo-sync'));
+                    });
                     update();
                 });
             });
 
-            // ---- Counts, numbering and the side card ----
+            // ---- Counts, from stock or to buy, and the side card ----
             function update() {
                 var rows = allRows();
-                var named = 0, units = 0;
+                var named = 0, units = 0, left = {}, missing = [];
                 rows.forEach(function (row, i) {
                     row.querySelector('.nr-row-num').textContent = i + 1;
                     row.querySelector('.remove-row').style.visibility = rows.length === 1 ? 'hidden' : 'visible';
-                    if (row.querySelector('.ni-name').value.trim()) {
-                        named++;
-                        units += parseInt(row.querySelector('.qty-input').value, 10) || 0;
-                    }
-                });
-                addButton.disabled = rows.length >= maxRows;
-
-                document.getElementById('itemsNote').textContent = named
-                    ? named + ' item' + (named === 1 ? '' : 's') + (named > 1 ? ' · one requisition, sent together' : '')
-                    : '';
-
-                // From stock or to buy, line by line (the server decides the
-                // same way when it is sent): a new item is all to buy; more
-                // than Property has means the rest is bought.
-                var left = {}, missing = [];
-                rows.forEach(function (row) {
+                    var o = picked(row);
                     var name = row.querySelector('.ni-name').value.trim();
-                    var stockEl = row.querySelector('.ni-stock');
                     var qty = parseInt(row.querySelector('.qty-input').value, 10) || 0;
-                    if (!name || qty < 1) { stockEl.textContent = ''; return; }
-                    var o = idInput(row).value ? byId(idInput(row).value) : null;
+                    var stockEl = row.querySelector('.ni-stock');
+                    if (!o || !o.value || !name || qty < 1) { stockEl.textContent = ''; return; }
+                    named++;
+                    units += qty;
+                    // The server decides the same way when it is sent: what
+                    // Property has comes from stock, the rest is bought.
                     var have = 0;
-                    if (o) {
-                        if (!(o.Id in left)) left[o.Id] = inStock(o);
-                        have = Math.min(qty, left[o.Id]);
-                        left[o.Id] -= have;
+                    if (o.value !== 'new') {
+                        if (!(o.value in left)) left[o.value] = parseInt(o.dataset.stock, 10) || 0;
+                        have = Math.min(qty, left[o.value]);
+                        left[o.value] -= have;
                     }
                     var buy = qty - have;
-                    stockEl.textContent = !o ? 'New: all to buy'
+                    stockEl.textContent = o.value === 'new' ? 'New: all to buy'
                         : buy === 0 ? 'All from stock'
                         : have === 0 ? 'None in stock: all to buy'
                         : have + ' from stock · ' + buy + ' to buy';
                     stockEl.classList.toggle('text-warning', buy > 0);
                     if (buy > 0) missing.push(name + ' ×' + buy);
                 });
+                addButton.disabled = rows.length >= maxRows;
+
+                document.getElementById('itemsNote').textContent = named
+                    ? named + ' item' + (named === 1 ? '' : 's') + (named > 1 ? ' · one requisition, sent together' : '')
+                    : '';
+                sabShow(document.getElementById('sumItems'), named ? named + ' · ' + units + ' unit' + (units === 1 ? '' : 's') : '', 'None yet');
                 var sumBuy = document.getElementById('sumBuy');
                 sumBuy.textContent = missing.length ? missing.join(', ') : 'Nothing: all from stock';
                 sumBuy.classList.toggle('is-empty', !missing.length);
@@ -480,8 +392,6 @@
                 document.querySelectorAll('#nextSteps > li').forEach(function (li) {
                     if (!li.hidden) li.querySelector('.ni-step-num').textContent = ++n;
                 });
-                sabShow(document.getElementById('sumItems'), named ? named + ' · ' + units + ' unit' + (units === 1 ? '' : 's') : '', 'None yet');
-
 
                 // Needed by: the date, and "in 4 weeks" beside the heading.
                 var badge = document.getElementById('neededBadge');
@@ -504,23 +414,25 @@
             neededBy.addEventListener('change', update);
             neededBy.addEventListener('input', update);
 
-            function clearRow(row) {
-                row.querySelector('.ni-name').value = '';
-                row.querySelector('.qty-input').value = 1;
-                row.querySelector('.ni-unit').value = '';
-                row.querySelector('.ni-desc').value = '';
-                row.querySelector('.ni-desc').style.height = '';
-                list(row).innerHTML = '';
-                hide(row);
-                link(row, null);
-            }
+            rowsBox.addEventListener('change', function (e) {
+                if (e.target.classList.contains('ni-pick')) {
+                    var row = e.target.closest('.item-row');
+                    applyPick(row);
+                    if (e.target.value === 'new') row.querySelector('.ni-name').focus();
+                }
+                update();
+            });
+            rowsBox.addEventListener('input', function (e) {
+                var desc = e.target.closest('.ni-desc');
+                if (desc) { desc.style.height = 'auto'; desc.style.height = desc.scrollHeight + 2 + 'px'; }
+                update();
+            });
 
             addButton.addEventListener('click', function () {
-                var copy = rowsBox.querySelector('.item-row').cloneNode(true);
-                rowsBox.appendChild(copy);
-                clearRow(copy);
+                var row = addRow(null);
                 update();
-                copy.querySelector('.ni-name').focus();
+                var input = row.querySelector('.combo-input');
+                if (input) input.focus();
             });
 
             rowsBox.addEventListener('click', function (e) {
@@ -535,18 +447,13 @@
                 var button = e.target.closest('.remove-row');
                 if (!button) return;
                 var row = button.closest('.item-row');
-                if (allRows().length > 1) row.remove(); else clearRow(row);
+                if (allRows().length > 1) row.remove();
+                else { row.remove(); addRow(null); }
                 update();
             });
 
-            // Rows that came back from the server keep their links.
             applyKind();
-            allRows().forEach(function (row) {
-                var o = idInput(row).value ? byId(idInput(row).value) : null;
-                if (o && isSupplies()) row.querySelector('.ni-unit').readOnly = true;
-                if (!o) { row.querySelector('.ni-model-id').value = ''; row.querySelector('.ni-supply-id').value = ''; }
-                hint(row);
-            });
+            (START.length ? START : [null]).forEach(addRow);
             update();
         })();
     </script>

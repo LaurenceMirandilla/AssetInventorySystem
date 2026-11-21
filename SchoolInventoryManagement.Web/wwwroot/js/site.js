@@ -527,7 +527,10 @@ window.sabFilterByBranch = function (select, branch, opts) {
         // The Filters button shows how many filters are on, and the menu
         // gets a "Clear filters" link, so a forgotten filter cannot quietly
         // hide part of the list.
-        var filterBtn = filters.length ? filters[0].closest('.dropdown') : null;
+        // A filter marked data-md-outside is driven by tabs on the page
+        // (Borrowing / Returning): not counted or cleared here.
+        var menuFilters = filters.filter(function (f) { return !f.hasAttribute('data-md-outside'); });
+        var filterBtn = menuFilters.length ? menuFilters[0].closest('.dropdown') : null;
         var filterMenu = filterBtn ? filterBtn.querySelector('.dropdown-menu') : null;
         filterBtn = filterBtn ? filterBtn.querySelector('[data-bs-toggle="dropdown"]') : null;
         if (filterMenu) {
@@ -537,7 +540,7 @@ window.sabFilterByBranch = function (select, branch, opts) {
             clear.textContent = 'Clear filters';
             clear.hidden = true;
             clear.addEventListener('click', function () {
-                filters.forEach(function (f) {
+                menuFilters.forEach(function (f) {
                     f.value = '';
                     f.dispatchEvent(new Event('combo-sync'));
                 });
@@ -549,7 +552,7 @@ window.sabFilterByBranch = function (select, branch, opts) {
         }
         function markFilters() {
             if (!filterBtn) return;
-            var on = filters.filter(function (f) { return f.value; }).length;
+            var on = menuFilters.filter(function (f) { return f.value; }).length;
             filterBtn.classList.toggle('active', on > 0);
             var badge = filterBtn.querySelector('.asset-filter-count');
             if (on > 0) {

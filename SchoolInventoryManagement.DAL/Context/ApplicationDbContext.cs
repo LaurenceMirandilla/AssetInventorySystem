@@ -615,6 +615,9 @@ namespace SchoolInventoryManagement.DAL.Context
             // Property picked from stock. Only the order's lines and a
             // requisition's picks go with their parent; nothing else
             // cascades (SQL Server refuses two cascade paths).
+            modelBuilder.Entity<AssetRequest>()
+                .HasOne(r => r.Purchase).WithMany()
+                .HasForeignKey(r => r.NewItemRequestID).OnDelete(DeleteBehavior.Restrict);
             modelBuilder.Entity<PurchaseOrder>()
                 .HasIndex(o => o.PONumber).IsUnique();
             modelBuilder.Entity<PurchaseOrder>()

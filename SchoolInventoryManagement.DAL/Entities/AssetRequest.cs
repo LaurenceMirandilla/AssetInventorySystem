@@ -64,6 +64,11 @@ namespace SchoolInventoryManagement.DAL.Entities
         public DateTime? AcknowledgedAt { get; set; }
         public int? AcknowledgedByUserID { get; set; }
 
+        // A borrow asking for more than Property has (Scripts/032): the
+        // purchase of the missing units, for Property's stock. The borrow is
+        // approved once they are in stock.
+        public int? NewItemRequestID { get; set; }
+
         [Timestamp]
         public byte[] RowVersion { get; set; } = null!;
 
@@ -91,6 +96,9 @@ namespace SchoolInventoryManagement.DAL.Entities
 
         [ForeignKey(nameof(AcknowledgedByUserID))]
         public User? AcknowledgedByUser { get; set; }
+
+        [ForeignKey(nameof(NewItemRequestID))]
+        public NewItemRequest? Purchase { get; set; }
 
         // The lines of the ticket: which models, how many of each.
         public ICollection<AssetRequestItem> Items { get; set; } = new List<AssetRequestItem>();

@@ -40,6 +40,8 @@ namespace SchoolInventoryManagement.BLL.Services
                 .Include(r => r.PickupLocation)
                 .Include(r => r.ApprovedByUser)
                     .ThenInclude(u => u!.Role)
+                .Include(r => r.Purchase)
+                    .ThenInclude(n => n!.Items)
                 .AsSplitQuery();
         }
 
@@ -116,6 +118,7 @@ namespace SchoolInventoryManagement.BLL.Services
             }
 
             var modelIds = dto.Items.Select(i => i.ModelID).ToList();
+            var shortages = new List<(int ModelID, string Name, int Missing)>();
 
             var modelNames = await _context.Models
                 .Where(m => modelIds.Contains(m.ModelID))
@@ -150,33 +153,13 @@ namespace SchoolInventoryManagement.BLL.Services
                         .Select(l => l.LocationName)
                         .FirstAsync();
 
+                // More than Property has, or none at all, is fine (Scripts/032):
+                // the missing units are bought for Property's stock first.
                 foreach (var item in dto.Items)
                 {
-                    var modelName = modelNames[item.ModelID];
-                    var available = availableByModel.GetValueOrDefault(item.ModelID);
-
-                    if (destinationName is null)
-                    {
-                        if (available == 0)
-                            throw new InvalidOperationException(
-                                $"None of {modelName} are in stock right now, so it cannot be borrowed. " +
-                                "Request a purchase instead (New-Item Requests).");
-                        if (item.Quantity > available)
-                            throw new InvalidOperationException(
-                                $"You asked for {item.Quantity} of {modelName}, but only {available} " +
-                                $"{(available == 1 ? "is" : "are")} available.");
-                    }
-                    else
-                    {
-                        if (available == 0)
-                            throw new InvalidOperationException(
-                                $"No units of {modelName} can be moved to {destinationName}: " +
-                                "none are available outside it.");
-                        if (item.Quantity > available)
-                            throw new InvalidOperationException(
-                                $"You asked to move {item.Quantity} of {modelName} to {destinationName}, " +
-                                $"but only {available} available {(available == 1 ? "unit is" : "units are")} somewhere else.");
-                    }
+                    var missing = item.Quantity - availableByModel.GetValueOrDefault(item.ModelID);
+                    if (missing > 0)
+                        shortages.Add((item.ModelID, modelNames[item.ModelID], missing));
                 }
             }
 
@@ -197,6 +180,65 @@ namespace SchoolInventoryManagement.BLL.Services
 
             _context.AssetRequests.Add(request);
             await _context.SaveChangesAsync();
+
+            // Short of stock: a requisition buys the missing units for the
+            // Property Department (Purchasing, then Property puts them in
+            // stock); the borrow is approved once they are there.
+            if (shortages.Count > 0)
+            {
+                var branchId = await _context.Departments.Where(d => d.DepartmentID == requestingUser.DepartmentID)
+                    .Select(d => d.BranchID).FirstAsync();
+                var property = await _context.Departments
+                    .Where(d => d.BranchID == branchId && d.IsProperty)
+                    .Select(d => new { d.DepartmentID, d.MainLocationID })
+                    .FirstOrDefaultAsync()
+                    ?? throw new InvalidOperationException("This branch has no Property Department yet. Run Scripts/024_PropertyDepartment.sql.");
+                var now = PhilippineTime.Now;
+                var names = string.Join(", ", shortages.Select(s => s.Name));
+                var purchase = new NewItemRequest
+                {
+                    RequestedByUserID = actingUserId,
+                    DepartmentID = property.DepartmentID,
+                    ItemName = names.Length <= 150 ? names : names[..147] + "...",
+                    Quantity = shortages.Sum(s => s.Missing),
+                    ItemKind = CategoryKind.Asset,
+                    DeliverToLocationID = property.MainLocationID,
+                    Reason = $"For borrow request #{request.RequestID} ({requestingUser.FirstName} {requestingUser.LastName}): not enough in stock.",
+                    NeededBy = dto.NeededFrom!.Value.Date,
+                    RequestDate = now,
+                    RequestStatus = NewItemStatus.Procuring,
+                    Items = shortages.Select(s => new NewItemRequestItem
+                    {
+                        ItemName = s.Name.Length <= 150 ? s.Name : s.Name[..150],
+                        Quantity = s.Missing,
+                        ToBuy = s.Missing,
+                        ModelID = s.ModelID
+                    }).ToList()
+                };
+                purchase.Steps.Add(new NewItemRequestStep
+                {
+                    Status = NewItemStatus.AwaitingDeptHead,
+                    ActedByUserID = actingUserId,
+                    ActedAt = now,
+                    Remarks = $"For borrow request #{request.RequestID}"
+                });
+                _context.NewItemRequests.Add(purchase);
+                await _context.SaveChangesAsync();
+                request.NewItemRequestID = purchase.NewItemRequestID;
+
+                var missingText = string.Join(", ", shortages.Select(s => $"{s.Name} ×{s.Missing}"));
+                var buyers = await _context.Users
+                    .Where(u => u.Status == "Active" && (u.Role.RoleName == RoleNames.PurchasingOfficer || u.Role.RoleName == RoleNames.Administrator))
+                    .Select(u => new { u.UserID, u.Role.RoleName })
+                    .ToListAsync();
+                var toTell = buyers.Any(b => b.RoleName == RoleNames.PurchasingOfficer)
+                    ? buyers.Where(b => b.RoleName == RoleNames.PurchasingOfficer) : buyers;
+                foreach (var b in toTell.Where(b => b.UserID != actingUserId))
+                    NotificationHelper.Queue(_context, b.UserID,
+                        $"To buy for borrow request #{request.RequestID} (requisition #{purchase.NewItemRequestID}): {missingText}. Needed {request.NeededFrom:MMM d}.",
+                        $"/NewItemRequests/Details/{purchase.NewItemRequestID}");
+                await _context.SaveChangesAsync();
+            }
 
             // Queued only AFTER the first save, because RequestID is still 0
             // until the INSERT actually runs and the link needs the real id.
@@ -444,6 +486,17 @@ namespace SchoolInventoryManagement.BLL.Services
             int requestId, byte[] rowVersion, int actingUserId, bool notifyRequester = true)
         {
             var (request, approver) = await ValidateApproverActionAsync(requestId, rowVersion, actingUserId);
+
+            // Missing units being bought for it: approved once they are in
+            // stock (Scripts/032).
+            if (request.NewItemRequestID is int purchaseId)
+            {
+                var purchaseStatus = await _context.NewItemRequests
+                    .Where(n => n.NewItemRequestID == purchaseId).Select(n => n.RequestStatus).FirstAsync();
+                if (purchaseStatus is not (NewItemStatus.Delivered or NewItemStatus.Rejected or NewItemStatus.Cancelled))
+                    throw new InvalidOperationException(
+                        $"The missing units are still being bought (requisition #{purchaseId}). Approve it once they are in stock.");
+            }
 
             request.RequestStatus = RequestStatus.Approved;
             request.ApprovedByUserID = approver.UserID;

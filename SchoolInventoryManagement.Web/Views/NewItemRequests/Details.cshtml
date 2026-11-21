@@ -483,7 +483,7 @@
             }
             else
             {
-                <button type="submit" class="btn btn-primary">&#10003; @DisplayText.AdvanceButton(Model.RequestStatus)</button>
+                <button type="submit" class="btn btn-primary">&#10003; @(Model.ForStock && delivering ? "Put in stock" : DisplayText.AdvanceButton(Model.RequestStatus))</button>
             }
         </div>
     </form>

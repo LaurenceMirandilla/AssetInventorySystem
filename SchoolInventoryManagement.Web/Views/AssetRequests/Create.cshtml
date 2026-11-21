@@ -26,7 +26,7 @@
     var homeBranchName = ViewBag.HomeBranchName as string;
 
     string Sub(RequestModelOption m) =>
-        m.CategoryName + " · " + (m.Available > 0 ? $"{m.Available} in stock" : "none in stock");
+        m.CategoryName + " · " + (m.Available > 0 ? $"{m.Available} in stock" : "none in stock: bought first");
 
     // Available units per location, read by the script to leave out the
     // ones already at a Transfer's destination.
@@ -51,6 +51,12 @@
         <div class="asset-detail-sub">Borrow items from the Property Department's stock for a while; they are returned when you're done. For things to keep, make a requisition.</div>
     </div>
 </div>
+
+@if (ViewBag.DeliveryRoom is not string)
+{
+    @* The items go to the department's room (Scripts/029). *@
+    <div class="alert alert-warning">Your department has no room yet, so there is nowhere to bring the items. Ask an administrator to give it one on the Departments page.</div>
+}
 
 <form asp-action="Create" method="post" id="requestForm" class="register-form">
     @Html.AntiForgeryToken()
@@ -112,12 +118,12 @@
                                                             data-total="@m.Available"
                                                             data-at="@AtJson(m)"
                                                             data-available="@m.Available"
-                                                            disabled="@(m.Available == 0)"
                                                             selected="@(row.ModelID == m.ModelID)">@m.ModelName</option>
                                                 }
                                             </optgroup>
                                         }
                                     </select>
+                                    <div class="nr-hint nr-buy text-warning fw-semibold mt-1"></div>
                                 </div>
                                 <div class="qty-stepper nr-qty">
                                     <button type="button" class="qty-btn" data-step="-1" aria-label="Fewer">&minus;</button>
@@ -144,12 +150,12 @@
                                                 <option value="@m.ModelID" data-name="@m.ModelName" data-cat="@m.CategoryName" data-sub="@Sub(m)"
                                                         data-total="@m.Available"
                                                         data-at="@AtJson(m)"
-                                                        data-available="@m.Available"
-                                                        disabled="@(m.Available == 0)">@m.ModelName</option>
+                                                        data-available="@m.Available">@m.ModelName</option>
                                             }
                                         </optgroup>
                                     }
                                 </select>
+                                <div class="nr-hint nr-buy text-warning fw-semibold mt-1"></div>
                             </div>
                             <div class="qty-stepper nr-qty">
                                 <button type="button" class="qty-btn" data-step="-1" aria-label="Fewer">&minus;</button>
@@ -165,8 +171,8 @@
 
                     <div class="nr-hint">
                         All items go in one request, from the Property Department's stock.
-                        The amount can't be more than is in stock; greyed-out models have none right now.
-                        None in stock, or not on the list? <a asp-controller="NewItemRequests" asp-action="Create" asp-route-kind="Asset" class="nr-link">Make a requisition &rarr;</a>
+                        More than is in stock, or none at all? What is missing is bought first (Purchasing), then lent to you.
+                        To keep something instead, <a asp-controller="NewItemRequests" asp-action="Create" asp-route-kind="Asset" class="nr-link">make a requisition &rarr;</a>
                     </div>
                 </div>
             </div>
@@ -219,23 +225,6 @@
                No longer asked (Scripts/029): the items go to the requester's
                department room, shown below. The old picker stays hidden so
                the page's script keeps working; the service ignores it. *@
-            <div class="asset-card register-step mb-3">
-                <div class="register-step-head">
-                    <div class="register-step-title flex-grow-1">Delivered to</div>
-                    <span class="nr-head-note">your department's room</span>
-                </div>
-                <div class="register-step-body">
-                    @if (ViewBag.DeliveryRoom is string deliveryRoom)
-                    {
-                        <div class="fw-semibold">@deliveryRoom</div>
-                        <div class="nr-hint mt-1">The items are brought to your department's room. It comes from your account.</div>
-                    }
-                    else
-                    {
-                        <div class="alert alert-warning py-2 mb-0">Your department has no room yet, so there is nowhere to bring the items. Ask an administrator to give it one.</div>
-                    }
-                </div>
-            </div>
             <div class="asset-card register-step mb-3" hidden>
                 <div class="register-step-head">
                     <div class="register-step-title flex-grow-1" id="whereTitle">Pickup location</div>
@@ -296,7 +285,7 @@
                     <div><dt>Items</dt><dd id="sumItems" class="is-empty">None yet</dd></div>
                     <div><dt>Needed</dt><dd id="sumNeeded" class="is-empty">Not chosen yet</dd></div>
                     <div><dt id="sumUntilLabel">Return by</dt><dd id="sumUntil" class="is-empty">Not chosen yet</dd></div>
-                    <div class="nr-summary-wide"><dt id="sumWhereLabel">Pickup</dt><dd id="sumWhere" class="is-empty" data-room="@(ViewBag.DeliveryRoom as string)">Not chosen yet</dd></div>
+                    <div class="nr-summary-wide" hidden><dt id="sumWhereLabel">Pickup</dt><dd id="sumWhere" class="is-empty" data-room="@(ViewBag.DeliveryRoom as string)">Not chosen yet</dd></div>
                 </dl>
             </div>
         </div>
@@ -454,25 +443,23 @@
                     Array.from(select.options).forEach(function (opt) {
                         if (!opt.value) return;
                         opt.hidden = picked.some(function (v, j) { return j !== i && v === opt.value; });
-                        opt.disabled = opt.getAttribute('data-available') === '0' && !opt.selected;
                     });
 
+                    // Any amount: what Property does not have is bought first.
                     var qty = row.querySelector('.qty-input');
                     var chosen = select.options[select.selectedIndex];
-                    var max = chosen && chosen.value ? parseInt(chosen.getAttribute('data-available'), 10) : 0;
+                    var have = chosen && chosen.value ? parseInt(chosen.getAttribute('data-available'), 10) || 0 : 0;
                     var n = parseInt(qty.value, 10);
-                    if (isNaN(n) || n < 1) qty.value = 1;
-                    if (max > 0) {
-                        qty.max = max;
-                        if (n > max) qty.value = max;
-                    } else {
-                        qty.removeAttribute('max');
-                    }
+                    if (isNaN(n) || n < 1) { qty.value = 1; n = 1; }
+                    qty.removeAttribute('max');
+                    var buy = chosen && chosen.value ? n - have : 0;
+                    row.querySelector('.nr-buy').textContent = buy <= 0 ? ''
+                        : (have > 0 ? have + ' in stock · ' + buy + ' bought first' : 'None in stock: ' + buy + ' bought first');
                     row.querySelector('.remove-row').style.visibility = rows.length === 1 ? 'hidden' : 'visible';
                 });
 
                 var models = template.content.querySelectorAll('option[value]:not([value=""])');
-                var selectable = Array.from(models).filter(function (o) { return o.getAttribute('data-available') !== '0'; }).length;
+                var selectable = models.length;
                 addButton.disabled = rows.length >= maxRows || rows.length >= selectable;
                 summary();
             }
@@ -515,10 +502,7 @@
 
             rowsBox.addEventListener('input', function (e) {
                 if (!e.target.classList.contains('qty-input')) return;
-                var max = parseInt(e.target.max, 10);
-                var n = parseInt(e.target.value, 10);
-                if (!isNaN(max) && n > max) e.target.value = max;
-                summary();
+                sync();
             });
 
             rowsBox.addEventListener('click', function (e) {
@@ -526,9 +510,8 @@
                 if (step) {
                     var qty = step.parentNode.querySelector('.qty-input');
                     var n = (parseInt(qty.value, 10) || 1) + parseInt(step.dataset.step, 10);
-                    var max = parseInt(qty.max, 10);
-                    qty.value = Math.max(1, isNaN(max) ? n : Math.min(n, max));
-                    summary();
+                    qty.value = Math.max(1, n);
+                    sync();
                     return;
                 }
                 var button = e.target.closest('.remove-row');

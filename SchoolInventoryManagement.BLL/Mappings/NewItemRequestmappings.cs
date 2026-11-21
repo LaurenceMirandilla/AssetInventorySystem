@@ -21,6 +21,7 @@ namespace SchoolInventoryManagement.BLL.Mappings
                 RequestedByRoleName = request.RequestedByUser.Role?.RoleName,
                 DepartmentID = request.DepartmentID,
                 DepartmentName = request.Department.DepartmentName,
+                ForStock = request.Department.IsProperty,
                 ItemName = request.ItemName,
                 Quantity = request.Quantity,
                 ItemKind = request.ItemKind,

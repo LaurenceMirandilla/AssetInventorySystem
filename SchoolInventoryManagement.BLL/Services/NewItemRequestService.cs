@@ -332,10 +332,9 @@ namespace SchoolInventoryManagement.BLL.Services
             // What the Property Department of the requester's branch can
             // still hand out: the form shows it, and says what will have to
             // be bought.
-            if (me.DepartmentBranchID is int branchId)
             {
-                var freeUnits = await RequisitionStock.FreeUnitsAsync(_context, branchId);
-                var freeSupplies = await RequisitionStock.FreeSuppliesAsync(_context, branchId);
+                var freeUnits = await RequisitionStock.FreeUnitsAsync(_context);
+                var freeSupplies = await RequisitionStock.FreeSuppliesAsync(_context);
                 foreach (var m in lookups.Models)
                     m.InStock = freeUnits.GetValueOrDefault(m.Id);
                 foreach (var s in lookups.Supplies)
@@ -460,13 +459,9 @@ namespace SchoolInventoryManagement.BLL.Services
             // What Property can hand out now decides, line by line, what comes
             // from stock and what Purchasing must buy. A new item (nothing
             // picked from the list) is all to buy.
-            var branchId = await _context.Departments
-                .Where(d => d.DepartmentID == requester.DepartmentID)
-                .Select(d => d.BranchID)
-                .FirstAsync();
             var free = isSupplies
-                ? await RequisitionStock.FreeSuppliesAsync(_context, branchId)
-                : await RequisitionStock.FreeUnitsAsync(_context, branchId);
+                ? await RequisitionStock.FreeSuppliesAsync(_context)
+                : await RequisitionStock.FreeUnitsAsync(_context);
             foreach (var line in items)
             {
                 var fromStock = 0;
@@ -898,6 +893,16 @@ namespace SchoolInventoryManagement.BLL.Services
                 if (request.DeliverToLocationID is int roomId)
                     foreach (var unit in units)
                         MovementHelper.Record(_context, unit, roomId, actor.UserID, $"Requisition #{requestId}: sent out");
+
+                // Bought for the Property Department's own stock (a borrow that
+                // was short, Scripts/032): into stock now, nothing to confirm.
+                if (request.Department.IsProperty)
+                {
+                    foreach (var unit in units)
+                        await PropertyStock.ReturnToStockAsync(_context, unit);
+                    request.AcknowledgedAt = now;
+                    request.AcknowledgedByUserID = actor.UserID;
+                }
             }
             if (to == NewItemStatus.Delivered && request.ItemKind == CategoryKind.Supply)
                 handedOver = await PurchasedSupplies.IssueAsync(_context, request, actor.UserID, now);
@@ -930,6 +935,24 @@ namespace SchoolInventoryManagement.BLL.Services
                 case NewItemStatus.Arrived:
                     NotificationHelper.Queue(_context, request.RequestedByUserID,
                         $"Requisition #{requestId}: what was bought for it has arrived. The Property Department is getting it ready.", url);
+                    break;
+
+                case NewItemStatus.Delivered when request.Department.IsProperty:
+                    // The borrow it was bought for can go ahead.
+                    var borrows = await _context.AssetRequests
+                        .Where(r => r.NewItemRequestID == requestId)
+                        .Select(r => new { r.RequestID, r.RequestedByUserID })
+                        .ToListAsync();
+                    foreach (var b in borrows)
+                    {
+                        NotificationHelper.Queue(_context, b.RequestedByUserID,
+                            $"What was missing for your borrow request #{b.RequestID} is in stock now. The Property Department prepares it for you.",
+                            $"/AssetRequests/Details/{b.RequestID}");
+                        foreach (var userId in (await PropertyIdsAsync()).Where(id => id != actor.UserID))
+                            NotificationHelper.Queue(_context, userId,
+                                $"Borrow request #{b.RequestID} can be approved: what it was short of is in stock now.",
+                                $"/AssetRequests/Details/{b.RequestID}");
+                    }
                     break;
 
                 case NewItemStatus.Delivered:
@@ -1126,7 +1149,7 @@ namespace SchoolInventoryManagement.BLL.Services
             var units = await _context.Assets.AsNoTracking()
                 .Where(a => modelIds.Contains(a.ModelID)
                             && (pickedIds.Contains(a.AssetID)
-                                || (a.Status == AssetStatus.Available && a.BranchID == request.Department.BranchID)))
+                                || a.Status == AssetStatus.Available))
                 .OrderBy(a => a.AssetCode)
                 .Select(a => new
                 {
@@ -1221,7 +1244,7 @@ namespace SchoolInventoryManagement.BLL.Services
                 var line = lines[lineOf[assetId]];
                 if (unit.ModelID != line.ModelID)
                     throw new ArgumentException($"{unit.AssetCode} is not a {line.ItemName}.");
-                if (unit.Status != AssetStatus.Available || unit.BranchID != request.Department.BranchID)
+                if (unit.Status != AssetStatus.Available)
                     throw new InvalidOperationException(
                         $"{unit.AssetCode} is no longer in stock here (someone may have just taken it). Reload and pick again.");
 
@@ -1251,11 +1274,10 @@ namespace SchoolInventoryManagement.BLL.Services
             if (request.RequestStatus != NewItemStatus.Arrived)
                 throw new InvalidOperationException("Only a requisition the Property Department is getting ready can go back to Purchasing.");
 
-            var branchId = request.Department.BranchID;
             var shorts = new List<(NewItemRequestItem Line, int Short)>();
             if (request.ItemKind == CategoryKind.Asset)
             {
-                var free = await RequisitionStock.FreeUnitsAsync(_context, branchId, exceptRequestId: requestId);
+                var free = await RequisitionStock.FreeUnitsAsync(_context, exceptRequestId: requestId);
                 var pickedByLine = await _context.NewItemRequestUnits
                     .Where(u => u.NewItemRequestID == requestId)
                     .GroupBy(u => u.NewItemRequestItemID)
@@ -1275,7 +1297,7 @@ namespace SchoolInventoryManagement.BLL.Services
             {
                 // Stock added for it (bought) is in Property's count too: it
                 // is kept for the bought part.
-                var free = await RequisitionStock.FreeSuppliesAsync(_context, branchId, exceptRequestId: requestId);
+                var free = await RequisitionStock.FreeSuppliesAsync(_context, exceptRequestId: requestId);
                 var heldForIt = await _context.SupplyTransactions
                     .Where(t => t.NewItemRequestID == requestId
                                 && (t.Type == SupplyTransactionType.Received || t.Type == SupplyTransactionType.Opening
