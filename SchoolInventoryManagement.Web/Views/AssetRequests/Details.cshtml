@@ -43,7 +43,7 @@
     var section = ViewData["NavSection"] as string ?? (isMine ? "mine" : "approvals");
     var (backLabel, backAction) = section switch
     {
-        "approvals" => ("Approvals", "Pending"),
+        "approvals" => ("Borrowed", "Pending"),
         "history" => ("Borrow History", "History"),
         _ => ("Borrowing", "MyRequests")
     };

@@ -3,7 +3,7 @@
 @using SchoolInventoryManagement.DAL.Entities.Enums
 @using SchoolInventoryManagement.Web.ViewModels
 @{
-    ViewData["Title"] = "Approvals";
+    ViewData["Title"] = "Older supply requests";
     // What this page shows, for the live updates (_Layout, site.js).
     ViewData["LiveScope"] = "approvals";
 
@@ -68,7 +68,6 @@
     <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
 }
 
-<partial name="_ApprovalsNav" model="@("requisitions")" />
 
 <div class="asset-detail-head mb-3 pb-0 border-0">
     <div>

@@ -750,6 +750,10 @@ namespace SchoolInventoryManagement.BLL.Services
                 })
                 .ToList();
             await FillRequisitionInfoAsync(pending);
+            // Arrived consumables: how much is already in stock for each, for
+            // the "What goes out" note.
+            foreach (var dto in pending.Where(p => p.RequestStatus == NewItemStatus.Arrived))
+                await FillSuppliesAddedAsync(dto);
             return pending;
         }
 

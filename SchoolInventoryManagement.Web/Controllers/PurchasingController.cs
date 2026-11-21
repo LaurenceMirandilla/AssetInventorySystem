@@ -27,11 +27,13 @@ namespace SchoolInventoryManagement.Web.Controllers
 
         private readonly INewItemRequestService _requestService;
         private readonly IPurchasingService _purchasing;
+        private readonly IDepartmentService _departments;
 
-        public PurchasingController(INewItemRequestService requestService, IPurchasingService purchasing)
+        public PurchasingController(INewItemRequestService requestService, IPurchasingService purchasing, IDepartmentService departments)
         {
             _requestService = requestService;
             _purchasing = purchasing;
+            _departments = departments;
         }
 
         private int CurrentUserId =>
@@ -45,6 +47,9 @@ namespace SchoolInventoryManagement.Web.Controllers
         {
             var requests = await _requestService.GetPurchasingQueueAsync(CurrentUserId);
             ViewBag.Orders = await _purchasing.GetOrdersAsync(CurrentUserId);
+            // Department -> branch, for the Branch filter.
+            ViewBag.DepartmentBranches = (await _departments.GetAllDepartmentsAsync())
+                .ToDictionary(d => d.DepartmentID, d => d.BranchName);
             ViewBag.Tab = tab is "ordered" or "orders" ? tab : "buy";
             ViewBag.NewOrder = po;
             return View(requests);
@@ -99,7 +104,7 @@ namespace SchoolInventoryManagement.Web.Controllers
                     : $"{order.PONumber} saved. Requisition #{order.NewItemRequestID} still has items to order.";
                 // Back to Purchasing, on its purchase orders, with this one
                 // picked out (Open / print from there).
-                return RedirectToAction(nameof(Index), new { tab = "orders", po = order.PurchaseOrderID });
+                return Redirect(Url.Action(nameof(Index), new { tab = "orders", po = order.PurchaseOrderID }) + "#o-" + order.PurchaseOrderID);
             }
             catch (KeyNotFoundException)
             {

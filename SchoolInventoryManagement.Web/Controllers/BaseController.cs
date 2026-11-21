@@ -18,6 +18,13 @@ namespace SchoolInventoryManagement.Web.Controllers
     // would produce.
     public abstract class BaseController : Controller
     {
+        // Back to a requisition after registering or stocking what arrived
+        // for it: its panel on the approvals page ("approvals"), or its page.
+        protected IActionResult RequisitionBack(int id, string? returnTo) =>
+            returnTo == "approvals"
+                ? Redirect(Url.Action("Pending", "NewItemRequests", new { open = id }) + "#n-" + id)
+                : RedirectToAction("Details", "NewItemRequests", new { id });
+
         protected void HandleServiceException(Exception ex)
         {
             var message = ex is KeyNotFoundException && ExceptionHandlingMiddleware.IsExpected(ex)

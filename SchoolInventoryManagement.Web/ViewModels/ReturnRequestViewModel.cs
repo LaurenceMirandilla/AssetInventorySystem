@@ -31,8 +31,8 @@ namespace SchoolInventoryManagement.Web.ViewModels
         [Display(Name = "Returned on")]
         public System.DateTime? ReturnedOn { get; set; }
 
-        [Required(ErrorMessage = "Say where the units are being put back.")]
-        [Display(Name = "Return to location")]
+        // Not asked any more: units go back to the Property Department room
+        // of the borrower's branch. Kept for older forms.
         public int? ReturnLocationID { get; set; }
 
         [Required]

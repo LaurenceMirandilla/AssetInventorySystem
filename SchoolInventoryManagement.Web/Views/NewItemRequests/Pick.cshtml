@@ -14,7 +14,7 @@
 <div class="sab-page-head">
     <div>
         <nav class="asset-crumbs" aria-label="Breadcrumb">
-            <a asp-action="Pending">Requisition approvals</a>
+            <a asp-action="Pending" asp-route-kind="Asset">Requisition</a>
             <span aria-hidden="true">&rsaquo;</span>
             <a asp-action="Details" asp-route-id="@Model.NewItemRequestID">#@Model.NewItemRequestID</a>
             <span aria-hidden="true">&rsaquo;</span>
@@ -27,6 +27,7 @@
 
 <form asp-action="Pick" asp-route-id="@Model.NewItemRequestID" method="post">
     @Html.AntiForgeryToken()
+    <input type="hidden" name="returnTo" value="@(ViewBag.ReturnTo as string)" />
     @if (!Model.Lines.Any())
     {
         <div class="sab-table-card"><div class="sab-empty"><p class="mb-0">Nothing on this requisition comes from stock: it is all bought.</p></div></div>

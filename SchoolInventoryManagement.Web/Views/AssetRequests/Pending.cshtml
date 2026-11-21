@@ -4,7 +4,7 @@
 @using SchoolInventoryManagement.DAL.Entities.Enums
 @using SchoolInventoryManagement.Web.ViewModels
 @{
-    ViewData["Title"] = "Borrowing approvals";
+    ViewData["Title"] = "Borrowed";
     // What this page shows, for the live updates (_Layout, site.js).
     ViewData["LiveScope"] = "approvals";
 
@@ -85,11 +85,10 @@
     <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
 }
 
-<partial name="_ApprovalsNav" model="@("borrowing")" />
 
 <div class="asset-detail-head mb-3 pb-0 border-0">
     <div>
-        <h2 class="asset-detail-title">Borrowing</h2>
+        <h2 class="asset-detail-title">Borrowed</h2>
         <div class="asset-detail-sub">@Model.Count borrow@(Model.Count == 1 ? "" : "s") awaiting a decision from you, then handing over and returns.</div>
     </div>
     @if (canManageAssets)

@@ -128,13 +128,18 @@ namespace SchoolInventoryManagement.Web.Controllers
         // Its own table page (Views/NewItemRequests/All): requester
         // column, search box, stage filter and order.
         [Authorize(Roles = ViewAllRoles)]
-        public async Task<IActionResult> All(NewItemStatus? status, string? q, string? sort)
+        // kind = Asset / Supply: one kind's history (Requisition > Fixed
+        // assets or Consumables > History).
+        public async Task<IActionResult> All(NewItemStatus? status, string? q, string? sort, CategoryKind? kind)
         {
             // Every request is loaded; the stage chips and the search box
             // narrow the list on the page. status and q from a link (or an
             // old bookmark) set where the page starts.
             var oldestFirst = sort == "oldest";
             var requests = await _requestService.GetAllRequestsAsync(CurrentUserId, null, null, oldestFirst);
+            if (kind is not null)
+                requests = requests.Where(r => r.ItemKind == kind).ToList();
+            ViewBag.Kind = kind;
 
             ViewBag.Status = status;
             ViewBag.Search = q?.Trim();
@@ -146,10 +151,24 @@ namespace SchoolInventoryManagement.Web.Controllers
         // GET /NewItemRequests/Pending
         // The signed-in user's queue: what is waiting on them to act.
         [Authorize(Roles = ActingRoles)]
-        public async Task<IActionResult> Pending()
+        // kind = Asset (Fixed assets, the default) or Supply (Consumables):
+        // the two buttons at the top. open = a requisition to show: its kind
+        // is picked for it.
+        public async Task<IActionResult> Pending(CategoryKind? kind, int? open)
         {
-            var requests = await _requestService.GetPendingRequestsAsync(CurrentUserId);
-            ViewBag.InProgress = await _requestService.GetInProgressRequestsAsync(CurrentUserId);
+            var allPending = await _requestService.GetPendingRequestsAsync(CurrentUserId);
+            var allProgress = await _requestService.GetInProgressRequestsAsync(CurrentUserId);
+            if (open is int id)
+                kind ??= allPending.Concat(allProgress).FirstOrDefault(r => r.NewItemRequestID == id)?.ItemKind;
+            var k = kind ?? CategoryKind.Asset;
+            ViewBag.Kind = k;
+            ViewBag.Counts = new Dictionary<CategoryKind, int>
+            {
+                [CategoryKind.Asset] = allPending.Count(r => r.ItemKind == CategoryKind.Asset),
+                [CategoryKind.Supply] = allPending.Count(r => r.ItemKind == CategoryKind.Supply)
+            };
+            var requests = allPending.Where(r => r.ItemKind == k).ToList();
+            ViewBag.InProgress = allProgress.Where(r => r.ItemKind == k).ToList();
             await LoadDepartmentBranchesAsync();
             return View(requests);
         }
@@ -316,6 +335,25 @@ namespace SchoolInventoryManagement.Web.Controllers
                     _ => $"Requisition #{id} moved on."
                 };
 
+                // Received from the supplier: register (fixed assets) or add to
+                // stock (consumables) what was bought, then come back here to
+                // send it out.
+                if (stage == NewItemStatus.Arrived)
+                {
+                    var arrived = await _requestService.GetRequestAsync(id, CurrentUserId);
+                    var bought = arrived.Items.Sum(i => i.ToBuy);
+                    if (bought > 0)
+                    {
+                        var back = returnTo == "details" ? "details" : "approvals";
+                        TempData["StatusMessage"] = arrived.ItemKind == CategoryKind.Supply
+                            ? $"Requisition #{id} received from the supplier. Add the {bought} bought unit{(bought == 1 ? "" : "s")} to stock; then you are sent back to send it out."
+                            : $"Requisition #{id} received from the supplier. Register the {bought} bought unit{(bought == 1 ? "" : "s")}; then you are sent back to send it out.";
+                        return arrived.ItemKind == CategoryKind.Supply
+                            ? RedirectToAction("AddStock", "Supplies", new { newItemRequestId = id, returnTo = back })
+                            : RedirectToAction("BulkCreate", "Assets", new { newItemRequestId = id, returnTo = back });
+                    }
+                }
+
                 // The requester confirms receiving it.
                 if (stage == NewItemStatus.Delivered)
                 {
@@ -405,11 +443,12 @@ namespace SchoolInventoryManagement.Web.Controllers
         // GET /NewItemRequests/Pick/5 : Property picks the units it sends
         // from stock (Scripts/031).
         [Authorize(Roles = RoleNames.AssetOfficer + "," + RoleNames.Administrator)]
-        public async Task<IActionResult> Pick(int id)
+        public async Task<IActionResult> Pick(int id, string? returnTo)
         {
             try
             {
                 ViewData["NavSection"] = "newitem-approvals";
+                ViewBag.ReturnTo = returnTo;
                 return View(await _requestService.GetPickAsync(id, CurrentUserId));
             }
             catch (KeyNotFoundException)
@@ -442,13 +481,13 @@ namespace SchoolInventoryManagement.Web.Controllers
             {
                 var count = await _requestService.SetPickedUnitsAsync(id, picks, CurrentUserId);
                 TempData["StatusMessage"] = $"{count} unit{(count == 1 ? "" : "s")} picked for requisition #{id}. They are kept for it until it is sent.";
-                return RedirectToAction(nameof(Details), new { id });
+                return RequisitionBack(id, form["returnTo"]);
             }
             catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or KeyNotFoundException
                                            or ConcurrencyConflictException or UnauthorizedAccessException)
             {
                 TempData["ErrorMessage"] = UserMessageFor(ex);
-                return RedirectToAction(nameof(Pick), new { id });
+                return RedirectToAction(nameof(Pick), new { id, returnTo = form["returnTo"].ToString() });
             }
         }
 
@@ -474,6 +513,6 @@ namespace SchoolInventoryManagement.Web.Controllers
         private IActionResult BackTo(int id, string? returnTo) =>
             returnTo == "details" ? RedirectToAction(nameof(Details), new { id })
             : returnTo == "purchasing" ? RedirectToAction("Index", "Purchasing")
-            : RedirectToAction(nameof(Pending));
+            : RedirectToAction(nameof(Pending), new { open = id });
     }
 }

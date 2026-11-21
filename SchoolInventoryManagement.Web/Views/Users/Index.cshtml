@@ -25,7 +25,20 @@
         ? allDepartments.Select(d => (d.DepartmentID, d.DepartmentName, d.BranchID, d.BranchName)).OrderBy(d => d.BranchName).ThenBy(d => d.DepartmentName).ToList()
         : users.Select(u => (u.DepartmentID, u.DepartmentName, u.BranchID, u.BranchName)).Distinct()
             .OrderBy(d => d.BranchName).ThenBy(d => d.DepartmentName).ToList();
-    var roles = users.Select(u => u.RoleName).Distinct().OrderBy(r => r).ToList();
+    // Every role, held by someone yet or not (a new Purchasing Officer
+    // role had no one in it, so it was missing from the filter).
+    var roles = new[]
+        {
+            SchoolInventoryManagement.DAL.Constants.RoleNames.Administrator,
+            SchoolInventoryManagement.DAL.Constants.RoleNames.Principal,
+            SchoolInventoryManagement.DAL.Constants.RoleNames.AssetOfficer,
+            SchoolInventoryManagement.DAL.Constants.RoleNames.PurchasingOfficer,
+            SchoolInventoryManagement.DAL.Constants.RoleNames.DepartmentHead,
+            SchoolInventoryManagement.DAL.Constants.RoleNames.Teacher,
+            SchoolInventoryManagement.DAL.Constants.RoleNames.Staff
+        }
+        .Concat(users.Select(u => u.RoleName))
+        .Distinct().OrderBy(r => r).ToList();
 
     // The Branch and Department filters start where the address asked
     // (a "View users" link on Departments or Branches).

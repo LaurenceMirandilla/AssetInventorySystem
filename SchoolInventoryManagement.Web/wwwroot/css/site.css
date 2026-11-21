@@ -4069,7 +4069,24 @@ a.nr-kind:hover { border-color: var(--sab-green-border); }
 /* Purchasing: readable on the green card heads; the order just saved. */
 .rq-card-head .pu-kind { color: rgba(255,255,255,.82); font-weight: 600; text-transform: none; letter-spacing: 0; }
 .rq-card-head .pu-late { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: #fff; color: #b42318; font-weight: 700; font-size: 11px; }
-#poList tr.pu-new > td { background: #eef8f1; }
+.myassets-item.pu-new { background: #eef8f1; }
 .pu-new-tag { margin-left: 6px; padding: 1px 6px; border-radius: 999px; background: var(--sab-green); color: #fff; font-size: 10.5px; font-weight: 700; text-transform: uppercase; }
 .po-grand { display: flex; justify-content: flex-end; align-items: baseline; gap: 12px; margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--sab-border); font-weight: 600; }
 .po-grand strong { font-size: 1.2rem; color: var(--sab-green-dark); }
+
+/* Record return: each unit's condition tag (set with the brush). */
+.rr-tile { cursor: pointer; flex-wrap: wrap; }
+.rr-tag:empty { display: none; }
+.rr-tag { display: inline-flex; align-items: center; gap: 5px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--sab-border); background: #fff; font-size: 0.76rem; font-weight: 700; color: var(--sab-text); }
+.rr-tag::before { content: ""; width: 8px; height: 8px; border-radius: 2px; background: var(--chip-dot, #9aa3ad); }
+#condBrush .condition-chip { cursor: pointer; }
+.ni-ready .asset-code-chip { margin: 2px 4px 2px 0; }
+.ni-ready-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin-top: 6px; }
+.ni-ready-label { font-size: 0.82rem; color: var(--sab-text-muted); font-weight: 600; margin-right: 4px; }
+.ni-ready-todo { font-size: 0.82rem; font-weight: 600; }
+
+/* Requisition: Fixed assets / Consumables buttons, with the kind's history. */
+.rq-kinds { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.rq-kinds .sab-seg > a { display: inline-flex; align-items: center; gap: 8px; }
+.rq-kinds .sab-seg .history-tab-count { background: #e8ece9 !important; color: var(--sab-text) !important; }
+.rq-kinds .sab-seg > .active .history-tab-count { background: var(--sab-green-dark) !important; color: #fff !important; }

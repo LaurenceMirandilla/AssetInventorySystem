@@ -4,13 +4,22 @@
 @using SchoolInventoryManagement.DAL.Entities.Enums
 @{
     ViewData["Title"] = "Purchasing";
+    // Purchasing (Scripts/031), laid out like the other lists: tabs, a list
+    // with search and Filters on the left, the picked one on the right.
+    //   To buy: requisitions with something Property's stock could not cover.
+    //   Ordered: everything on purchase orders, waiting for the supplier.
+    //   Purchase orders: every order made, newest first.
     var toBuy = Model.Where(r => r.RequestStatus == NewItemStatus.Procuring).ToList();
     var ordered = Model.Where(r => r.RequestStatus == NewItemStatus.AwaitingArrival).ToList();
     List<PurchaseOrderListDTO> orders = (ViewBag.Orders as List<PurchaseOrderListDTO>) ?? new List<PurchaseOrderListDTO>();
+    Dictionary<int, string> deptBranches = (ViewBag.DepartmentBranches as Dictionary<int, string>) ?? new Dictionary<int, string>();
+    string BranchOf(NewItemRequestResponseDTO r) => deptBranches.TryGetValue(r.DepartmentID, out var b) ? b : "";
     var tab = ViewBag.Tab as string ?? "buy";
     int? newOrder = ViewBag.NewOrder as int?;
     var me = int.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)!.Value);
-    string Stage(NewItemStatus s) => s switch
+    var today = PhilippineTime.Today;
+
+    string Status(NewItemStatus s) => s switch
     {
         NewItemStatus.Procuring => "More to order",
         NewItemStatus.AwaitingArrival => "Waiting for the supplier",
@@ -20,155 +29,412 @@
         NewItemStatus.Rejected => "Rejected",
         _ => DisplayText.Stage(s)
     };
+    string StatusKey(NewItemStatus s) => s switch
+    {
+        NewItemStatus.Procuring => "more",
+        NewItemStatus.AwaitingArrival => "waiting",
+        NewItemStatus.Arrived => "received",
+        NewItemStatus.Delivered => "delivered",
+        _ => "stopped"
+    };
+    bool Late(NewItemRequestResponseDTO r) => r.NeededBy is not null && r.NeededBy.Value.Date < today;
+    string Search(NewItemRequestResponseDTO r) =>
+        $"#{r.NewItemRequestID} {r.NewItemRequestID} {string.Join(' ', r.Items.Select(i => i.ItemName))} {r.Reason} {r.RequestedByUserName} {r.DepartmentName}".ToLowerInvariant();
+    string Peso(decimal v) => "₱" + v.ToString("N2");
 }
-@* Purchasing (Scripts/031): requisitions with something Property's stock
-   could not cover. For each, what is missing and how much is already on a
-   purchase order; then the ones ordered, waiting for the supplier. *@
+
+@functions {
+    static string Initials(string name)
+    {
+        var s = string.Concat(name.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(p => p[0])).ToUpperInvariant();
+        return s.Length > 2 ? s[..2] : s;
+    }
+}
 
 @if (TempData["ErrorMessage"] != null)
 {
     <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
 }
 
-<div class="sab-page-head">
+<div class="asset-detail-head mb-3 pb-0 border-0">
     <div>
-        <h2>Purchasing</h2>
-        <p class="sab-page-sub">What requisitions are missing, to buy from suppliers. Make a purchase order, print it and bring it to the supplier; the Property Department receives the items.</p>
+        <h2 class="asset-detail-title">Purchasing</h2>
+        <div class="asset-detail-sub">What requisitions are missing, to buy from suppliers. Make a purchase order, print it and bring it to the supplier; the Property Department receives the items.</div>
+    </div>
+    <div class="asset-detail-actions">
+        <a asp-controller="Suppliers" asp-action="Index" class="btn btn-outline-secondary">Suppliers</a>
     </div>
 </div>
 
-<nav class="page-tabs" aria-label="Purchasing">
-    <a asp-action="Index" asp-route-tab="buy" class="page-tab @(tab == "buy" ? "active" : "")">To buy <span class="history-tab-count">@toBuy.Count</span></a>
-    <a asp-action="Index" asp-route-tab="ordered" class="page-tab @(tab == "ordered" ? "active" : "")">Ordered, waiting for the supplier <span class="history-tab-count">@ordered.Count</span></a>
-    <a asp-action="Index" asp-route-tab="orders" class="page-tab @(tab == "orders" ? "active" : "")">Purchase orders <span class="history-tab-count">@orders.Count</span></a>
-</nav>
+<div class="page-tabs" role="tablist">
+    <button type="button" class="@(tab == "buy" ? "active" : "")" role="tab" aria-selected="@(tab == "buy" ? "true" : "false")" data-md-tab="pBuy">
+        To buy <span class="history-tab-count">@toBuy.Count</span>
+    </button>
+    <button type="button" class="@(tab == "ordered" ? "active" : "")" role="tab" aria-selected="@(tab == "ordered" ? "true" : "false")" data-md-tab="pOrdered">
+        Ordered, waiting for the supplier <span class="history-tab-count">@ordered.Count</span>
+    </button>
+    <button type="button" class="@(tab == "orders" ? "active" : "")" role="tab" aria-selected="@(tab == "orders" ? "true" : "false")" data-md-tab="pOrders">
+        Purchase orders <span class="history-tab-count">@orders.Count</span>
+    </button>
+</div>
 
-@if (tab == "buy")
-{
-@if (toBuy.Count == 0)
-{
-    <div class="sab-table-card"><div class="sab-empty"><p class="mb-0">Nothing to buy right now.</p></div></div>
-}
-@foreach (var r in toBuy)
-{
-    var late = r.NeededBy is not null && r.NeededBy.Value.Date < PhilippineTime.Today;
-    <div class="asset-card mb-3">
-        <div class="rq-card-head">
-            <h3><a asp-controller="NewItemRequests" asp-action="Details" asp-route-id="@r.NewItemRequestID">Requisition #@r.NewItemRequestID</a> <span class="pu-kind">· @NewItemProgress.Kind(r)</span></h3>
-            <span>@r.DepartmentName · @r.RequestedByUserName · needed by @(r.NeededBy?.ToString("MMM d, yyyy") ?? "—")@if (late) {<span class="pu-late">late</span>}</span>
-        </div>
-        <p class="px-3 mb-2 small text-muted">Submitted @r.RequestDate.ToString("MMM d, yyyy")@(string.IsNullOrWhiteSpace(r.Reason) ? "" : " · Reason: " + r.Reason)</p>
-        <div class="table-responsive">
-            <table class="table asset-table mb-0">
-                <thead>
-                    <tr><th>Item</th><th class="text-end">Asked</th><th class="text-end">From stock</th><th class="text-end">Missing</th><th class="text-end">Ordered</th><th class="text-end">Left to order</th></tr>
-                </thead>
-                <tbody>
-                    @foreach (var i in r.Items)
-                    {
-                        <tr class="@(i.ToBuy == 0 ? "text-muted" : "")">
-                            <td>@i.ItemName@if (!string.IsNullOrWhiteSpace(i.Description)) {<small class="d-block text-muted">@i.Description</small>}</td>
-                            <td class="text-end">@i.Quantity</td>
-                            <td class="text-end">@i.FromStock</td>
-                            <td class="text-end fw-semibold">@i.ToBuy</td>
-                            <td class="text-end">@i.Ordered</td>
-                            <td class="text-end @(i.LeftToOrder > 0 ? "fw-semibold" : "")">@i.LeftToOrder</td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        </div>
-        <div class="d-flex align-items-center flex-wrap p-3" style="gap:8px;">
-            @foreach (var po in r.PurchaseOrders)
-            {
-                <a asp-action="Order" asp-route-id="@po.PurchaseOrderID" class="asset-code-chip">@po.PONumber · @po.SupplierName</a>
-            }
-            <span class="ms-auto"></span>
-            @if (r.RequestedByUserID == int.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)!.Value))
-            {
-                <span class="text-muted">Your own requisition: another Purchasing Officer buys it.</span>
-            }
-            else if (r.LeftToOrder > 0)
-            {
-                <a asp-action="CreateOrder" asp-route-requestId="@r.NewItemRequestID" class="btn btn-primary btn-sm">Make purchase order</a>
-            }
-            <a asp-controller="NewItemRequests" asp-action="Details" asp-route-id="@r.NewItemRequestID" class="btn btn-outline-secondary btn-sm">View</a>
-        </div>
-    </div>
-}
-
-}
-
-@if (tab == "ordered")
-{
-<div class="sab-table-card">
-    @if (ordered.Count == 0)
+@{
+    // A list of requisitions and their panels (To buy and Ordered).
+    async Task RequisitionList(List<NewItemRequestResponseDTO> list, string prefix, bool toOrder)
     {
-        <div class="sab-empty"><p class="mb-0">Nothing on the way.</p></div>
+        <div class="sab-table-card myassets" data-md data-page-size="6">
+            <aside class="myassets-list" aria-label="@(toOrder ? "Requisitions to buy" : "Requisitions ordered")">
+                <div class="md-toolbar">
+                    <label class="asset-search">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+                        <input type="text" data-md-search autocomplete="off" placeholder="Item, requester or #..." aria-label="Search requisitions" />
+                    </label>
+                    <div class="dropdown">
+                        <button type="button" class="asset-tool-btn" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18l-7 8.5V19l-4 2v-7.5z" /></svg>
+                            Filters
+                        </button>
+                        <div class="dropdown-menu dropdown-menu-end md-filter-menu">
+                            <label class="form-label">Kind</label>
+                            <select class="form-select form-select-sm mb-2" data-md-filter="kind">
+                                <option value="">Any</option>
+                                <option value="asset">Fixed assets</option>
+                                <option value="supply">Consumables</option>
+                            </select>
+                            <label class="form-label">Needed</label>
+                            <select class="form-select form-select-sm mb-2" data-md-filter="due">
+                                <option value="">Any</option>
+                                <option value="late">Late</option>
+                                <option value="ontime">On time</option>
+                            </select>
+                            <label class="form-label">Branch</label>
+                            <div class="mb-2">
+                                <select class="form-select form-select-sm" data-md-filter="branch" data-combobox>
+                                    <option value="">Any</option>
+                                    @foreach (var d in list.Select(BranchOf).Where(d => !string.IsNullOrEmpty(d)).Distinct().OrderBy(d => d))
+                                    {
+                                        <option value="@d.ToLowerInvariant()">@d</option>
+                                    }
+                                </select>
+                            </div>
+                            <label class="form-label">Department</label>
+                            <select class="form-select form-select-sm" data-md-filter="dept" data-combobox>
+                                <option value="">Any</option>
+                                @foreach (var d in list.Select(r => r.DepartmentName).Where(d => !string.IsNullOrEmpty(d)).Distinct().OrderBy(d => d))
+                                {
+                                    <option value="@d.ToLowerInvariant()">@d</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="myassets-group" data-md-group>
+                    <div class="myassets-group-label group-late">Needed soonest first · <span data-md-count>@list.Count</span></div>
+                    @foreach (var r in list.OrderBy(r => r.NeededBy ?? DateTime.MaxValue).ThenBy(r => r.RequestDate))
+                    {
+                        var late = Late(r);
+                        var buy = r.Items.Where(i => i.ToBuy > 0).ToList();
+                        <button type="button" class="myassets-item" data-entry="@prefix-@r.NewItemRequestID" data-search="@Search(r)"
+                                data-kind="@r.ItemKind.ToString().ToLowerInvariant()" data-due="@(late ? "late" : "ontime")"
+                                data-dept="@r.DepartmentName.ToLowerInvariant()" data-branch="@BranchOf(r).ToLowerInvariant()">
+                            <span class="md-avatar @(late ? "is-dark" : "")">@Initials(r.RequestedByUserName)</span>
+                            <span class="myassets-item-main">
+                                <span class="myassets-item-title">@r.RequestedByUserName</span>
+                                <span class="myassets-item-sub">@string.Join(", ", buy.Select(i => $"{i.ItemName} ×{i.ToBuy}"))</span>
+                                <span class="md-tags">
+                                    <span class="md-tag is-newitem">#@r.NewItemRequestID</span>
+                                    @NewItemProgress.Kind(r) · @r.DepartmentName
+                                </span>
+                            </span>
+                            <span class="md-age @(late ? "is-late" : "")">@(r.NeededBy is null ? "no date" : (late ? "late · " : "") + r.NeededBy.Value.ToString("MMM d"))</span>
+                        </button>
+                    }
+                </div>
+                <div class="myassets-nomatch" data-md-empty hidden>Nothing matches your search or filters.</div>
+
+                <div class="md-foot">
+                    <span data-md-range></span>
+                    <div data-md-pager></div>
+                </div>
+            </aside>
+
+            <section class="myassets-detail">
+                @foreach (var r in list)
+                {
+                    var late = Late(r);
+                    var mine = r.RequestedByUserID == me;
+                    var toBuyUnits = r.Items.Sum(i => i.ToBuy);
+                    <article class="myassets-panel" data-panel="@prefix-@r.NewItemRequestID" hidden>
+                        <button type="button" class="myassets-back" data-back>&larr; All requisitions</button>
+
+                        <div class="myassets-panel-head">
+                            <div class="md-person">
+                                <span class="md-avatar md-avatar-lg">@Initials(r.RequestedByUserName)</span>
+                                <div class="min-w-0">
+                                    <div class="myassets-panel-meta">
+                                        <span class="md-tag is-newitem">Requisition</span>
+                                        <span class="md-tag">@NewItemProgress.Kind(r)</span>
+                                        <span>#@r.NewItemRequestID · submitted @r.RequestDate.ToString("MMM d, yyyy")</span>
+                                    </div>
+                                    <h3 class="md-person-name">@r.RequestedByUserName <small>· @(r.RequestedByRoleName ?? "") · @r.DepartmentName</small></h3>
+                                </div>
+                            </div>
+                            <div class="myassets-panel-actions">
+                                @if (late) {<span class="md-age is-late">Late</span>}
+                                <a asp-controller="NewItemRequests" asp-action="Details" asp-route-id="@r.NewItemRequestID" class="btn btn-outline-secondary">View &rarr;</a>
+                            </div>
+                        </div>
+
+                        <div class="myassets-stats">
+                            <div class="@(late ? "is-late" : "")"><span>Needed by</span><strong>@DisplayText.Or(r.NeededBy?.ToString("MMM d, yyyy"), "No date given")</strong></div>
+                            <div><span>To buy</span><strong>@toBuyUnits unit@(toBuyUnits == 1 ? "" : "s")</strong></div>
+                            <div><span>Left to order</span><strong>@r.LeftToOrder</strong></div>
+                            <div><span>Goes to</span><strong>@DisplayText.Or(r.DeliverToText, r.DepartmentName)</strong></div>
+                        </div>
+
+                        <h4 class="md-section-title">What is missing</h4>
+                        <div class="ni-ticket">
+                            <table class="ni-ticket-table">
+                                <thead>
+                                    <tr><th>Item</th><th class="num">Asked</th><th class="num">From stock</th><th class="num">To buy</th><th class="num">Ordered</th><th class="num">Left</th></tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var i in r.Items)
+                                    {
+                                        <tr class="@(i.ToBuy == 0 ? "text-muted" : "")">
+                                            <td class="ni-ticket-name">@i.ItemName@if (!string.IsNullOrWhiteSpace(i.Description)) {<small class="ni-ticket-kind">@i.Description</small>}</td>
+                                            <td class="num" data-label="Asked">@i.Quantity</td>
+                                            <td class="num" data-label="From stock">@i.FromStock</td>
+                                            <td class="num fw-semibold" data-label="To buy">@i.ToBuy</td>
+                                            <td class="num" data-label="Ordered">@i.Ordered</td>
+                                            <td class="num @(i.LeftToOrder > 0 ? "fw-semibold" : "")" data-label="Left">@i.LeftToOrder</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+
+                        @if (!string.IsNullOrWhiteSpace(r.Reason))
+                        {
+                            <div class="req-note"><strong>Reason:</strong> @r.Reason</div>
+                        }
+                        @if (r.PurchaseOrders.Any())
+                        {
+                            <div class="req-note"><strong>Purchase orders:</strong>
+                                @foreach (var po in r.PurchaseOrders)
+                                {
+                                    <a asp-action="Order" asp-route-id="@po.PurchaseOrderID" class="asset-code-chip ms-1">@po.PONumber · @po.SupplierName</a>
+                                }
+                            </div>
+                        }
+
+                        <div class="req-action @(late ? "is-late" : "")">
+                            <div>
+                                <div class="req-action-title">
+                                    @(toOrder ? (mine ? "Your own requisition" : r.LeftToOrder > 0 ? $"{r.LeftToOrder} left to order" : "Everything is ordered") : "Waiting for the supplier")
+                                </div>
+                                <div class="req-action-note">
+                                    @(toOrder
+                                        ? (mine ? "Another Purchasing Officer buys it." : "Make a purchase order for what is left; split it over several suppliers if you need to.")
+                                        : "The Property Department receives it from the supplier.")
+                                </div>
+                            </div>
+                            <div class="req-action-buttons">
+                                @if (toOrder && !mine && r.LeftToOrder > 0)
+                                {
+                                    <a asp-action="CreateOrder" asp-route-requestId="@r.NewItemRequestID" class="btn btn-primary">Make purchase order &rarr;</a>
+                                }
+                            </div>
+                        </div>
+                    </article>
+                }
+            </section>
+        </div>
+    }
+}
+
+@* ---- To buy ---- *@
+<section id="pBuy" role="tabpanel" hidden="@(tab != "buy")">
+    @if (!toBuy.Any())
+    {
+        <div class="sab-table-card"><div class="sab-empty"><div class="sab-empty-title">Nothing to buy</div><p>Requisitions with something missing from stock show up here.</p></div></div>
     }
     else
     {
-        <div class="table-responsive">
-            <table class="table asset-table mb-0">
-                <thead>
-                    <tr><th>Requisition</th><th>Bought</th><th class="d-none d-md-table-cell">For</th><th>Purchase orders</th></tr>
-                </thead>
-                <tbody>
-                    @foreach (var r in ordered)
-                    {
-                        <tr>
-                            <td><a asp-controller="NewItemRequests" asp-action="Details" asp-route-id="@r.NewItemRequestID">#@r.NewItemRequestID</a></td>
-                            <td>@string.Join(", ", r.Items.Where(i => i.ToBuy > 0).Select(i => $"{i.ItemName} ×{i.ToBuy}"))</td>
-                            <td class="d-none d-md-table-cell">@r.DepartmentName<br /><small class="text-muted">@r.RequestedByUserName</small></td>
-                            <td>
-                                @foreach (var po in r.PurchaseOrders)
+        await RequisitionList(toBuy, "b", true);
+    }
+</section>
+
+@* ---- Ordered, waiting for the supplier ---- *@
+<section id="pOrdered" role="tabpanel" hidden="@(tab != "ordered")">
+    @if (!ordered.Any())
+    {
+        <div class="sab-table-card"><div class="sab-empty"><div class="sab-empty-title">Nothing on the way</div><p>Requisitions whose missing items are all on purchase orders show up here until Property receives them.</p></div></div>
+    }
+    else
+    {
+        await RequisitionList(ordered, "w", false);
+    }
+</section>
+
+@* ---- Purchase orders ---- *@
+<section id="pOrders" role="tabpanel" hidden="@(tab != "orders")">
+    @if (!orders.Any())
+    {
+        <div class="sab-table-card"><div class="sab-empty"><div class="sab-empty-title">No purchase orders yet</div><p>Make one from To buy.</p></div></div>
+    }
+    else
+    {
+        <div class="sab-table-card myassets" data-md data-page-size="8">
+            <aside class="myassets-list" aria-label="Purchase orders">
+                <div class="md-toolbar">
+                    <label class="asset-search">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+                        <input type="text" data-md-search autocomplete="off" placeholder="PO #, supplier, item or requisition..." aria-label="Search purchase orders" />
+                    </label>
+                    <div class="dropdown">
+                        <button type="button" class="asset-tool-btn" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18l-7 8.5V19l-4 2v-7.5z" /></svg>
+                            Filters
+                        </button>
+                        <div class="dropdown-menu dropdown-menu-end md-filter-menu">
+                            <label class="form-label">Status</label>
+                            <select class="form-select form-select-sm mb-2" data-md-filter="status">
+                                <option value="">Any</option>
+                                @foreach (var s in orders.Select(o => o.RequestStatus).Distinct().OrderBy(s => (int)s))
                                 {
-                                    <a asp-action="Order" asp-route-id="@po.PurchaseOrderID" class="d-block">@po.PONumber · @po.SupplierName</a>
+                                    <option value="@StatusKey(s)">@Status(s) (@orders.Count(o => StatusKey(o.RequestStatus) == StatusKey(s)))</option>
                                 }
-                            </td>
-                        </tr>
+                            </select>
+                            <label class="form-label">Supplier</label>
+                            <div class="mb-2">
+                                <select class="form-select form-select-sm" data-md-filter="supplier" data-combobox>
+                                    <option value="">Any</option>
+                                    @foreach (var s in orders.Select(o => o.SupplierName).Distinct().OrderBy(s => s))
+                                    {
+                                        <option value="@s.ToLowerInvariant()">@s</option>
+                                    }
+                                </select>
+                            </div>
+                            <label class="form-label">Made by</label>
+                            <select class="form-select form-select-sm mb-2" data-md-filter="maker">
+                                <option value="">Anyone</option>
+                                <option value="@me">Me</option>
+                                @foreach (var p in orders.Where(o => o.PreparedByUserID != me).Select(o => (o.PreparedByUserID, o.PreparedByName)).Distinct().OrderBy(p => p.PreparedByName))
+                                {
+                                    <option value="@p.PreparedByUserID">@p.PreparedByName</option>
+                                }
+                            </select>
+                            <label class="form-label">Branch</label>
+                            <div class="mb-2">
+                                <select class="form-select form-select-sm" data-md-filter="branch" data-combobox>
+                                    <option value="">Any</option>
+                                    @foreach (var d in orders.Select(o => o.BranchName).Where(d => !string.IsNullOrEmpty(d)).Distinct().OrderBy(d => d))
+                                    {
+                                        <option value="@d.ToLowerInvariant()">@d</option>
+                                    }
+                                </select>
+                            </div>
+                            <label class="form-label">Department</label>
+                            <select class="form-select form-select-sm" data-md-filter="dept" data-combobox>
+                                <option value="">Any</option>
+                                @foreach (var d in orders.Select(o => o.DepartmentName).Distinct().OrderBy(d => d))
+                                {
+                                    <option value="@d.ToLowerInvariant()">@d</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="myassets-group" data-md-group>
+                    <div class="myassets-group-label group-transit">Newest first · <span data-md-count>@orders.Count</span></div>
+                    @foreach (var o in orders)
+                    {
+                        <button type="button" class="myassets-item @(o.PurchaseOrderID == newOrder ? "pu-new" : "")" data-entry="o-@o.PurchaseOrderID"
+                                data-search="@($"{o.PONumber} {o.SupplierName} {o.Items} #{o.NewItemRequestID} {o.NewItemRequestID} {o.RequestedByUserName} {o.DepartmentName}".ToLowerInvariant())"
+                                data-status="@StatusKey(o.RequestStatus)" data-supplier="@o.SupplierName.ToLowerInvariant()" data-maker="@o.PreparedByUserID"
+                                data-branch="@o.BranchName.ToLowerInvariant()" data-dept="@o.DepartmentName.ToLowerInvariant()">
+                            <span class="md-avatar">PO</span>
+                            <span class="myassets-item-main">
+                                <span class="myassets-item-title">@o.PONumber@if (o.PurchaseOrderID == newOrder) {<span class="pu-new-tag">new</span>}</span>
+                                <span class="myassets-item-sub">@o.SupplierName · @o.Items</span>
+                                <span class="md-tags">
+                                    <span class="md-tag is-newitem">#@o.NewItemRequestID</span>
+                                    @Status(o.RequestStatus)
+                                </span>
+                            </span>
+                            <span class="myassets-item-due">@Peso(o.Total)<small class="d-block text-muted">@o.OrderDate.ToString("MMM d")</small></span>
+                        </button>
                     }
-                </tbody>
-            </table>
+                </div>
+                <div class="myassets-nomatch" data-md-empty hidden>Nothing matches your search or filters.</div>
+
+                <div class="md-foot">
+                    <span data-md-range></span>
+                    <div data-md-pager></div>
+                </div>
+            </aside>
+
+            <section class="myassets-detail">
+                @foreach (var o in orders)
+                {
+                    var subtotal = o.Lines.Sum(l => l.Amount);
+                    <article class="myassets-panel" data-panel="o-@o.PurchaseOrderID" hidden>
+                        <button type="button" class="myassets-back" data-back>&larr; All purchase orders</button>
+
+                        <div class="myassets-panel-head">
+                            <div class="md-person">
+                                <span class="md-avatar md-avatar-lg">PO</span>
+                                <div class="min-w-0">
+                                    <div class="myassets-panel-meta">
+                                        <span class="md-tag is-newitem">Purchase order</span>
+                                        <span>@o.OrderDate.ToString("MMM d, yyyy") · by @(o.PreparedByUserID == me ? "you" : o.PreparedByName)</span>
+                                    </div>
+                                    <h3 class="md-person-name">@o.PONumber <small>· @o.SupplierName</small></h3>
+                                </div>
+                            </div>
+                            <div class="myassets-panel-actions">
+                                <a asp-action="Order" asp-route-id="@o.PurchaseOrderID" class="btn btn-primary">Open / print</a>
+                            </div>
+                        </div>
+
+                        <div class="myassets-stats">
+                            <div><span>Total</span><strong>@Peso(o.Total)</strong></div>
+                            <div><span>Status</span><strong>@Status(o.RequestStatus)</strong></div>
+                            <div><span>For</span><strong><a asp-controller="NewItemRequests" asp-action="Details" asp-route-id="@o.NewItemRequestID">Requisition #@o.NewItemRequestID</a></strong></div>
+                            <div><span>Requested by</span><strong>@o.RequestedByUserName</strong></div>
+                        </div>
+
+                        <h4 class="md-section-title">On the order</h4>
+                        <div class="ni-ticket">
+                            <table class="ni-ticket-table">
+                                <thead>
+                                    <tr><th>Item</th><th class="num">Qty</th><th class="num">Unit price</th><th class="num">Amount</th></tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var l in o.Lines)
+                                    {
+                                        <tr>
+                                            <td class="ni-ticket-name">@l.ItemName@if (!string.IsNullOrWhiteSpace(l.Description)) {<small class="ni-ticket-kind">@l.Description</small>}</td>
+                                            <td class="num" data-label="Qty">@l.Quantity@(string.IsNullOrWhiteSpace(l.Unit) ? "" : " " + SupplyText.Unit(l.Quantity, l.Unit))</td>
+                                            <td class="num" data-label="Unit price">@Peso(l.UnitPrice)</td>
+                                            <td class="num" data-label="Amount">@Peso(l.Amount)</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                                <tfoot>
+                                    <tr><td colspan="3" class="num">Subtotal</td><td class="num">@Peso(subtotal)</td></tr>
+                                    @if (o.Extras != 0) {<tr><td colspan="3" class="num">Tax, shipping and other</td><td class="num">@Peso(o.Extras)</td></tr>}
+                                    <tr><td colspan="3" class="num fw-bold">Total</td><td class="num fw-bold">@Peso(o.Total)</td></tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                        <div class="req-note"><strong>For:</strong> @o.DepartmentName · @o.BranchName</div>
+                    </article>
+                }
+            </section>
         </div>
     }
-</div>
-}
-
-@if (tab == "orders")
-{
-    @* Every purchase order, newest first: the ones just made at the top. *@
-    <div class="sab-table-card">
-        @if (orders.Count == 0)
-        {
-            <div class="sab-empty"><p class="mb-0">No purchase orders yet. Make one from To buy.</p></div>
-        }
-        else
-        {
-            <div class="table-responsive">
-                <table class="table asset-table mb-0" id="poList">
-                    <thead>
-                        <tr><th>PO #</th><th>Date</th><th>Supplier</th><th class="d-none d-lg-table-cell">Items</th><th>For</th><th class="text-end">Total</th><th>Status</th><th></th></tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var o in orders)
-                        {
-                            <tr class="@(o.PurchaseOrderID == newOrder ? "pu-new" : "")" data-po="@o.PurchaseOrderID">
-                                <td><a asp-action="Order" asp-route-id="@o.PurchaseOrderID" class="fw-semibold">@o.PONumber</a>@if (o.PurchaseOrderID == newOrder) {<span class="pu-new-tag">new</span>}
-                                    <small class="d-block text-muted">by @(o.PreparedByUserID == me ? "you" : o.PreparedByName)</small></td>
-                                <td>@o.OrderDate.ToString("MMM d, yyyy")</td>
-                                <td>@o.SupplierName</td>
-                                <td class="d-none d-lg-table-cell">@o.Items</td>
-                                <td><a asp-controller="NewItemRequests" asp-action="Details" asp-route-id="@o.NewItemRequestID">#@o.NewItemRequestID</a>
-                                    <small class="d-block text-muted">@o.DepartmentName · @o.RequestedByUserName</small></td>
-                                <td class="text-end">₱@o.Total.ToString("N2")</td>
-                                <td>@Stage(o.RequestStatus)</td>
-                                <td class="text-end"><a asp-action="Order" asp-route-id="@o.PurchaseOrderID" class="btn btn-outline-secondary btn-sm">Open / print</a></td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
-        }
-    </div>
-}
+</section>

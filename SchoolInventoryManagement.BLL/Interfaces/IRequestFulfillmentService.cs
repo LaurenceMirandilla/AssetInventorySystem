@@ -49,9 +49,13 @@ namespace SchoolInventoryManagement.BLL.Interfaces
         // Some or all of the ticket's units come back to returnLocationId.
         // The request is Returned once none are left out. Property Officers and
         // Administrators only.
+        // Where a borrow comes back to: the Property Department room of the
+        // department's branch (null when it has none).
+        Task<int?> ReturnRoomAsync(int departmentId);
+
         Task RecordReturnAsync(
             int requestId, List<int> assignmentIds, ConditionStatus conditionOnReturn,
-            int returnLocationId, byte[] requestRowVersion, int actingUserId,
+            int? returnLocationId, byte[] requestRowVersion, int actingUserId,
             Dictionary<int, ConditionStatus>? unitConditions = null, string? remarks = null,
             DateTime? returnedOn = null);
 

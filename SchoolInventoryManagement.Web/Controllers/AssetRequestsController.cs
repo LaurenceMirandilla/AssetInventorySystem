@@ -489,7 +489,7 @@ namespace SchoolInventoryManagement.Web.Controllers
             }
 
             ViewBag.Request = request;
-            await PopulateReturnLocationsAsync();
+            await ReturnPlaceAsync(request);
 
             return View(new ReturnRequestViewModel
             {
@@ -520,7 +520,7 @@ namespace SchoolInventoryManagement.Web.Controllers
                         id,
                         model.AssignmentIDs,
                         model.ConditionOnReturn,
-                        model.ReturnLocationID!.Value,
+                        null, // the Property Department room of the borrower's branch
                         RowVersionHelper.FromBase64(model.RowVersionBase64),
                         CurrentUserId,
                         model.UnitConditions
@@ -542,9 +542,10 @@ namespace SchoolInventoryManagement.Web.Controllers
                 }
             }
 
-            ViewBag.Request = await _requestService.GetRequestByIdAsync(id);
+            var again = await _requestService.GetRequestByIdAsync(id);
+            ViewBag.Request = again;
             ViewBag.From = from;
-            await PopulateReturnLocationsAsync();
+            if (again is not null) await ReturnPlaceAsync(again);
             return View(model);
         }
 
@@ -825,6 +826,15 @@ namespace SchoolInventoryManagement.Web.Controllers
 
             ViewBag.Lines = lines;
             return lines;
+        }
+
+        // Where a return goes, for the page: the Property Department room
+        // of the borrower's branch.
+        private async Task ReturnPlaceAsync(AssetRequestResponseDTO request)
+        {
+            var roomId = await _fulfillmentService.ReturnRoomAsync(request.DepartmentID);
+            var room = roomId is int r ? (await _locationService.GetAllLocationsAsync()).FirstOrDefault(l => l.LocationID == r) : null;
+            ViewBag.ReturnTo = room is null ? null : $"{room.LocationName} · {room.BranchName}";
         }
 
         // The pickup point for a borrow: the room the requester named, or

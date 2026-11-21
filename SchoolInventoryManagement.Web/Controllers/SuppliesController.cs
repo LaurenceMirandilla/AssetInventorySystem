@@ -94,8 +94,9 @@ namespace SchoolInventoryManagement.Web.Controllers
         // From an arrived new-item request: a supply new to the school, filled
         // in from the request's line.
         [Authorize(Roles = RoleNames.AssetOfficer + "," + RoleNames.Administrator)]
-        public async Task<IActionResult> Create(int? newItemRequestItemId)
+        public async Task<IActionResult> Create(int? newItemRequestItemId, string? returnTo)
         {
+            ViewBag.ReturnTo = returnTo;
             await PopulateFormAsync();
             var dto = new CreateSupplyDTO { NewItemRequestItemID = newItemRequestItemId };
             await LoadTicketLineAsync(dto, fill: true);
@@ -106,8 +107,9 @@ namespace SchoolInventoryManagement.Web.Controllers
         [ValidateAntiForgeryToken]
         [OneTimeSubmit]
         [Authorize(Roles = RoleNames.AssetOfficer + "," + RoleNames.Administrator)]
-        public async Task<IActionResult> Create(CreateSupplyDTO dto)
+        public async Task<IActionResult> Create(CreateSupplyDTO dto, string? returnTo)
         {
+            ViewBag.ReturnTo = returnTo;
             if (!ModelState.IsValid)
             {
                 await PopulateFormAsync();
@@ -122,8 +124,11 @@ namespace SchoolInventoryManagement.Web.Controllers
                 {
                     var ticketId = await _context.NewItemRequestItems.Where(i => i.NewItemRequestItemID == lineId)
                         .Select(i => i.NewItemRequestID).FirstAsync();
-                    TempData["StatusMessage"] = $"{dto.SupplyName.Trim()} was added to Supplies, with {dto.OpeningQuantity} in the Property Department's stock for request #{ticketId}.";
-                    return RedirectToAction("Details", "NewItemRequests", new { id = ticketId });
+                    TempData["StatusMessage"] = $"{dto.SupplyName.Trim()} was added to Supplies, with {dto.OpeningQuantity} in the Property Department's stock for requisition #{ticketId}.";
+                    // On through what else arrived for it, then back to it.
+                    return returnTo is null
+                        ? RedirectToAction("Details", "NewItemRequests", new { id = ticketId })
+                        : RedirectToAction(nameof(AddStock), new { newItemRequestId = ticketId, returnTo });
                 }
                 TempData["SuccessMessage"] = $"{dto.SupplyName.Trim()} was added to Supplies.";
                 return RedirectToAction(nameof(Index));
@@ -139,13 +144,27 @@ namespace SchoolInventoryManagement.Web.Controllers
 
         // GET /Supplies/AddStock[?supplyId=5]
         [Authorize(Roles = RoleNames.AssetOfficer + "," + RoleNames.Administrator)]
-        public async Task<IActionResult> AddStock(int? supplyId, int? newItemRequestId)
+        public async Task<IActionResult> AddStock(int? supplyId, int? newItemRequestId, string? returnTo)
         {
+            ViewBag.ReturnTo = returnTo;
             await PopulateAddStockAsync();
             var dto = new AddStockDTO { Source = "", NewItemRequestID = newItemRequestId };
             // Opened from an arrived new-item request: its supplies, with
             // what is still to be added.
             await LoadTicketAsync(dto, fillLines: true);
+            // From "Received from supplier" (returnTo): with nothing listed
+            // left to add, the next supply new to the school is added as a
+            // new supply; with nothing left at all, back to the requisition.
+            if (returnTo is not null && dto.NewItemRequestID is int forTicket && dto.Lines.Count == 0)
+            {
+                var newLines = ViewBag.NewSupplyLines as List<NewItemRequestItemDTO> ?? new();
+                if (newLines.Count > 0)
+                    return RedirectToAction(nameof(Create), new { newItemRequestItemId = newLines[0].NewItemRequestItemID, returnTo });
+                var before = TempData["StatusMessage"] as string;
+                TempData["StatusMessage"] = (string.IsNullOrEmpty(before) ? "" : before + " ")
+                    + $"Everything bought for requisition #{forTicket} is in stock. Now send it out.";
+                return RequisitionBack(forTicket, returnTo);
+            }
             // Opened from a supply's page: that supply is the first row.
             if (dto.Lines.Count == 0)
                 dto.Lines.Add(new AddStockLineDTO { SupplyID = supplyId, Quantity = 1 });
@@ -157,8 +176,9 @@ namespace SchoolInventoryManagement.Web.Controllers
         [ValidateAntiForgeryToken]
         [OneTimeSubmit]
         [Authorize(Roles = RoleNames.AssetOfficer + "," + RoleNames.Administrator)]
-        public async Task<IActionResult> AddStock(AddStockDTO dto, int? backToSupplyId)
+        public async Task<IActionResult> AddStock(AddStockDTO dto, int? backToSupplyId, string? returnTo)
         {
+            ViewBag.ReturnTo = returnTo;
             if (ModelState.IsValid)
             {
                 try
@@ -166,9 +186,11 @@ namespace SchoolInventoryManagement.Web.Controllers
                     var units = await _supplyService.AddStockAsync(dto, CurrentUserId);
                     if (dto.NewItemRequestID is int ticketId)
                     {
-                        TempData["StatusMessage"] = $"{units} unit{(units == 1 ? "" : "s")} added to the Property Department's stock for request #{ticketId}. " +
-                            "Mark the request delivered once they reach the requester: they are then handed to their department.";
-                        return RedirectToAction("Details", "NewItemRequests", new { id = ticketId });
+                        TempData["StatusMessage"] = $"{units} unit{(units == 1 ? "" : "s")} added to the Property Department's stock for requisition #{ticketId}.";
+                        // Anything new to the school next, else back to it.
+                        return returnTo is null
+                            ? RedirectToAction("Details", "NewItemRequests", new { id = ticketId })
+                            : RedirectToAction(nameof(AddStock), new { newItemRequestId = ticketId, returnTo });
                     }
                     TempData["SuccessMessage"] = $"{units} unit{(units == 1 ? "" : "s")} added to stock.";
                     return backToSupplyId.HasValue

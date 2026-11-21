@@ -19,6 +19,7 @@
     @Html.FormTicket()
     <input type="hidden" name="backToSupplyId" value="@backId" />
     <input type="hidden" name="NewItemRequestID" value="@Model.NewItemRequestID" />
+    <input type="hidden" name="returnTo" value="@(ViewBag.ReturnTo as string)" />
 
     <div class="asset-detail-head">
         <div>
@@ -63,7 +64,7 @@
                 {
                     <li>
                         @line.ItemName &times;@line.Quantity@(string.IsNullOrWhiteSpace(line.Unit) ? "" : " " + SupplyText.Unit(line.Quantity, line.Unit))
-                        &middot; <a asp-action="Create" asp-route-newItemRequestItemId="@line.NewItemRequestItemID">Add as a new supply &rarr;</a>
+                        &middot; <a asp-action="Create" asp-route-newItemRequestItemId="@line.NewItemRequestItemID" asp-route-returnTo="@(ViewBag.ReturnTo as string)">Add as a new supply &rarr;</a>
                     </li>
                 }
             </ul>

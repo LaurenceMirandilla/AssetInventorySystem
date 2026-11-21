@@ -17,6 +17,7 @@
     @Html.AntiForgeryToken()
     @Html.FormTicket()
     <input type="hidden" asp-for="NewItemRequestItemID" />
+    <input type="hidden" name="returnTo" value="@(ViewBag.ReturnTo as string)" />
 
     <div class="asset-detail-head">
         <div>

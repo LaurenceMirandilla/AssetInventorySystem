@@ -4,7 +4,13 @@
 @using SchoolInventoryManagement.DAL.Entities.Enums
 @using SchoolInventoryManagement.Web.Helpers
 @{
-    ViewData["Title"] = "Requisition approvals";
+    ViewData["Title"] = "Requisition";
+    // Fixed assets or Consumables: the two buttons; each has its own lists
+    // and its own history.
+    var kind = ViewBag.Kind is CategoryKind k ? k : CategoryKind.Asset;
+    var isSupply = kind == CategoryKind.Supply;
+    var counts = ViewBag.Counts as Dictionary<CategoryKind, int> ?? new Dictionary<CategoryKind, int>();
+    var kindName = isSupply ? "Consumables" : "Fixed assets";
     // What this page shows, for the live updates (_Layout, site.js).
     ViewData["LiveScope"] = "newitems";
 
@@ -48,23 +54,39 @@
     <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
 }
 
-<partial name="_ApprovalsNav" model="@("requisitions")" />
-
 <div class="asset-detail-head mb-3 pb-0 border-0">
     <div>
-        <h2 class="asset-detail-title">Requisitions</h2>
-        <div class="asset-detail-sub">Fixed assets and consumables · @Model.Count requisition@(Model.Count == 1 ? "" : "s") waiting on you.</div>
+        <h2 class="asset-detail-title">Requisition</h2>
+        <div class="asset-detail-sub">@kindName · @Model.Count requisition@(Model.Count == 1 ? "" : "s") waiting on you.</div>
     </div>
     @if (seesAll)
     {
         <div class="asset-detail-actions">
             <a asp-action="Requesters" class="btn btn-outline-secondary">Who can request</a>
-            <a asp-action="All" class="btn btn-outline-secondary">Requisition history</a>
         </div>
     }
 </div>
 
-<partial name="_ApprovalsSwitch" model="@("Requisitions")" />
+@* Fixed assets / Consumables, each with its own requisitions and history. *@
+<div class="rq-kinds mb-3">
+    <nav class="sab-seg" aria-label="Kind">
+        <a asp-action="Pending" asp-route-kind="Asset" class="@(!isSupply ? "active" : "")" aria-current="@(!isSupply ? "page" : null)">Fixed assets <span class="history-tab-count">@counts.GetValueOrDefault(CategoryKind.Asset)</span></a>
+        <a asp-action="Pending" asp-route-kind="Supply" class="@(isSupply ? "active" : "")" aria-current="@(isSupply ? "page" : null)">Consumables <span class="history-tab-count">@counts.GetValueOrDefault(CategoryKind.Supply)</span></a>
+    </nav>
+    <span class="d-flex flex-wrap" style="gap:8px;">
+        @if (isSupply)
+        {
+            <partial name="_ApprovalsSwitch" model="@("Requisitions")" />
+        }
+        @if (seesAll)
+        {
+            <a asp-action="All" asp-route-kind="@kind" class="btn btn-outline-secondary btn-sm">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" /><path d="M12 7v5l3 2" /></svg>
+                @kindName history
+            </a>
+        }
+    </span>
+</div>
 
 <div class="page-tabs" role="tablist">
     <button type="button" class="active" role="tab" aria-selected="true" data-md-tab="niAwaiting">
@@ -222,7 +244,7 @@
                                 {
                                     if (rToBuy > 0)
                                     {
-                                        <a asp-controller="Supplies" asp-action="AddStock" asp-route-newItemRequestId="@r.NewItemRequestID">add what was bought to stock</a>
+                                        <a asp-controller="Supplies" asp-action="AddStock" asp-route-newItemRequestId="@r.NewItemRequestID" asp-route-returnTo="approvals">add what was bought to stock</a>
                                         <span>if that is not done yet; the rest comes out of stock when it is sent.</span>
                                     }
                                     else
@@ -234,13 +256,53 @@
                                 {
                                     if (rFromStock > 0)
                                     {
-                                        <a asp-action="Pick" asp-route-id="@r.NewItemRequestID">pick from stock</a>
+                                        <a asp-action="Pick" asp-route-id="@r.NewItemRequestID" asp-route-returnTo="approvals">pick from stock</a>
                                         <span>(@r.RegisteredUnits.Count(u => u.FromStock) of @rFromStock)</span>
                                     }
                                     if (rToBuy > 0)
                                     {
-                                        <a asp-controller="Assets" asp-action="BulkCreate" asp-route-newItemRequestId="@r.NewItemRequestID">register the bought units</a>
+                                        <a asp-controller="Assets" asp-action="BulkCreate" asp-route-newItemRequestId="@r.NewItemRequestID" asp-route-returnTo="approvals">register the bought units</a>
                                         <span>(@r.RegisteredUnits.Count(u => !u.FromStock) of @rToBuy)</span>
+                                    }
+                                }
+                            </div>
+                            @* What goes out when it is sent: the new items just added
+                               (bought), together with what was requested from stock. *@
+                            <div class="req-note ni-ready">
+                                <strong>What goes out</strong>
+                                @if (r.ItemKind != CategoryKind.Supply)
+                                {
+                                    var bought = r.RegisteredUnits.Where(u => !u.FromStock).OrderBy(u => u.AssetCode).ToList();
+                                    var picked = r.RegisteredUnits.Where(u => u.FromStock).OrderBy(u => u.AssetCode).ToList();
+                                    <div class="ni-ready-row">
+                                        <span class="ni-ready-label">Newly added (bought) · @bought.Count of @rToBuy</span>
+                                        @foreach (var u in bought)
+                                        {
+                                            <a asp-controller="Assets" asp-action="Details" asp-route-id="@u.AssetID" class="asset-code-chip" title="@u.AssetName">@u.AssetCode</a>
+                                        }
+                                        @if (bought.Count < rToBuy) {<a asp-controller="Assets" asp-action="BulkCreate" asp-route-newItemRequestId="@r.NewItemRequestID" asp-route-returnTo="approvals" class="ni-ready-todo">register @(rToBuy - bought.Count) more</a>}
+                                    </div>
+                                    @if (rFromStock > 0)
+                                    {
+                                        <div class="ni-ready-row">
+                                            <span class="ni-ready-label">Requested from stock · @picked.Count of @rFromStock picked</span>
+                                            @foreach (var u in picked)
+                                            {
+                                                <a asp-controller="Assets" asp-action="Details" asp-route-id="@u.AssetID" class="asset-code-chip" title="@u.AssetName">@u.AssetCode</a>
+                                            }
+                                            @if (picked.Count < rFromStock) {<a asp-action="Pick" asp-route-id="@r.NewItemRequestID" asp-route-returnTo="approvals" class="ni-ready-todo">pick @(rFromStock - picked.Count) from stock</a>}
+                                        </div>
+                                    }
+                                }
+                                else
+                                {
+                                    @foreach (var i in r.Items)
+                                    {
+                                        <div class="ni-ready-row">
+                                            <span class="ni-ready-label">@i.ItemName ×@i.Quantity@(string.IsNullOrWhiteSpace(i.Unit) ? "" : " " + SupplyText.Unit(i.Quantity, i.Unit))</span>
+                                            @if (i.ToBuy > 0) {<span class="md-tag">@Math.Min(i.AddedToStock, i.ToBuy) of @i.ToBuy newly added</span>}
+                                            @if (i.FromStock > 0) {<span class="md-tag">@i.FromStock from stock</span>}
+                                        </div>
                                     }
                                 }
                             </div>
@@ -265,7 +327,7 @@
                                           placeholder="@(delivering ? "Remarks, shown in the history. Required if it could not be sent or you reject." : "Remarks, shown in the history. Required if you reject.")" aria-label="Remarks"></textarea>
                                 <div class="ni-decision-row">
                                     <div class="req-action-buttons">
-                                        @if (r.RequestStatus == NewItemStatus.Procuring && r.LeftToOrder > 0)
+                                        @if (r.RequestStatus == NewItemStatus.Procuring && r.LeftToOrder > 0 && User.IsInRole("Purchasing Officer"))
                                         {
                                             <a asp-controller="Purchasing" asp-action="CreateOrder" asp-route-requestId="@r.NewItemRequestID" class="btn btn-primary">Make purchase order</a>
                                         }

@@ -351,8 +351,16 @@ namespace SchoolInventoryManagement.BLL.Services
                     o.Request.RequestStatus,
                     Requester = o.Request.RequestedByUser.FirstName + " " + o.Request.RequestedByUser.LastName,
                     Department = o.Request.Department.DepartmentName,
-                    Items = o.Lines.Select(l => new { l.Item.ItemName, l.Quantity, l.UnitPrice }).ToList(),
+                    Items = o.Lines.OrderBy(l => l.PurchaseOrderLineID).Select(l => new PurchaseOrderLineDTO
+                    {
+                        ItemName = l.Item.ItemName,
+                        Description = l.Item.Description,
+                        Unit = l.Item.Unit,
+                        Quantity = l.Quantity,
+                        UnitPrice = l.UnitPrice
+                    }).ToList(),
                     Extra = o.Tax + o.ShippingCost + o.OtherCost,
+                    Branch = o.Request.Department.Branch.BranchName,
                     o.CreatedByUserID,
                     PreparedBy = o.CreatedByUser.FirstName + " " + o.CreatedByUser.LastName
                 })
@@ -370,7 +378,10 @@ namespace SchoolInventoryManagement.BLL.Services
                 Items = string.Join(", ", o.Items.Select(i => $"{i.ItemName} ×{i.Quantity}")),
                 Total = o.Items.Sum(i => i.Quantity * i.UnitPrice) + o.Extra,
                 PreparedByUserID = o.CreatedByUserID,
-                PreparedByName = o.PreparedBy
+                PreparedByName = o.PreparedBy,
+                BranchName = o.Branch,
+                Lines = o.Items,
+                Extras = o.Extra
             }).ToList();
         }
 

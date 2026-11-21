@@ -22,7 +22,8 @@
     var delivering = Model.RequestStatus == NewItemStatus.Arrived;
     var deliveryProblem = NewItemProgress.DeliveryProblem(Model);
     var isManager = User.IsInRole("Property Officer") || User.IsInRole("Administrator");
-    var isBuyer = User.IsInRole("Purchasing Officer") || User.IsInRole("Administrator");
+    // Purchase orders are made by the Purchasing Officers only.
+    var isBuyer = User.IsInRole("Purchasing Officer");
     var seesOrders = isManager || isBuyer || User.IsInRole("Principal");
     var buying = Model.RequestStatus == NewItemStatus.Procuring;
     var fromStock = Model.Items.Sum(i => i.FromStock);
@@ -32,7 +33,7 @@
     // Where "back" goes: your list, Purchasing, or the queue.
     var backAction = isMine ? "MyRequests" : "Pending";
     var backController = !isMine && buying && User.IsInRole("Purchasing Officer") ? "Purchasing" : "NewItemRequests";
-    var backText = isMine ? "Requisitions" : backController == "Purchasing" ? "Purchasing" : "Requisition approvals";
+    var backText = isMine ? "Requisitions" : backController == "Purchasing" ? "Purchasing" : "Requisition";
     if (backController == "Purchasing") { backAction = "Index"; }
     var units = Model.Items.Sum(i => i.Quantity);
     // The item lines saved with the ticket are already in the table above
@@ -477,7 +478,7 @@
                         formaction="@Url.Action("NotDelivered", new { id = Model.NewItemRequestID, returnTo = "details" })"
                         onclick="var r=this.form.querySelector('[name=remarks]'); if(!r.value.trim()){ r.classList.add('is-invalid'); r.focus(); alert('Say why it could not be sent, so the requester knows.'); return false; } return true;">Not sent</button>
             }
-            @if (buying && Model.LeftToOrder > 0)
+            @if (buying && isBuyer && Model.LeftToOrder > 0)
             {
                 <a asp-controller="Purchasing" asp-action="CreateOrder" asp-route-requestId="@Model.NewItemRequestID" class="btn btn-primary">Make purchase order</a>
             }

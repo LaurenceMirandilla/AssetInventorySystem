@@ -55,7 +55,8 @@
     // Who makes requisitions: the people chosen under "Who can request"
     // (the page itself says so to everyone else).
     // Purchasing: the Purchasing Officers' page (and the Administrators').
-    var seesPurchasing = User.IsInRole("Purchasing Officer") || User.IsInRole("Administrator");
+    // Purchasing and Supplier are the Purchasing Officers' only.
+    var seesPurchasing = User.IsInRole("Purchasing Officer");
     var roleName = User.FindFirst(ClaimTypes.Role)?.Value;
     var displayName = User.Identity?.Name ?? "";
     var initials = string.Concat(displayName.Split(' ', StringSplitOptions.RemoveEmptyEntries)
@@ -190,25 +191,30 @@
                        department, from stock or bought (Scripts/031). *@
                     <li class="sab-nav-item">
                         <a class="sab-nav-link @((inNewItemRequests && !onNewItemApprovals) || (isActive(new[]{"SupplyRequests"}) && !onSupplyApprovals) ? "active" : "")" asp-controller="NewItemRequests" asp-action="MyRequests">
-                            <span class="sab-nav-label">@Html.Raw(navIcon("plus"))Requisitions</span>
+                            <span class="sab-nav-label">@Html.Raw(navIcon("plus"))My Requisitions</span>
                         </a>
                     </li>
                     @* Borrowing: borrows and returns; for Property its approvals
                        and the history are tabs on the same page. *@
                     <li class="sab-nav-item">
                         <a class="sab-nav-link @(inRequests && !(isAssetManager && (onApprovals || onBorrowers)) ? "active" : "")" asp-controller="AssetRequests" asp-action="MyRequests">
-                            <span class="sab-nav-label">@Html.Raw(navIcon("requests"))Borrowing</span>
+                            <span class="sab-nav-label">@Html.Raw(navIcon("requests"))My Borrows</span>
                         </a>
                     </li>
 
                     @if (isAssetManager)
                     {
-                        @* Approvals: what is waiting on Property, apart from
-                           everyone's own Requisitions and Borrowing above. *@
+                        @* What waits on Property, apart from everyone's own above:
+                           Requisition (fixed assets and consumables) and Borrowed. *@
                         <li class="sab-nav-divider" role="separator"></li>
                         <li class="sab-nav-item">
-                            <a class="sab-nav-link @(isActive(new[]{"Approvals"}) || onNewItemApprovals || onApprovals || onSupplyApprovals ? "active" : "")" asp-controller="Approvals" asp-action="Index">
-                                <span class="sab-nav-label">@Html.Raw(navIcon("check"))Approvals</span>
+                            <a class="sab-nav-link @(isActive(new[]{"Approvals"}) || onNewItemApprovals || onSupplyApprovals ? "active" : "")" asp-controller="NewItemRequests" asp-action="Pending">
+                                <span class="sab-nav-label">@Html.Raw(navIcon("check"))Requisition</span>
+                            </a>
+                        </li>
+                        <li class="sab-nav-item">
+                            <a class="sab-nav-link @(onApprovals ? "active" : "")" asp-controller="AssetRequests" asp-action="Pending">
+                                <span class="sab-nav-label">@Html.Raw(navIcon("requests"))Borrowed</span>
                                 @await Component.InvokeAsync("ApprovalsBadge")
                             </a>
                         </li>

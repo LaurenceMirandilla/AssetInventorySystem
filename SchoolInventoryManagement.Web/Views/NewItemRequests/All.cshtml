@@ -8,7 +8,12 @@
     // request is on the page; the search box and the Filters menu narrow it.
     // ViewBag.Mine: the signed-in user's own finished ones (History).
     var mine = ViewBag.Mine is true;
-    ViewData["Title"] = mine ? "My requisition history" : "Requisition history";
+    // ViewBag.Kind: one kind's history (Requisition > Fixed assets or
+    // Consumables > History).
+    var kindFilter = ViewBag.Kind as SchoolInventoryManagement.DAL.Entities.Enums.CategoryKind?;
+    var historyName = kindFilter == SchoolInventoryManagement.DAL.Entities.Enums.CategoryKind.Supply ? "Consumables history"
+        : kindFilter == SchoolInventoryManagement.DAL.Entities.Enums.CategoryKind.Asset ? "Fixed assets history" : "Requisition history";
+    ViewData["Title"] = mine ? "My requisition history" : historyName;
     if (!mine) { ViewData["NavSection"] = "newitem-approvals"; }
     // What this page shows, for the live updates (_Layout, site.js).
     ViewData["LiveScope"] = "newitems";
@@ -39,7 +44,7 @@
 
 <div class="asset-detail-head mb-3 pb-0 border-0">
     <div>
-        <h2 class="asset-detail-title">@(mine ? "My requisition history" : "Requisition history")</h2>
+        <h2 class="asset-detail-title">@(mine ? "My requisition history" : historyName)</h2>
         <div class="asset-detail-sub">@(mine
             ? $"Your finished requisitions: received, rejected or cancelled. {Model.Count} in all, {sort} first."
             : $"{Model.Count} requisition{(Model.Count == 1 ? "" : "s")} from everyone, {sort} first, wherever they have got to.")</div>
@@ -47,11 +52,11 @@
     <div class="asset-detail-actions">
         @if (mine)
         {
-            <a asp-action="MyRequests" class="btn btn-outline-secondary">&larr; My requisitions</a>
+            <a asp-action="MyRequests" class="btn btn-outline-secondary">&larr; My Requisitions</a>
         }
         else
         {
-            <a asp-action="Pending" class="btn btn-outline-secondary">&larr; Requisition approvals</a>
+            <a asp-action="Pending" asp-route-kind="@kindFilter" class="btn btn-outline-secondary">&larr; Requisition</a>
             <a asp-action="Requesters" class="btn btn-outline-secondary">Who can request</a>
         }
     </div>

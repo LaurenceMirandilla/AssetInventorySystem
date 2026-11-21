@@ -348,7 +348,7 @@ namespace SchoolInventoryManagement.BLL.Services
 
         public async Task RecordReturnAsync(
             int requestId, List<int> assignmentIds, ConditionStatus conditionOnReturn,
-            int returnLocationId, byte[] requestRowVersion, int actingUserId,
+            int? returnLocationId, byte[] requestRowVersion, int actingUserId,
             Dictionary<int, ConditionStatus>? unitConditions = null, string? remarks = null,
             DateTime? returnedOn = null)
         {
@@ -357,10 +357,6 @@ namespace SchoolInventoryManagement.BLL.Services
                 throw new ArgumentException("Remarks can be at most 500 characters.");
             var actingUser = await PermissionHelper.EnsureIsAssetManagerAsync(_context, actingUserId);
 
-            var returnLocation = await _context.Locations.FindAsync(returnLocationId);
-            if (returnLocation is null)
-                throw new KeyNotFoundException("Return location not found.");
-
             var request = await _context.AssetRequests
                 .Include(r => r.Assignments)
                     .ThenInclude(a => a.Asset)
@@ -368,6 +364,14 @@ namespace SchoolInventoryManagement.BLL.Services
 
             if (request is null)
                 throw new KeyNotFoundException("Request not found.");
+
+            // Back to the Property Department of the borrower's branch, at its
+            // room -- unless a room is given (older callers).
+            returnLocationId ??= await ReturnRoomAsync(request.DepartmentID)
+                ?? throw new InvalidOperationException(
+                    "The Property Department of this branch has no room yet. Give it one on the Departments page first.");
+            if (!await _context.Locations.AnyAsync(l => l.LocationID == returnLocationId))
+                throw new KeyNotFoundException("Return location not found.");
 
             // Only what was actually picked up or delivered can come back.
             // An In Transit request never reached the requester -- it is
@@ -425,7 +429,7 @@ namespace SchoolInventoryManagement.BLL.Services
                 // Back on a shelf, where staff said, and back in the
                 // Property Department's stock.
                 MovementHelper.Record(
-                    _context, unit, returnLocationId, actingUser.UserID,
+                    _context, unit, returnLocationId.Value, actingUser.UserID,
                     $"Returned from request #{requestId}" + (remarks is null ? "" : $": {remarks}"), condition);
                 await PropertyStock.ReturnToStockAsync(_context, unit);
             }
@@ -455,6 +459,23 @@ namespace SchoolInventoryManagement.BLL.Services
                 $"/AssetRequests/Details/{requestId}");
 
             await SaveWithConcurrencyGuardAsync();
+        }
+
+        // The Property Department room of a department's branch: its main
+        // room, or else its first room. Null when it has none.
+        public async Task<int?> ReturnRoomAsync(int departmentId)
+        {
+            var branchId = await _context.Departments.Where(d => d.DepartmentID == departmentId)
+                .Select(d => (int?)d.BranchID).FirstOrDefaultAsync();
+            var property = await _context.Departments.AsNoTracking()
+                .Where(d => d.IsProperty && d.BranchID == branchId)
+                .Select(d => new { d.DepartmentID, d.MainLocationID })
+                .FirstOrDefaultAsync();
+            if (property is null)
+                return null;
+            return property.MainLocationID
+                ?? await _context.Locations.Where(l => l.DepartmentID == property.DepartmentID)
+                    .OrderBy(l => l.LocationID).Select(l => (int?)l.LocationID).FirstOrDefaultAsync();
         }
 
         public async Task AcknowledgeReceiptAsync(int requestId, byte[] requestRowVersion, int actingUserId)

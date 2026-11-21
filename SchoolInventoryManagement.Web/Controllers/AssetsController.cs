@@ -555,20 +555,25 @@ namespace SchoolInventoryManagement.Web.Controllers
         // the Property Department for that request until the requester
         // confirms receipt.
         [Authorize(Roles = RoleNames.AssetOfficer + "," + RoleNames.Administrator)]
-        public async Task<IActionResult> BulkCreate(int? newItemRequestId)
+        // returnTo = approvals: when everything is registered, back to the
+        // requisition on the approvals page (else its own page).
+        public async Task<IActionResult> BulkCreate(int? newItemRequestId, string? returnTo)
         {
             var model = new AssetBulkCreateViewModel();
+            ViewBag.ReturnTo = returnTo;
 
             if (newItemRequestId is int ticketId)
             {
                 var ticket = await LoadBulkTicketAsync(ticketId);
                 if (ticket is null)
-                    return RedirectToAction("Details", "NewItemRequests", new { id = ticketId });
+                    return RequisitionBack(ticketId, returnTo);
 
                 if (ticket.Registered >= ticket.Ordered)
                 {
-                    TempData["StatusMessage"] = $"All {ticket.Ordered} units of request #{ticketId} are registered. Mark it delivered when they are brought over.";
-                    return RedirectToAction("Details", "NewItemRequests", new { id = ticketId });
+                    var before = TempData["StatusMessage"] as string;
+                    TempData["StatusMessage"] = (string.IsNullOrEmpty(before) ? "" : before + " ")
+                        + $"All {ticket.Ordered} bought unit{(ticket.Ordered == 1 ? " is" : "s are")} registered for requisition #{ticketId}. Pick anything else from stock, then send it out.";
+                    return RequisitionBack(ticketId, returnTo);
                 }
 
                 var line = ticket.Lines.FirstOrDefault(l => l.ModelID != null && l.Registered < l.Quantity)
@@ -610,11 +615,13 @@ namespace SchoolInventoryManagement.Web.Controllers
                         BranchName = n.Department.Branch.BranchName,
                         Registered = n.RegisteredAssets.Count()
                     },
-                    Lines = n.Items.OrderBy(i => i.NewItemRequestItemID).Select(i => new BulkTicketLine
+                    // Only what was bought is registered here: the rest of a
+                    // line comes from Property's stock (picked, Scripts/031).
+                    Lines = n.Items.Where(i => i.ToBuy > 0).OrderBy(i => i.NewItemRequestItemID).Select(i => new BulkTicketLine
                     {
                         ItemName = i.ItemName,
                         ModelID = i.ModelID,
-                        Quantity = i.Quantity,
+                        Quantity = i.ToBuy,
                         EstimatedUnitPrice = i.EstimatedUnitPrice
                     }).ToList()
                 })
@@ -662,13 +669,14 @@ namespace SchoolInventoryManagement.Web.Controllers
         [RequestSizeLimit(FileUploads.MaxRequestBytes)]
         [RequestFormLimits(MultipartBodyLengthLimit = FileUploads.MaxRequestBytes)]
         [OneTimeSubmit]
-        public async Task<IActionResult> BulkCreate(AssetBulkCreateViewModel model)
+        public async Task<IActionResult> BulkCreate(AssetBulkCreateViewModel model, string? returnTo)
         {
+            ViewBag.ReturnTo = returnTo;
             if (model.NewItemRequestID is int forTicket)
             {
                 var ticket = await LoadBulkTicketAsync(forTicket);
                 if (ticket is null)
-                    return RedirectToAction("Details", "NewItemRequests", new { id = forTicket });
+                    return RequisitionBack(forTicket, returnTo);
                 ViewBag.Ticket = ticket;
             }
 
@@ -712,7 +720,9 @@ namespace SchoolInventoryManagement.Web.Controllers
                         ? $"Registered 1 unit for request #{ticketId}: {codes[0]}."
                         : $"Registered {codes.Count} units for request #{ticketId}: {codes[0]} to {codes[^1]}.")
                         + " They are held by the Property Department until the requester confirms receipt.";
-                    return RedirectToAction("Details", "NewItemRequests", new { id = ticketId });
+                    // The next line still to register, or (all done) back to
+                    // the requisition to send it out.
+                    return RedirectToAction(nameof(BulkCreate), new { newItemRequestId = ticketId, returnTo });
                 }
 
                 TempData["StatusMessage"] = codes.Count == 1

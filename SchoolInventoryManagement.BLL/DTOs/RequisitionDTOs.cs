@@ -210,5 +210,8 @@ namespace SchoolInventoryManagement.BLL.DTOs
         public decimal Total { get; set; }
         public int PreparedByUserID { get; set; }
         public string PreparedByName { get; set; } = null!;
+        public string BranchName { get; set; } = "";
+        public List<PurchaseOrderLineDTO> Lines { get; set; } = new();
+        public decimal Extras { get; set; }
     }
 }

@@ -27,8 +27,12 @@ namespace SchoolInventoryManagement.Web.Controllers
         private int CurrentUserId => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
         // GET /Approvals
-        public async Task<IActionResult> Index()
+        public async Task<IActionResult> Index(bool overview = false)
         {
+            // Approvals was split: Requisition and Borrowed have their own
+            // pages (sidebar). Old links land on Requisition.
+            if (!overview)
+                return RedirectToAction("Pending", "NewItemRequests");
             var reqWaiting = await _requisitions.GetPendingRequestsAsync(CurrentUserId);
             var reqMoving = await _requisitions.GetInProgressRequestsAsync(CurrentUserId);
             var borrowWaiting = await _borrows.GetPendingRequestsAsync(CurrentUserId);
