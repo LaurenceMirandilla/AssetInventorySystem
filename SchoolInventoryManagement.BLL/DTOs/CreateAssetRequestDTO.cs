@@ -36,6 +36,9 @@ namespace SchoolInventoryManagement.BLL.DTOs
     public class CreateAssetRequestItemDTO
     {
         public int ModelID { get; set; }
+        // Something the school does not have yet, typed on the form: its
+        // model is found by this name or made (CreateRequestAsync).
+        public string? NewName { get; set; }
         public int Quantity { get; set; } = 1;
     }
 }

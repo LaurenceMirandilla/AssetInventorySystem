@@ -226,13 +226,16 @@ namespace SchoolInventoryManagement.Web.Controllers
         {
             // Rows left without a model (an added row nobody filled in) are
             // simply dropped; at least one has to remain.
-            var rows = model.Items.Where(i => i.ModelID is not null).ToList();
+            foreach (var i in model.Items)
+                i.NewName = string.IsNullOrWhiteSpace(i.NewName) ? null : i.NewName.Trim();
+            var rows = model.Items.Where(i => i.ModelID is not null || i.NewName is not null).ToList();
 
             if (rows.Count == 0)
-                ModelState.AddModelError(nameof(model.Items), "Choose at least one model.");
+                ModelState.AddModelError(nameof(model.Items), "Choose at least one model, or type an item that is not on the list.");
             else if (rows.Any(r => r.Quantity is null || r.Quantity < 1))
                 ModelState.AddModelError(nameof(model.Items), "Each amount must be at least 1.");
-            else if (rows.GroupBy(r => r.ModelID).Any(g => g.Count() > 1))
+            else if (rows.Where(r => r.NewName is null).GroupBy(r => r.ModelID).Any(g => g.Count() > 1)
+                     || rows.Where(r => r.NewName is not null).GroupBy(r => r.NewName!.ToLowerInvariant()).Any(g => g.Count() > 1))
                 ModelState.AddModelError(nameof(model.Items), "The same model is listed twice. Put the full amount on one row.");
 
             // Transfer needs a destination. For Borrow the location is the
@@ -272,7 +275,8 @@ namespace SchoolInventoryManagement.Web.Controllers
                     RequestType = model.RequestType,
                     Items = rows.Select(r => new CreateAssetRequestItemDTO
                     {
-                        ModelID = r.ModelID!.Value,
+                        ModelID = r.ModelID ?? 0,
+                        NewName = r.NewName,
                         Quantity = r.Quantity!.Value
                     }).ToList(),
                     RequestedLocationID = model.RequestedLocationID,

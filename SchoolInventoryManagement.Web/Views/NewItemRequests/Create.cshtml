@@ -104,7 +104,7 @@
 
                     @* One row: a typeable dropdown (data-combobox) of the school's
                        fixed assets and consumables -- the script shows only the
-                       chosen kind -- and "Something new" with a name box.
+                       chosen kind; a name not on the list is added as a new item (name box).
                        Every item can be picked, in stock or not, and any amount:
                        what Property does not have is bought. *@
                     <template id="rowTemplate">
@@ -112,7 +112,7 @@
                             <span class="nr-row-num"></span>
                             <div class="ni2-name">
                                 <select class="form-select ni-pick" aria-label="Item" data-combo-new="new">
-                                    <option value="">Search the list...</option>
+                                    <option value="">Search or type a new item...</option>
                                     @foreach (var g in lookups.Models.GroupBy(m => m.Category).OrderBy(g => g.Key))
                                     {
                                         <optgroup label="@g.Key" data-kind="Asset">
@@ -133,7 +133,9 @@
                                             }
                                         </optgroup>
                                     }
-                                    <option value="new" data-sub="not in the system yet: type its name below; it is bought">+ Something new (not on the list)</option>
+                                    @* Not shown in the list: picked by typing a name that is not
+                                       on it ("+ Add ... as a new item"); then it reads "New: name". *@
+                                    <option value="new" hidden>New item</option>
                                 </select>
                                 <input type="text" name="ItemNames" maxlength="150" autocomplete="off" class="form-control ni-name mt-2"
                                        placeholder="Name of the new item" aria-label="Name of the new item" hidden />
@@ -163,7 +165,6 @@
 
                     <div class="ni-add-row">
                         <button type="button" id="addItemRow" class="nr-add my-0">+ Add another item</button>
-                        <button type="button" id="addNewItemRow" class="nr-add my-0">+ Item not on the list</button>
                         <span class="nr-hint" id="searchHint"></span>
                     </div>
                     <span asp-validation-for="ItemNames" class="text-danger d-block"></span>
@@ -266,7 +267,7 @@
             function allRows() { return Array.from(rowsBox.querySelectorAll('.item-row')); }
             function picked(row) { var s = row.querySelector('.ni-pick'); return s.options[s.selectedIndex] || null; }
 
-            // Only the chosen kind's items are in the list (plus "Something new").
+            // Only the chosen kind's items are in the list.
             function showKind(select) {
                 Array.from(select.options).forEach(function (o) {
                     if (o.dataset.kind) o.hidden = o.dataset.kind !== kind();
@@ -283,9 +284,9 @@
                 row.querySelector('.ni-supply-id').value = '';
                 unit.readOnly = false;
                 if (o && o.value === 'new') {
-                    if (!name.hidden && name.dataset.fromList) name.value = '';
+                    // The name is what was typed in the item box (combo-new).
                     if (name.dataset.fromList) { name.value = ''; delete name.dataset.fromList; }
-                    name.hidden = false;
+                    name.hidden = true;
                 } else if (o && o.value) {
                     name.value = o.dataset.name;
                     name.dataset.fromList = '1';
@@ -313,6 +314,7 @@
                 }
                 applyPick(row);
                 if (d && select.value === 'new') row.querySelector('.ni-name').value = d.name || '';
+                if (select.value === 'new') select.querySelector('option[value="new"]').textContent = (d && d.name) || 'New item';
                 select.setAttribute('data-combobox', '');
                 window.sabCombobox(select);
                 return row;
@@ -329,8 +331,8 @@
                     ? 'you confirm you received it'
                     : "you confirm you received it; then the items are your department's to look after";
                 document.getElementById('searchHint').textContent = supplies
-                    ? 'Pick a consumable from the list, in stock or not. Not in the system yet? Type its name and choose "+ Add ... as a new item", or use "+ Item not on the list".'
-                    : 'Pick a fixed asset from the list, in stock or not. Not in the system yet? Type its name and choose "+ Add ... as a new item", or use "+ Item not on the list".';
+                    ? 'Pick a consumable from the list, in stock or not. Not on the list? Just type its name in the box: it is added as a new item, to buy.'
+                    : 'Pick a fixed asset from the list, in stock or not. Not on the list? Just type its name in the box: it is added as a new item, to buy.';
             }
             kinds.forEach(function (k) {
                 k.addEventListener('change', function () {
@@ -419,7 +421,6 @@
                 if (e.target.classList.contains('ni-pick')) {
                     var row = e.target.closest('.item-row');
                     applyPick(row);
-                    if (e.target.value === 'new') row.querySelector('.ni-name').focus();
                 }
                 update();
             });
@@ -430,8 +431,17 @@
                 var name = row.querySelector('.ni-name');
                 name.value = e.detail.text;
                 delete name.dataset.fromList;
+                newLabel(row);
                 update();
             });
+            // A new item's box shows the name as typed ("New: all to buy" is
+            // said under it), so it can be edited right there.
+            function newLabel(row) {
+                var select = row.querySelector('.ni-pick');
+                var opt = select.querySelector('option[value="new"]');
+                opt.textContent = row.querySelector('.ni-name').value.trim() || 'New item';
+                if (select.value === 'new') select.dispatchEvent(new Event('combo-sync'));
+            }
             rowsBox.addEventListener('input', function (e) {
                 var desc = e.target.closest('.ni-desc');
                 if (desc) { desc.style.height = 'auto'; desc.style.height = desc.scrollHeight + 2 + 'px'; }
@@ -445,20 +455,7 @@
                 if (input) input.focus();
             });
 
-            // "+ Item not on the list": a row ready for a new item's name
-            // (the empty first row is used when there is one).
-            document.getElementById('addNewItemRow').addEventListener('click', function () {
-                var rows = allRows();
-                var last = rows[rows.length - 1];
-                var row = last && !last.querySelector('.ni-pick').value ? last : rows.length < maxRows ? addRow(null) : null;
-                if (!row) return;
-                var select = row.querySelector('.ni-pick');
-                select.value = 'new';
-                applyPick(row);
-                select.dispatchEvent(new Event('combo-sync'));
-                update();
-                row.querySelector('.ni-name').focus();
-            });
+
 
             rowsBox.addEventListener('click', function (e) {
                 var step = e.target.closest('[data-step]');

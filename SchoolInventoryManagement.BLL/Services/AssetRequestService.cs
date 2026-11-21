@@ -49,6 +49,40 @@ namespace SchoolInventoryManagement.BLL.Services
         // the boundary a hand-built post cannot skip.
         private const int MaxLinesPerRequest = 20;
 
+        // Models typed on the borrow form for things the school does not have
+        // yet go in this category until Property moves them to the right one.
+        public const string NewItemsCategory = "New items (to sort)";
+
+        // The fixed-asset model with this name, or a new one in
+        // "New items (to sort)" (made, with a code prefix, when missing).
+        private async Task<int> ModelForNewNameAsync(string name)
+        {
+            var existing = await _context.Models
+                .Where(m => m.ModelName == name && m.Category.Kind == CategoryKind.Asset)
+                .Select(m => (int?)m.ModelID)
+                .FirstOrDefaultAsync();
+            if (existing is int id)
+                return id;
+
+            var category = await _context.Categories.FirstOrDefaultAsync(c => c.CategoryName == NewItemsCategory);
+            if (category is null)
+            {
+                var used = await _context.Categories.Where(c => c.CodePrefix != null).Select(c => c.CodePrefix!).ToListAsync();
+                category = new Category
+                {
+                    CategoryName = NewItemsCategory,
+                    Kind = CategoryKind.Asset,
+                    CodePrefix = new[] { "NEW", "NWI", "NIT" }.FirstOrDefault(p => !used.Contains(p)),
+                    Description = "Items asked for on a borrow before the school had them. Move each model to its real category."
+                };
+                _context.Categories.Add(category);
+            }
+            var model = new Model { Category = category, ModelName = name, Description = "Added from a borrow request." };
+            _context.Models.Add(model);
+            await _context.SaveChangesAsync();
+            return model.ModelID;
+        }
+
         public Task<string?> GetDeliveryRoomNameAsync(int userId) =>
             DepartmentRooms.DeliveryRoomNameAsync(_context, userId);
 
@@ -67,8 +101,10 @@ namespace SchoolInventoryManagement.BLL.Services
 
             // One line per model: two lines for the same model would only
             // be one line with a bigger amount.
-            if (dto.Items.GroupBy(i => i.ModelID).Any(g => g.Count() > 1))
+            if (dto.Items.Where(i => string.IsNullOrWhiteSpace(i.NewName)).GroupBy(i => i.ModelID).Any(g => g.Count() > 1))
                 throw new ArgumentException("The same model is listed twice. Put the full amount on one line.");
+            if (dto.Items.Any(i => i.NewName is { Length: > 150 }))
+                throw new ArgumentException("An item's name can be at most 150 characters.");
 
             // Transfers are no longer used (Scripts/029): an item is
             // borrowed, or bought through a new-item request.
@@ -116,6 +152,13 @@ namespace SchoolInventoryManagement.BLL.Services
                         $"A permanent transfer has to go to a room in your own branch ({home.BranchName}). " +
                         "To move items to another branch for a while, choose \"Until a date\".");
             }
+
+            // Typed names for things the school does not have yet: each gets
+            // its model (found by name, or made), and so is bought first.
+            foreach (var item in dto.Items.Where(i => !string.IsNullOrWhiteSpace(i.NewName)))
+                item.ModelID = await ModelForNewNameAsync(item.NewName!.Trim());
+            if (dto.Items.GroupBy(i => i.ModelID).Any(g => g.Count() > 1))
+                throw new ArgumentException("The same item is listed twice. Put the full amount on one line.");
 
             var modelIds = dto.Items.Select(i => i.ModelID).ToList();
             var shortages = new List<(int ModelID, string Name, int Missing)>();

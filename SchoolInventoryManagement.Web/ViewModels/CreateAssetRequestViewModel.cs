@@ -42,6 +42,8 @@ namespace SchoolInventoryManagement.Web.ViewModels
     public class RequestItemInput
     {
         public int? ModelID { get; set; }
+        // A name typed for something the school does not have yet.
+        public string? NewName { get; set; }
         public int? Quantity { get; set; } = 1;
     }
 

@@ -208,6 +208,13 @@ document.addEventListener('change', function (e) {
             // offers it as a new item. Picking it selects that value and
             // fires "combo-new" with the typed text.
             var newValue = select.dataset.comboNew;
+            if (newValue && !q) {
+                // Say it can be typed.
+                var tip = document.createElement('li');
+                tip.className = 'dropdown-item-text small text-muted combo-tip';
+                tip.textContent = 'Not on the list? Just type its name.';
+                list.insertBefore(tip, list.firstChild);
+            }
             if (newValue && q && !Array.from(select.options).some(function (o) { return !o.hidden && o.text.trim().toLowerCase() === q; })) {
                 var typed = (query || '').trim();
                 var nli = document.createElement('li');
@@ -309,8 +316,21 @@ document.addEventListener('change', function (e) {
                 syncText();
             }
         });
-        // Leaving the box without picking puts back what was picked.
-        input.addEventListener('blur', function () { close(); syncText(); });
+        // Leaving the box without picking puts back what was picked -- except
+        // on a list that takes new items (data-combo-new): there a name typed
+        // that is not on the list becomes the new item, and one that is
+        // picks it.
+        input.addEventListener('blur', function () {
+            var typed = input.value.trim();
+            var nv = select.dataset.comboNew;
+            var cur = select.options[select.selectedIndex];
+            if (nv && typed && !select.disabled && !(cur && !isHint(cur) && cur.text.trim() === typed)) {
+                var hit = Array.from(select.options).find(function (o) { return !o.hidden && !isHint(o) && o.text.trim().toLowerCase() === typed.toLowerCase(); });
+                if (hit) pick(hit.value); else pick(nv, typed);
+                return;
+            }
+            close(); syncText();
+        });
 
         select.addEventListener('change', syncText);
         select.addEventListener('combo-sync', syncText);

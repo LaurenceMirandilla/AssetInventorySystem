@@ -107,8 +107,10 @@
                             <div class="nr-row item-row">
                                 <span class="nr-row-num"></span>
                                 <div class="nr-row-model">
-                                    <select name="Items[@i].ModelID" class="form-select model-select" data-combobox aria-label="Model">
-                                        <option value="">Search a model...</option>
+                                    <select name="@(row.NewName is null ? $"Items[{i}].ModelID" : "")" class="form-select model-select" data-combobox data-combo-new="new" aria-label="Model">
+                                        <option value="">Search or type a new item...</option>
+                                        @* Not shown in the list: a typed name not on it (data-combo-new). *@
+                                        <option value="new" hidden selected="@(row.NewName is not null)">@(row.NewName ?? "New item")</option>
                                         @foreach (var group in modelGroups)
                                         {
                                             <optgroup label="@group.Key">
@@ -123,6 +125,7 @@
                                             </optgroup>
                                         }
                                     </select>
+                                    <input type="hidden" class="new-name" name="Items[@i].NewName" value="@row.NewName" />
                                     <div class="nr-hint nr-buy text-warning fw-semibold mt-1"></div>
                                 </div>
                                 <div class="qty-stepper nr-qty">
@@ -140,8 +143,9 @@
                         <div class="nr-row item-row">
                             <span class="nr-row-num"></span>
                             <div class="nr-row-model">
-                                <select class="form-select model-select" aria-label="Model">
-                                    <option value="">Search a model...</option>
+                                <select class="form-select model-select" data-combo-new="new" aria-label="Model">
+                                    <option value="">Search or type a new item...</option>
+                                    <option value="new" hidden>New item</option>
                                     @foreach (var group in modelGroups)
                                     {
                                         <optgroup label="@group.Key">
@@ -155,6 +159,7 @@
                                         </optgroup>
                                     }
                                 </select>
+                                <input type="hidden" class="new-name" />
                                 <div class="nr-hint nr-buy text-warning fw-semibold mt-1"></div>
                             </div>
                             <div class="qty-stepper nr-qty">
@@ -428,7 +433,10 @@
 
             function renumber() {
                 allRows().forEach(function (row, i) {
-                    row.querySelector('.model-select').name = 'Items[' + i + '].ModelID';
+                    // A typed new item posts its name, not a model.
+                    var sel = row.querySelector('.model-select');
+                    if (sel.value === 'new') sel.removeAttribute('name'); else sel.name = 'Items[' + i + '].ModelID';
+                    row.querySelector('.new-name').name = 'Items[' + i + '].NewName';
                     row.querySelector('.qty-input').name = 'Items[' + i + '].Quantity';
                     row.querySelector('.nr-row-num').textContent = i + 1;
                 });
@@ -441,7 +449,7 @@
                 rows.forEach(function (row, i) {
                     var select = row.querySelector('.model-select');
                     Array.from(select.options).forEach(function (opt) {
-                        if (!opt.value) return;
+                        if (!opt.value || opt.value === 'new') return;
                         opt.hidden = picked.some(function (v, j) { return j !== i && v === opt.value; });
                     });
 
@@ -453,7 +461,8 @@
                     if (isNaN(n) || n < 1) { qty.value = 1; n = 1; }
                     qty.removeAttribute('max');
                     var buy = chosen && chosen.value ? n - have : 0;
-                    row.querySelector('.nr-buy').textContent = buy <= 0 ? ''
+                    row.querySelector('.nr-buy').textContent = chosen && chosen.value === 'new' ? 'New: not in the system yet, ' + n + ' bought first'
+                        : buy <= 0 ? ''
                         : (have > 0 ? have + ' in stock · ' + buy + ' bought first' : 'None in stock: ' + buy + ' bought first');
                     row.querySelector('.remove-row').style.visibility = rows.length === 1 ? 'hidden' : 'visible';
                 });
@@ -495,8 +504,21 @@
 
             rowsBox.addEventListener('change', function (e) {
                 if (e.target.classList.contains('model-select')) {
-                    e.target.closest('.item-row').querySelector('.qty-input').value = 1;
+                    var r = e.target.closest('.item-row');
+                    r.querySelector('.qty-input').value = 1;
+                    if (e.target.value !== 'new') r.querySelector('.new-name').value = '';
+                    renumber();
                 }
+                sync();
+            });
+            // A name typed that is not on the list: a new item, bought first
+            // (site.js fires combo-new).
+            rowsBox.addEventListener('combo-new', function (e) {
+                var r = e.target.closest('.item-row');
+                r.querySelector('.new-name').value = e.detail.text;
+                e.target.querySelector('option[value="new"]').textContent = e.detail.text;
+                e.target.dispatchEvent(new Event('combo-sync'));
+                renumber();
                 sync();
             });
 
