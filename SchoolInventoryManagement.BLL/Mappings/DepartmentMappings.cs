@@ -1,6 +1,8 @@
 using SchoolInventoryManagement.BLL.DTOs;
 using SchoolInventoryManagement.DAL.Entities;
 
+using System.Linq;
+
 namespace SchoolInventoryManagement.BLL.Mappings
 {
     public static class DepartmentMappings
@@ -14,7 +16,12 @@ namespace SchoolInventoryManagement.BLL.Mappings
                 Description = department.Description,
                 BranchID = department.BranchID,
                 BranchName = department.Branch?.BranchName ?? string.Empty,
-                IsProperty = department.IsProperty
+                IsProperty = department.IsProperty,
+                MainLocationID = department.MainLocationID,
+                Rooms = department.Rooms
+                    .OrderBy(l => l.LocationName)
+                    .Select(l => new DepartmentRoomDTO(l.LocationID, l.LocationName.Trim()))
+                    .ToList()
             };
         }
     }

@@ -10,6 +10,10 @@ namespace SchoolInventoryManagement.BLL.Interfaces
         // model and an amount.
         Task<AssetRequestResponseDTO> CreateRequestAsync(CreateAssetRequestDTO dto, int actingUserId);
 
+        // The requester's department room, where a borrow is brought
+        // (Scripts/029); null when the department has none yet.
+        Task<string?> GetDeliveryRoomNameAsync(int userId);
+
         Task<AssetRequestResponseDTO?> GetRequestByIdAsync(int requestId);
         Task<List<AssetRequestResponseDTO>> GetMyRequestsAsync(int actingUserId);
         Task<List<AssetRequestResponseDTO>> GetPendingRequestsAsync(int actingUserId);

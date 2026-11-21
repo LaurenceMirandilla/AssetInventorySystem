@@ -40,23 +40,23 @@
                             <span class="nr-kind-dot" aria-hidden="true"></span>
                             <span>
                                 <strong>Borrow</strong>
-                                <small>Use items for a while. Staff set them aside and you collect them at a pickup point.</small>
-                            </span>
-                        </a>
-                        <a class="nr-kind" asp-controller="AssetRequests" asp-action="Create" asp-route-type="Transfer">
-                            <span class="nr-kind-dot" aria-hidden="true"></span>
-                            <span>
-                                <strong>Transfer</strong>
-                                <small>Move items to a room. Staff deliver them to the location you choose.</small>
+                                <small>Use items for a while. They are brought to your department's room, and returned when you're done.</small>
                             </span>
                         </a>
                         <div class="nr-kind is-on" aria-current="page">
                             <span class="nr-kind-dot" aria-hidden="true"></span>
                             <span>
                                 <strong>Supplies</strong>
-                                <small>Paper, markers and other things that get used up. Delivered to a location you choose; nothing to return.</small>
+                                <small>Paper, markers and other things that get used up. Delivered to your department's room; nothing to return.</small>
                             </span>
                         </div>
+                        <a class="nr-kind" asp-controller="NewItemRequests" asp-action="Create">
+                            <span class="nr-kind-dot" aria-hidden="true"></span>
+                            <span>
+                                <strong>Purchase</strong>
+                                <small>Something the school doesn't have, or doesn't have enough of. The Principal approves buying it.</small>
+                            </span>
+                        </a>
                     </div>
                 </div>
             </div>
@@ -143,16 +143,17 @@
                 <div class="register-step-body">
                     <div class="row g-3">
                         <div class="col-md-6">
-                            <label asp-for="DeliverToLocationID" class="form-label">Deliver to</label>
-                            <select asp-for="DeliverToLocationID" class="form-select" data-combobox>
-                                <option value="">Search a location...</option>
-                                @foreach (var l in deliveryLocations)
-                                {
-                                    <option value="@l.LocationID">@l.LocationName</option>
-                                }
-                            </select>
-                            <div class="form-text">Where the supplies are brought to you. Locations in @branchName.</div>
-                            <span asp-validation-for="DeliverToLocationID" class="text-danger small"></span>
+                            @* Not asked any more: the department's room (Scripts/029). *@
+                            <div class="form-label">Delivered to</div>
+                            @if (source?.DeliveryRoomName is string room)
+                            {
+                                <div class="fw-semibold py-2">@room</div>
+                                <div class="form-text">Your department's room. It comes from your account.</div>
+                            }
+                            else
+                            {
+                                <div class="alert alert-warning py-2 mb-0">Your department has no room yet, so there is nowhere to deliver. Ask an administrator to give it one.</div>
+                            }
                         </div>
                         <div class="col-md-6">
                             <label asp-for="NeededBy" class="form-label">Needed by <span class="register-optional">optional</span></label>
@@ -181,7 +182,7 @@
                     <div><dt>Items</dt><dd id="sumItems" class="is-empty">None yet</dd></div>
                     <div><dt>Needed by</dt><dd id="sumNeeded" class="is-empty">Not chosen yet</dd></div>
                     <div><dt>Taken from</dt><dd>@(source?.DepartmentName ?? "Property Department") · @branchName</dd></div>
-                    <div class="nr-summary-wide"><dt>Deliver to</dt><dd id="sumWhere" class="is-empty">Not chosen yet</dd></div>
+                    <div class="nr-summary-wide"><dt>Delivered to</dt><dd class="@(source?.DeliveryRoomName is null ? "is-empty" : "is-green")">@(source?.DeliveryRoomName ?? "No room yet")</dd></div>
                 </dl>
                 <ul class="nr-summary-list" id="sumList" hidden></ul>
             </div>
@@ -252,7 +253,6 @@
 
             // ---- "Your request" card --------------------------------------
             var form = document.getElementById('supplyRequestForm');
-            var deliverTo = form.querySelector('[name=DeliverToLocationID]');
             var neededBy = form.querySelector('[name=NeededBy]');
 
             // "2026-11-17" -> "Nov 17, 2026", read as a local date.
@@ -279,10 +279,6 @@
                 sabShow(document.getElementById('sumItems'), text, 'None yet');
                 sabShow(document.getElementById('sumNeeded'), niceDate(neededBy.value), 'Not chosen yet');
 
-                var where = document.getElementById('sumWhere');
-                var o = deliverTo.options[deliverTo.selectedIndex];
-                if (o && o.value) { where.textContent = o.text + ' \u00B7 ' + branch; where.className = 'is-green'; }
-                else { where.textContent = 'Not chosen yet'; where.className = 'is-empty'; }
 
                 // Each supply on its own line under the facts.
                 var list = document.getElementById('sumList');

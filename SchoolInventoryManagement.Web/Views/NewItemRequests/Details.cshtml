@@ -129,8 +129,21 @@
     <div class="alert alert-info d-flex align-items-center flex-wrap" style="gap:10px;">
         @if (isSupplies)
         {
-            <span class="flex-grow-1">These supplies have arrived. Add them to stock so they can be requested@(Model.DeliverToText is null ? "" : ", then bring them to " + Model.DeliverToLocationName) and mark this request delivered. The supplies picked from the list are filled in for you.</span>
-            <a asp-controller="Supplies" asp-action="AddStock" asp-route-newItemRequestId="@Model.NewItemRequestID" class="btn btn-sm btn-primary">Add to supplies stock</a>
+            var toAdd = Model.Items.Where(i => !i.SupplyID.HasValue || i.AddedToStock < i.Quantity).ToList();
+            <span class="flex-grow-1">
+                These supplies have arrived. Add them to the Property Department's stock@(Model.DeliverToText is null ? "" : ", bring them to " + Model.DeliverToLocationName) and mark this request delivered:
+                that hands them to the @Model.DepartmentName out of Property's stock.
+                <span class="d-block mt-1">
+                    @foreach (var i in Model.Items)
+                    {
+                        <span class="me-3 d-inline-block"><strong>@i.ItemName</strong>: @(i.SupplyID.HasValue ? $"{i.AddedToStock} of {i.Quantity} added" : "new to the school, not added yet")</span>
+                    }
+                </span>
+            </span>
+            @if (toAdd.Any())
+            {
+                <a asp-controller="Supplies" asp-action="AddStock" asp-route-newItemRequestId="@Model.NewItemRequestID" class="btn btn-sm btn-primary">Add to supplies stock</a>
+            }
         }
         else
         {

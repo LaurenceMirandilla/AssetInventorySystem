@@ -47,6 +47,9 @@ namespace SchoolInventoryManagement.BLL.Services
         // the boundary a hand-built post cannot skip.
         private const int MaxLinesPerRequest = 20;
 
+        public Task<string?> GetDeliveryRoomNameAsync(int userId) =>
+            DepartmentRooms.DeliveryRoomNameAsync(_context, userId);
+
         // One request (ticket) with one line per model and a quantity on
         // each. Staff pick the actual units when approving.
         public async Task<AssetRequestResponseDTO> CreateRequestAsync(CreateAssetRequestDTO dto, int actingUserId)
@@ -65,14 +68,14 @@ namespace SchoolInventoryManagement.BLL.Services
             if (dto.Items.GroupBy(i => i.ModelID).Any(g => g.Count() > 1))
                 throw new ArgumentException("The same model is listed twice. Put the full amount on one line.");
 
-            // Transfer: where the units should go (required). Borrow: where
-            // the requester would like to collect them (optional) -- when
-            // given, approval uses it as the pickup point.
-            if (dto.RequestType == RequestType.Transfer && dto.RequestedLocationID is null)
-                throw new ArgumentException("A Transfer request must specify a destination location.");
-            if (dto.RequestedLocationID is not null
-                && !await _context.Locations.AnyAsync(l => l.LocationID == dto.RequestedLocationID.Value))
-                throw new KeyNotFoundException("Location not found.");
+            // Transfers are no longer used (Scripts/029): an item is
+            // borrowed, or bought through a new-item request.
+            if (dto.RequestType != RequestType.Borrow)
+                throw new InvalidOperationException("Transfer requests are no longer used. Borrow the item, or request a purchase.");
+
+            // Brought to the requester's department room, which approval
+            // uses as the pickup point (Scripts/029).
+            dto.RequestedLocationID = (await DepartmentRooms.DeliveryRoomAsync(_context, requestingUser.DepartmentID)).LocationID;
 
             // Dates. "Today" rather than "now" for the start, so a request
             // for this afternoon filled in a few minutes late still goes in.

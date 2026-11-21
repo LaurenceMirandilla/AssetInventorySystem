@@ -78,23 +78,23 @@
                             <span class="nr-kind-dot" aria-hidden="true"></span>
                             <span>
                                 <strong>Borrow</strong>
-                                <small>Use items for a while. Staff set them aside and you collect them at a pickup point.</small>
+                                <small>Use items for a while. They are brought to your department's room, and returned when you're done.</small>
                             </span>
                         </label>
-                        <label class="nr-kind">
-                            <input type="radio" name="RequestType" value="Transfer" checked="@isTransfer" />
-                            <span class="nr-kind-dot" aria-hidden="true"></span>
-                            <span>
-                                <strong>Transfer</strong>
-                                <small>Move items to a room. Staff deliver them to the location you choose.</small>
-                            </span>
-                        </label>
-                        @* Supplies has its own form: this card opens it. *@
+                        @* Transfers are no longer used (Scripts/029). Supplies and
+                           purchases have their own forms: these cards open them. *@
                         <a class="nr-kind" asp-controller="SupplyRequests" asp-action="Create">
                             <span class="nr-kind-dot" aria-hidden="true"></span>
                             <span>
                                 <strong>Supplies</strong>
-                                <small>Paper, markers and other things that get used up. Delivered to a location you choose; nothing to return.</small>
+                                <small>Paper, markers and other things that get used up. Delivered to your department's room; nothing to return.</small>
+                            </span>
+                        </a>
+                        <a class="nr-kind" asp-controller="NewItemRequests" asp-action="Create">
+                            <span class="nr-kind-dot" aria-hidden="true"></span>
+                            <span>
+                                <strong>Purchase</strong>
+                                <small>Something the school doesn't have, or doesn't have enough of. The Principal approves buying it.</small>
                             </span>
                         </a>
                     </div>
@@ -230,8 +230,28 @@
                One location for both types. Borrow: the preferred pickup point,
                optional (blank lets staff choose). Transfer: the destination,
                required. A branch first, then one of its rooms; the branch is
-               not posted, it only narrows the rooms. *@
+               not posted, it only narrows the rooms.
+               No longer asked (Scripts/029): the items go to the requester's
+               department room, shown below. The old picker stays hidden so
+               the page's script keeps working; the service ignores it. *@
             <div class="asset-card register-step mb-3">
+                <div class="register-step-head">
+                    <div class="register-step-title flex-grow-1">Delivered to</div>
+                    <span class="nr-head-note">your department's room</span>
+                </div>
+                <div class="register-step-body">
+                    @if (ViewBag.DeliveryRoom is string deliveryRoom)
+                    {
+                        <div class="fw-semibold">@deliveryRoom</div>
+                        <div class="nr-hint mt-1">The items are brought to your department's room. It comes from your account.</div>
+                    }
+                    else
+                    {
+                        <div class="alert alert-warning py-2 mb-0">Your department has no room yet, so there is nowhere to bring the items. Ask an administrator to give it one.</div>
+                    }
+                </div>
+            </div>
+            <div class="asset-card register-step mb-3" hidden>
                 <div class="register-step-head">
                     <div class="register-step-title flex-grow-1" id="whereTitle">Pickup location</div>
                     <span class="nr-head-note" id="whereNote">optional</span>
@@ -291,7 +311,7 @@
                     <div><dt>Items</dt><dd id="sumItems" class="is-empty">None yet</dd></div>
                     <div><dt>Needed</dt><dd id="sumNeeded" class="is-empty">Not chosen yet</dd></div>
                     <div><dt id="sumUntilLabel">Return by</dt><dd id="sumUntil" class="is-empty">Not chosen yet</dd></div>
-                    <div class="nr-summary-wide"><dt id="sumWhereLabel">Pickup</dt><dd id="sumWhere" class="is-empty">Not chosen yet</dd></div>
+                    <div class="nr-summary-wide"><dt id="sumWhereLabel">Pickup</dt><dd id="sumWhere" class="is-empty" data-room="@(ViewBag.DeliveryRoom as string)">Not chosen yet</dd></div>
                 </dl>
             </div>
         </div>
@@ -558,14 +578,10 @@
                 var opt = location.options[location.selectedIndex];
                 var bOpt = branch.options[branch.selectedIndex];
                 var where = document.getElementById('sumWhere');
-                document.getElementById('sumWhereLabel').textContent = borrow ? 'Pickup' : 'Moving to';
-                if (opt && opt.value) {
-                    where.textContent = opt.dataset.name + (bOpt && bOpt.value ? ' · ' + bOpt.dataset.name : '');
-                    where.className = 'is-green';
-                } else {
-                    where.textContent = borrow ? 'Staff will choose' : 'Not chosen yet';
-                    where.className = 'is-empty';
-                }
+                // The department's room (Scripts/029), set by the page.
+                document.getElementById('sumWhereLabel').textContent = 'Delivered to';
+                where.textContent = where.dataset.room || 'No room yet';
+                where.className = where.dataset.room ? 'is-green' : 'is-empty';
 
                 // "2 days" or "Permanent" beside "When".
                 var badge = '';

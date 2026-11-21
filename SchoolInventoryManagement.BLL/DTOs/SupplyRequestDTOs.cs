@@ -27,6 +27,9 @@ namespace SchoolInventoryManagement.BLL.DTOs
         // Who asks: the requester's own department, saved with the request.
         public string ForDepartmentName { get; set; } = null!;
 
+        // Where it is delivered: that department's main room (Scripts/029).
+        public string? DeliveryRoomName { get; set; }
+
         // Where it comes from: the branch's Property Department.
         public string DepartmentName { get; set; } = null!;
         public string BranchName { get; set; } = null!;
@@ -43,8 +46,8 @@ namespace SchoolInventoryManagement.BLL.DTOs
 
         // Where the supplies are brought: a location in the requester's
         // own branch.
-        [Required(ErrorMessage = "Pick where the supplies should be delivered.")]
-        [Display(Name = "Deliver to")]
+        // No longer asked: the requester's department room is used
+        // (Scripts/029).
         public int? DeliverToLocationID { get; set; }
 
         public List<SupplyRequestLineDTO> Items { get; set; } = new();

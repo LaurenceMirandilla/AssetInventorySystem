@@ -14,7 +14,9 @@ namespace SchoolInventoryManagement.BLL.Mappings
                 LocationCode = location.LocationCode,
                 Description = location.Description,
                 BranchID = location.BranchID,
-                BranchName = location.Branch?.BranchName ?? string.Empty
+                BranchName = location.Branch?.BranchName ?? string.Empty,
+                DepartmentID = location.DepartmentID,
+                DepartmentName = location.Department?.DepartmentName
             };
         }
     }

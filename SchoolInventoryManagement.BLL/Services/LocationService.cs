@@ -23,7 +23,7 @@ namespace SchoolInventoryManagement.BLL.Services
 
         private IQueryable<Location> LocationQueryWithIncludes()
         {
-            return _context.Locations.Include(l => l.Branch);
+            return _context.Locations.Include(l => l.Branch).Include(l => l.Department);
         }
 
         public async Task<LocationDTO> CreateLocationAsync(CreateLocationDTO dto, int actingUserId)
@@ -140,6 +140,14 @@ namespace SchoolInventoryManagement.BLL.Services
             var location = await _context.Locations.FindAsync(locationId);
             if (location is null)
                 throw new KeyNotFoundException("Location not found.");
+
+            // A department's room: take it off the department first.
+            if (location.DepartmentID is int ownerId)
+            {
+                var owner = await _context.Departments.Where(d => d.DepartmentID == ownerId).Select(d => d.DepartmentName).FirstAsync();
+                throw new InvalidOperationException(
+                    $"This room belongs to the {owner}. Take it off the department on the Departments page first.");
+            }
 
             // AssetMovements keeps FKs to this location as both source and
             // destination. Without this check the delete gets past the

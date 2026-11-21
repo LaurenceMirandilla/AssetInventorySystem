@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -25,7 +26,43 @@ namespace SchoolInventoryManagement.BLL.Services
 
         private IQueryable<Department> DepartmentQueryWithIncludes()
         {
-            return _context.Departments.Include(d => d.Branch);
+            return _context.Departments.Include(d => d.Branch).Include(d => d.Rooms);
+        }
+
+        // A department's rooms (Scripts/029): at least one, every one in its
+        // branch and not another department's. Rooms taken off it are free
+        // again. The main room is the one picked, else the first.
+        private async Task SetRoomsAsync(Department department, List<int>? locationIds, int? mainLocationId)
+        {
+            var ids = (locationIds ?? new List<int>()).Distinct().ToList();
+            if (ids.Count == 0)
+                throw new ArgumentException("Pick at least one room for the department.");
+
+            var rooms = await _context.Locations.Include(l => l.Department)
+                .Where(l => ids.Contains(l.LocationID)).ToListAsync();
+            if (rooms.Count != ids.Count)
+                throw new KeyNotFoundException("A room was not found.");
+            var elsewhere = rooms.FirstOrDefault(l => l.BranchID != department.BranchID);
+            if (elsewhere is not null)
+                throw new ArgumentException($"{elsewhere.LocationName.Trim()} is in another branch. Pick rooms in the department's own branch.");
+            var taken = rooms.FirstOrDefault(l => l.DepartmentID is int owner && owner != department.DepartmentID && owner != 0);
+            if (taken is not null)
+                throw new InvalidOperationException(
+                    $"{taken.LocationName.Trim()} belongs to the {taken.Department!.DepartmentName}. A room belongs to one department only: take it off that department first.");
+
+            if (department.DepartmentID != 0)
+            {
+                var dropped = await _context.Locations
+                    .Where(l => l.DepartmentID == department.DepartmentID && !ids.Contains(l.LocationID))
+                    .ToListAsync();
+                foreach (var room in dropped)
+                    room.DepartmentID = null;
+            }
+            foreach (var room in rooms)
+                room.Department = department;
+
+            var main = mainLocationId is int m && ids.Contains(m) ? m : ids[0];
+            department.MainLocation = rooms.First(l => l.LocationID == main);
         }
 
         public async Task<DepartmentDTO> CreateDepartmentAsync(CreateDepartmentDTO dto, int actingUserId)
@@ -48,6 +85,9 @@ namespace SchoolInventoryManagement.BLL.Services
                 Description = dto.Description,
                 BranchID = dto.BranchID
             };
+
+            // A new department needs its rooms.
+            await SetRoomsAsync(department, dto.LocationIDs, dto.MainLocationID);
 
             _context.Departments.Add(department);
             await _context.SaveChangesAsync();
@@ -105,6 +145,7 @@ namespace SchoolInventoryManagement.BLL.Services
             department.DepartmentName = dto.DepartmentName;
             department.Description = dto.Description;
             department.BranchID = dto.BranchID;
+            await SetRoomsAsync(department, dto.LocationIDs, dto.MainLocationID);
 
             await _context.SaveChangesAsync();
         }
@@ -134,6 +175,12 @@ namespace SchoolInventoryManagement.BLL.Services
             if (inUse)
                 throw new InvalidOperationException(
                     "This department cannot be deleted because it has users, assets (including ones out on loan), supplies, or requests under it.");
+
+            // Its rooms are free again.
+            department.MainLocationID = null;
+            foreach (var room in await _context.Locations.Where(l => l.DepartmentID == departmentId).ToListAsync())
+                room.DepartmentID = null;
+            await _context.SaveChangesAsync();
 
             _context.Departments.Remove(department);
             await _context.SaveChangesAsync();

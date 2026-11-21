@@ -348,6 +348,50 @@ window.sabFilterByBranch = function (select, branch, opts) {
     return { refresh: refresh };
 };
 
+// Department rooms (Views/Shared/_DepartmentRooms.cshtml): only the rooms
+// of the branch picked in the same form are shown, and the main room is one
+// of the rooms ticked.
+(function () {
+    function init(root) {
+        var form = root.closest('form');
+        var branch = form ? form.querySelector('[name="BranchID"]') : null;
+        var boxes = Array.from(root.querySelectorAll('input[name="LocationIDs"]'));
+        var main = root.querySelector('[data-main-room]');
+        var none = root.querySelector('.dept-rooms-none');
+        function refresh() {
+            var b = branch ? branch.value : '';
+            var shown = 0;
+            boxes.forEach(function (box) {
+                var label = box.closest('.dept-room');
+                var here = !b || label.dataset.branch === b;
+                label.hidden = !here;
+                if (!here) box.checked = false;
+                if (here) shown++;
+            });
+            if (none) none.hidden = shown > 0 || !b;
+            var ticked = boxes.filter(function (x) { return x.checked; }).map(function (x) { return x.value; });
+            var keep = main.value;
+            Array.from(main.options).forEach(function (o) { o.hidden = o.disabled = ticked.indexOf(o.value) === -1; });
+            if (ticked.indexOf(keep) === -1) main.value = ticked[0] || '';
+        }
+        boxes.forEach(function (box) { box.addEventListener('change', refresh); });
+        if (branch) branch.addEventListener('change', refresh);
+        if (form) form.addEventListener('reset', function () { setTimeout(refresh, 0); });
+        // A form with no room ticked does not leave the page.
+        if (form) form.addEventListener('submit', function (e) {
+            if (!boxes.some(function (x) { return x.checked; })) {
+                e.preventDefault();
+                none.hidden = false;
+                none.textContent = 'Pick at least one room for the department.';
+                root.scrollIntoView({ block: 'center' });
+            }
+        });
+        refresh();
+    }
+    function start() { document.querySelectorAll('[data-rooms-picker]').forEach(init); }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
+})();
+
 // List-and-details pages (Approvals, My Requests, My New-Item Requests).
 // Markup: a root [data-md] holding list items [data-entry="id"] (inside
 // groups [data-md-group] with a [data-md-count]), one [data-panel="id"]

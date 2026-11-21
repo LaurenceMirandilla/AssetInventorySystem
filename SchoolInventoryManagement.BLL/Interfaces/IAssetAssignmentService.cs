@@ -48,6 +48,13 @@ namespace SchoolInventoryManagement.BLL.Interfaces
         Task<List<AssetAssignmentResponseDTO>> GetAssignmentHistoryForAssetAsync(int assetId);
         Task<List<AssetAssignmentResponseDTO>> GetActiveAssignmentsForUserAsync(int userId);
 
+        // What the person's department has, shared by everyone in it: units
+        // any member borrowed, and units the department keeps.
+        Task<DepartmentHoldingsDTO> GetDepartmentHoldingsAsync(int userId);
+
+        // Whether the asset is among those: a member may open it.
+        Task<bool> IsDepartmentAssetAsync(int userId, int assetId);
+
         // What they held before and gave back (or was handed on for good),
         // newest first. For the Users page's "Past items" tab.
         Task<List<AssetAssignmentResponseDTO>> GetPastAssignmentsForUserAsync(int userId);

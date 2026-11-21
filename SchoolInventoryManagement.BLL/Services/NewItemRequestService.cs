@@ -278,6 +278,7 @@ namespace SchoolInventoryManagement.BLL.Services
 
             return new NewItemFormLookupsDTO
             {
+                DeliveryRoomName = await DepartmentRooms.DeliveryRoomNameAsync(_context, actingUserId),
                 DepartmentName = me.DepartmentName,
                 BranchName = me.BranchName,
                 BranchID = me.BranchID,
@@ -367,10 +368,10 @@ namespace SchoolInventoryManagement.BLL.Services
             if (dto.NeededBy.Value.Date < PhilippineTime.Today)
                 throw new ArgumentException("The date you need the item cannot be in the past.");
 
-            var deliverTo = await _context.Locations
-                .FirstOrDefaultAsync(l => l.LocationID == dto.DeliverToLocationID);
-            if (deliverTo is null)
-                throw new ArgumentException("Pick where the items should be brought.");
+            // Brought to the requester's department room (Scripts/029).
+            var requesterDepartment = await _context.Users.Where(u => u.UserID == actingUserId)
+                .Select(u => u.DepartmentID).FirstAsync();
+            var deliverTo = await DepartmentRooms.DeliveryRoomAsync(_context, requesterDepartment);
 
             // An existing model or supply picked from the search list. The
             // link is checked against the ticket's kind; anything that does
@@ -509,6 +510,23 @@ namespace SchoolInventoryManagement.BLL.Services
                 dto.RegisteredUnits = units.Where(u => u.TicketId == dto.NewItemRequestID).Select(u => u.Unit).ToList();
         }
 
+        // Supplies requests: how much was added to stock for each supply on
+        // the ticket so far (Scripts/028), so the officer sees what is left
+        // to add before marking it delivered.
+        private async Task FillSuppliesAddedAsync(NewItemRequestResponseDTO dto)
+        {
+            if (dto.ItemKind != CategoryKind.Supply)
+                return;
+            var added = await _context.SupplyTransactions
+                .Where(t => t.NewItemRequestID == dto.NewItemRequestID
+                    && (t.Type == SupplyTransactionType.Received || t.Type == SupplyTransactionType.Opening))
+                .GroupBy(t => t.SupplyID)
+                .Select(g => new { SupplyID = g.Key, Quantity = g.Sum(t => t.QuantityChange) })
+                .ToDictionaryAsync(x => x.SupplyID, x => x.Quantity);
+            foreach (var item in dto.Items.Where(i => i.SupplyID.HasValue))
+                item.AddedToStock = added.GetValueOrDefault(item.SupplyID!.Value);
+        }
+
         public async Task<List<NewItemRequestResponseDTO>> GetAllRequestsAsync(
             int actingUserId, NewItemStatus? status, string? search = null, bool oldestFirst = false)
         {
@@ -642,6 +660,7 @@ namespace SchoolInventoryManagement.BLL.Services
             var dto = request.ToResponseDTO();
             dto.CanAct = CanActOn(request, actor);
             await FillRegisteredUnitsAsync(new[] { dto });
+            await FillSuppliesAddedAsync(dto);
             return dto;
         }
 
@@ -704,6 +723,13 @@ namespace SchoolInventoryManagement.BLL.Services
                             $"New-item request #{requestId}: delivered");
             }
 
+            // Supplies were added to the Property Department's stock when
+            // they arrived; delivering them hands them to the department
+            // that asked, out of that stock.
+            string? handedOver = null;
+            if (to == NewItemStatus.Delivered && request.ItemKind == CategoryKind.Supply)
+                handedOver = await PurchasedSupplies.IssueAsync(_context, request, actor.UserID, now);
+
             request.RequestStatus = to;
             request.ReviewedByUserID = actor.UserID;
             request.ReviewDate = now;
@@ -741,8 +767,9 @@ namespace SchoolInventoryManagement.BLL.Services
                 case NewItemStatus.Delivered:
                     var deliveredTo = await DeliverToNameAsync(request);
                     NotificationHelper.Queue(_context, request.RequestedByUserID,
-                        $"Your request #{requestId} was delivered: {item}" + (deliveredTo is null ? "." : $" was brought to {deliveredTo}.")
-                        + (units.Count > 0 ? " Please confirm you received it; it then becomes your department's." : ""), url);
+                        $"Your request #{requestId} was delivered" + (deliveredTo is null ? "" : $" to {deliveredTo}") + $": {item}." 
+                        + (units.Count > 0 ? " Please confirm you received it; it then becomes your department's." : "")
+                        + (string.IsNullOrEmpty(handedOver) ? "" : $" Handed over from the Property Department's stock: {handedOver}."), url);
                     break;
             }
 

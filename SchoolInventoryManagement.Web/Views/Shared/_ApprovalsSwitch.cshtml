@@ -10,7 +10,7 @@
     @if (User.IsInRole("Asset Officer") || User.IsInRole("Administrator"))
     {
         <a asp-controller="AssetRequests" asp-action="Pending" class="@(Model == "Assets" ? "active" : "")"
-           aria-current="@(Model == "Assets" ? "page" : null)">Borrow and transfer</a>
+           aria-current="@(Model == "Assets" ? "page" : null)">Borrow</a>
     }
     <a asp-controller="SupplyRequests" asp-action="Pending" class="@(Model == "Supplies" ? "active" : "")"
        aria-current="@(Model == "Supplies" ? "page" : null)">Supplies@(open > 0 ? " · " + open : "")</a>

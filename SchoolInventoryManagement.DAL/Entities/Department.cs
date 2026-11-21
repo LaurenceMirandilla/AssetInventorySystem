@@ -24,6 +24,11 @@ namespace SchoolInventoryManagement.DAL.Entities
         // be deleted or moved to another branch.
         public bool IsProperty { get; set; }
 
+        // Its main room (Scripts/029): where supplies and purchases for the
+        // department are delivered. One of its Rooms.
+        public int? MainLocationID { get; set; }
+        public Location? MainLocation { get; set; }
+
         // Upward Navigation Property
         [ForeignKey("BranchID")]
         public Branch Branch { get; set; } = null!;
@@ -32,5 +37,9 @@ namespace SchoolInventoryManagement.DAL.Entities
         public ICollection<User> Users { get; set; } = new List<User>();
         public ICollection<Asset> Assets { get; set; } = new List<Asset>();
         public ICollection<AssetRequest> AssetRequests { get; set; } = new List<AssetRequest>();
+
+        // Its rooms (Locations.DepartmentID). Every department has at least
+        // one; a new one cannot be saved without.
+        public ICollection<Location> Rooms { get; set; } = new List<Location>();
     }
 }

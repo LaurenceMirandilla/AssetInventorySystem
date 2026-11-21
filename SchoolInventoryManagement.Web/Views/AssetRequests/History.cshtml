@@ -70,8 +70,8 @@
     <div>
         <h2 class="asset-detail-title">@(ViewBag.OwnOnly is true ? "My Request History" : "Request History")</h2>
         <div class="asset-detail-sub">@(ViewBag.OwnOnly is true
-            ? "Your own Borrow and Transfer requests that are finished: returned (or delivered for good), rejected or cancelled. Newest first."
-            : "Every Borrow and Transfer request that is completely finished: returned (or delivered for good), rejected, or cancelled after approval. Newest decision first.")</div>
+            ? "Your own Borrow requests that are finished: returned (or delivered for good), rejected or cancelled. Newest first."
+            : "Every Borrow request that is completely finished: returned (or delivered for good), rejected, or cancelled after approval. Newest decision first.")</div>
     </div>
     <div class="asset-detail-actions">
         @if (ViewBag.OwnOnly is true)
@@ -125,7 +125,6 @@
                     <select name="type" class="form-select form-select-sm mb-2">
                         <option value="">All types</option>
                         <option value="Borrow" selected="@(Model.Type == RequestType.Borrow)">Borrow</option>
-                        <option value="Transfer" selected="@(Model.Type == RequestType.Transfer)">Transfer</option>
                     </select>
                     <label class="form-label" hidden="@(ViewBag.OwnOnly is true)">Requested by</label>
                     <div class="mb-2" hidden="@(ViewBag.OwnOnly is true)">

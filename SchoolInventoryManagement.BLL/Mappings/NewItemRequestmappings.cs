@@ -35,6 +35,7 @@ namespace SchoolInventoryManagement.BLL.Mappings
                     .OrderBy(i => i.NewItemRequestItemID)
                     .Select(i => new NewItemRequestItemDTO
                     {
+                        NewItemRequestItemID = i.NewItemRequestItemID,
                         ItemName = i.ItemName,
                         Quantity = i.Quantity,
                         Description = i.Description,

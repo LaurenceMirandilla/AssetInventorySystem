@@ -194,6 +194,11 @@ namespace SchoolInventoryManagement.BLL.DTOs
         [Display(Name = "Belongs to")]
         public int? DepartmentID { get; set; }
 
+        // Opened from an arrived new-item request for supplies: the stock
+        // is the Property Department's, and is handed to the department
+        // that asked when the request is marked delivered.
+        public int? NewItemRequestID { get; set; }
+
         public List<AddStockLineDTO> Lines { get; set; } = new();
     }
 
@@ -256,6 +261,11 @@ namespace SchoolInventoryManagement.BLL.DTOs
         // branch (it can be requested).
         [Display(Name = "Belongs to")]
         public int? DepartmentID { get; set; }
+
+        // A supply new to the school on an arrived new-item request: the
+        // request's line is linked to it, and its opening quantity counts
+        // as what arrived for that request.
+        public int? NewItemRequestItemID { get; set; }
 
         [Range(0, 1000000, ErrorMessage = "Enter a level of 0 or more.")]
         [Display(Name = "Low-stock level")]

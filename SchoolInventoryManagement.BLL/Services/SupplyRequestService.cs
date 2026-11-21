@@ -68,6 +68,7 @@ namespace SchoolInventoryManagement.BLL.Services
             return new SupplySourceDTO
             {
                 ForDepartmentName = user.Department.DepartmentName,
+                DeliveryRoomName = await DepartmentRooms.DeliveryRoomNameAsync(_context, user.UserID),
                 DepartmentName = property,
                 BranchName = user.Branch.BranchName,
                 Rooms = await _context.SupplyStock.AsNoTracking()
@@ -99,11 +100,8 @@ namespace SchoolInventoryManagement.BLL.Services
         {
             var user = await GetActiveUserAsync(actingUserId);
 
-            var deliverTo = await _context.Locations.FirstOrDefaultAsync(l => l.LocationID == dto.DeliverToLocationID);
-            if (deliverTo is null)
-                throw new ArgumentException("Pick where the supplies should be delivered.");
-            if (deliverTo.BranchID != user.BranchID)
-                throw new ArgumentException("The delivery location must be in your own branch.");
+            // Delivered to the requester's department room (Scripts/029).
+            var deliverTo = await DepartmentRooms.DeliveryRoomAsync(_context, user.DepartmentID);
 
             // Rows left empty are ignored.
             var lines = (dto.Items ?? new List<SupplyRequestLineDTO>())

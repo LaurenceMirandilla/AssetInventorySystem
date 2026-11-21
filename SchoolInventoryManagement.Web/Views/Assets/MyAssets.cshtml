@@ -1,4 +1,4 @@
-﻿@model List<SchoolInventoryManagement.BLL.DTOs.AssetAssignmentResponseDTO>
+﻿@model SchoolInventoryManagement.BLL.DTOs.DepartmentHoldingsDTO
 @using SchoolInventoryManagement.BLL.DTOs
 @using SchoolInventoryManagement.DAL.Entities.Enums
 @{
@@ -10,7 +10,15 @@
     // no request, so it is an entry of its own. The list on the left groups
     // them by what needs doing, the panel on the right shows the one picked.
     var today = PhilippineTime.Today;
-    var entries = Model
+    // Shared by the department (Scripts/029): every member sees what any
+    // member borrowed, with who borrowed it, and what the department keeps.
+    var me = int.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)!.Value);
+    var dept = string.IsNullOrEmpty(Model.DepartmentName) ? "your department" : "the " + Model.DepartmentName;
+    var kept = Model.Kept.GroupBy(k => k.ModelName)
+        .Select((g, i) => (Id: $"kept-{i}", Name: g.Key, Units: g.ToList(),
+                           Rooms: g.Select(u => u.LocationName).Where(l => !string.IsNullOrEmpty(l)).Select(l => l!).Distinct().OrderBy(l => l).ToList()))
+        .ToList();
+    var entries = Model.Borrowed
         .GroupBy(a => a.RequestID is int id ? $"req-{id}" : $"asg-{a.AssignmentID}")
         .Select(g => new Entry(g.Key, g.OrderBy(a => a.AssetCode).ToList(), today))
         .ToList();
@@ -67,6 +75,11 @@
 
         public string Id { get; }
         public List<AssetAssignmentResponseDTO> Units { get; }
+
+        // Who borrowed them: the department shares them, the borrower
+        // answers for them.
+        public List<string> Borrowers => Units.Select(u => u.AssignedToUser.FullName).Distinct().ToList();
+        public bool IsMine(int userId) => Units.All(u => u.AssignedToUser.UserID == userId);
         public AssetAssignmentResponseDTO First { get; }
         public bool IsRequest { get; }
         public DateTime Issued { get; }
@@ -124,17 +137,10 @@
     <div>
         <h2 class="asset-detail-title">My Assets</h2>
         <div class="asset-detail-sub">
-            @if (Model.Any())
-            {
-                <span>
-                    @Model.Count unit@(Model.Count == 1 ? "" : "s") signed out to you, from @string.Join(" and ", sources).
-                    Pick one to see its units. They stay here until an Asset Officer records their return.
-                </span>
-            }
-            else
-            {
-                <span>Anything issued to you appears here until an Asset Officer records its return.</span>
-            }
+            <span>
+                Everything @dept has, shared by everyone in it: what any member borrowed (with who borrowed it), and what the department keeps.
+                Borrowed items stay here until an Asset Officer records their return.
+            </span>
         </div>
     </div>
     <div class="asset-detail-actions">
@@ -145,11 +151,11 @@
     </div>
 </div>
 
-@if (!Model.Any())
+@if (!Model.Borrowed.Any() && !Model.Kept.Any())
 {
     <div class="sab-table-card">
         <div class="sab-empty">
-            <div class="sab-empty-title">Nothing is signed out to you</div>
+            <div class="sab-empty-title">Your department has nothing yet</div>
             <p>Browse what the school has and request what you need.</p>
             <a asp-controller="AssetRequests" asp-action="Create" class="btn btn-primary">Request an asset</a>
         </div>
@@ -179,6 +185,7 @@ else
                             <option value="late">Needs returning</option>
                             <option value="transit">On the way to you</option>
                             <option value="use">In use</option>
+                            <option value="kept">Kept by the department</option>
                         </select>
                         </div>
                         <label class="form-label">Type</label>
@@ -188,13 +195,13 @@ else
                             @* Every type, whether or not one is out right now. *@
                             <option value="assigned">Assigned</option>
                             <option value="borrow">Borrow</option>
-                            <option value="transfer">Transfer</option>
+                            <option value="department">Department's</option>
                         </select>
                         </div>
                         <label class="form-label">Location</label>
                         <select class="form-select form-select-sm" data-md-filter="loc" data-combobox>
                             <option value="">Any</option>
-                            @foreach (var l in entries.SelectMany(e => e.Locations).Distinct().OrderBy(l => l))
+                            @foreach (var l in entries.SelectMany(e => e.Locations).Concat(kept.SelectMany(k => k.Rooms)).Distinct().OrderBy(l => l))
                             {
                                 <option value="@l.ToLowerInvariant()">@l</option>
                             }
@@ -222,9 +229,30 @@ else
                             </span>
                             <span class="myassets-item-main">
                                 <span class="myassets-item-title">@e.Title</span>
-                                <span class="myassets-item-sub">@e.SubLine</span>
+                                <span class="myassets-item-sub">@e.SubLine@(e.IsMine(me) ? "" : " · " + string.Join(", ", e.Borrowers))</span>
                             </span>
                             <span class="myassets-item-due">@e.DueNote</span>
+                        </button>
+                    }
+                </div>
+            }
+            @if (kept.Any())
+            {
+                <div class="myassets-group" data-md-group>
+                    <div class="myassets-group-label group-kept">Kept by @dept · <span data-md-count>@kept.Count</span></div>
+                    @foreach (var k in kept)
+                    {
+                        <button type="button" class="myassets-item item-kept" data-entry="@k.Id"
+                                data-search="@(k.Name + " " + string.Join(" ", k.Units.Select(u => u.AssetCode + " " + u.AssetName))).ToLowerInvariant()"
+                                data-group="kept" data-type="department"
+                                data-loc="|@string.Join("|", k.Rooms.Select(l => l.ToLowerInvariant()))|"
+                                aria-controls="panel-@k.Id">
+                            <span class="myassets-badge"><small>Dept</small></span>
+                            <span class="myassets-item-main">
+                                <span class="myassets-item-title">@k.Name@(k.Units.Count > 1 ? " ×" + k.Units.Count : "")</span>
+                                <span class="myassets-item-sub">@k.Units.Count unit@(k.Units.Count == 1 ? "" : "s")@(k.Rooms.Any() ? " · " + string.Join(", ", k.Rooms) : "")</span>
+                            </span>
+                            <span class="myassets-item-due">Kept</span>
                         </button>
                     }
                 </div>
@@ -252,13 +280,14 @@ else
                         <div class="min-w-0">
                             <div class="myassets-panel-meta">
                                 <span class="myassets-type">@e.TypeLabel</span>
-                                <span>@(e.IsRequest ? $"Request #{e.First.RequestID}" : e.First.AssetCode) · @unitCount unit@(unitCount == 1 ? "" : "s")</span>
+                                <span>@(e.IsRequest ? $"Request #{e.First.RequestID}" : e.First.AssetCode) · @unitCount unit@(unitCount == 1 ? "" : "s") · borrowed by @(e.IsMine(me) ? "you" : string.Join(", ", e.Borrowers))</span>
                             </div>
                             <h3 class="myassets-panel-title">@e.Title</h3>
                         </div>
                         <div class="myassets-panel-actions">
                             <span class="asset-pill asset-status st-@statusClass">@statusLabel</span>
-                            @if (e.IsRequest)
+                            @* Only the requester sees the request itself. *@
+                            @if (e.IsRequest && e.IsMine(me))
                             {
                                 <a asp-controller="AssetRequests" asp-action="Details" asp-route-id="@e.First.RequestID" asp-route-from="mine" class="btn btn-outline-secondary">View request &rarr;</a>
                             }
@@ -381,6 +410,45 @@ else
                                 Show @(e.Units.Count - 4) more unit@(e.Units.Count - 4 == 1 ? "" : "s") &#9662;
                             </button>
                         }
+                    </div>
+                </article>
+            }
+
+            @foreach (var k in kept)
+            {
+                <article class="myassets-panel" id="panel-@k.Id" data-panel="@k.Id" hidden>
+                    <button type="button" class="myassets-back" data-back>&larr; All my assets</button>
+                    <div class="myassets-panel-head">
+                        <div class="min-w-0">
+                            <div class="myassets-panel-meta">
+                                <span class="myassets-type">Department's</span>
+                                <span>Kept by @dept · @k.Units.Count unit@(k.Units.Count == 1 ? "" : "s")</span>
+                            </div>
+                            <h3 class="myassets-panel-title">@k.Name</h3>
+                        </div>
+                        <div class="myassets-panel-actions">
+                            <span class="asset-pill asset-status st-assigned">Kept</span>
+                        </div>
+                    </div>
+                    <div class="myassets-alert is-transit">
+                        These are the department's for good: everyone in it can use them. Nothing to return.
+                    </div>
+                    <h4 class="myassets-units-title">Units</h4>
+                    <div class="myassets-units">
+                        <table class="table myassets-table">
+                            <thead><tr><th>Code</th><th>Asset</th><th>Room</th><th>Condition</th></tr></thead>
+                            <tbody>
+                                @foreach (var u in k.Units)
+                                {
+                                    <tr>
+                                        <td data-label="Code"><a asp-action="Details" asp-route-id="@u.AssetID" class="asset-code-chip">@u.AssetCode</a></td>
+                                        <td data-label="Asset">@u.AssetName</td>
+                                        <td data-label="Room">@(u.LocationName ?? "—")</td>
+                                        <td data-label="Condition">@DisplayText.Humanize(u.Condition.ToString())</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
                     </div>
                 </article>
             }

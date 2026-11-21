@@ -247,13 +247,41 @@ namespace SchoolInventoryManagement.Web.Controllers
             return View(await supplies.GetReportAsync(fromDate, toDate, branchId, departmentId));
         }
 
-        // GET /Reports/ExportSupplies
+        // GET /Reports/ExportSupplies[?section=departments|people|demand]
+        // Without a section: the stock table (In, out and what is left).
         public async Task<IActionResult> ExportSupplies(
-            [FromServices] ISupplyService supplies, DateTime? fromDate, DateTime? toDate, int? branchId, int? departmentId)
+            [FromServices] ISupplyService supplies, DateTime? fromDate, DateTime? toDate, int? branchId, int? departmentId, string? section)
         {
             fromDate ??= new DateTime(PhilippineTime.Today.Year, PhilippineTime.Today.Month, 1);
             toDate ??= PhilippineTime.Today;
             var report = await supplies.GetReportAsync(fromDate, toDate, branchId, departmentId);
+            static string N(int n) => n.ToString(CultureInfo.InvariantCulture);
+            static string P(decimal v) => v.ToString("0.00", CultureInfo.InvariantCulture);
+
+            switch (section)
+            {
+                case "departments":
+                    return File(CsvExportHelper.Build(
+                        new[] { "Department", "Requests", "Units", "Value" },
+                        report.ByDepartment.Select(d => new string?[] { d.DepartmentName, N(d.Requests), N(d.Units), P(d.Value) })),
+                        "text/csv", CsvExportHelper.TimestampedFileName("supplies-by-department"));
+
+                case "people":
+                    return File(CsvExportHelper.Build(
+                        new[] { "Person", "Department", "Requests", "Units", "Value" },
+                        report.ByPerson.Select(p => new string?[] { p.PersonName, p.DepartmentName, N(p.Requests), N(p.Units), P(p.Value) })),
+                        "text/csv", CsvExportHelper.TimestampedFileName("supplies-by-person"));
+
+                case "demand":
+                    return File(CsvExportHelper.Build(
+                        new[] { "Department", "Requests", "Asked", "Handed Out", "Lowered", "Rejected", "Cancelled", "Still Open", "Filled %" },
+                        report.DemandByDepartment.Append(report.DemandTotal).Select(d => new string?[]
+                        {
+                            d.DepartmentName, N(d.Requests), N(d.Asked), N(d.HandedOut), N(d.Lowered),
+                            N(d.Rejected), N(d.Cancelled), N(d.StillOpen), d.FilledPercent is int f ? N(f) : ""
+                        })),
+                        "text/csv", CsvExportHelper.TimestampedFileName("supplies-requested-vs-handed-out"));
+            }
 
             var csv = CsvExportHelper.Build(
                 new[] { "Supply", "Unit", "Received", "Issued", "Adjusted", "In Stock Now", "Status" },

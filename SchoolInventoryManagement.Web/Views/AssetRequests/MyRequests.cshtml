@@ -50,7 +50,7 @@
 <div class="asset-detail-head">
     <div>
         <h2 class="asset-detail-title">My Requests</h2>
-        <div class="asset-detail-sub">Your Borrow and Transfer requests. You can cancel a request while it is still pending.</div>
+        <div class="asset-detail-sub">Your Borrow requests. You can cancel a request while it is still pending.</div>
     </div>
     <div class="asset-detail-actions">
         <a asp-action="Create" class="btn btn-primary">
@@ -67,7 +67,7 @@
     <div class="sab-table-card">
         <div class="sab-empty">
             <div class="sab-empty-title">No requests yet</div>
-            <p>Borrow asks for models to use. Transfer asks for models to be moved to another location. Either way, staff pick the units.</p>
+            <p>Borrow asks for models to use for a while. Staff pick the units and bring them to your department's room.</p>
             <a asp-action="Create" class="btn btn-primary">+ New Request</a>
         </div>
     </div>
@@ -99,7 +99,6 @@ else
                         <select class="form-select form-select-sm" data-md-filter="type">
                             <option value="">Any</option>
                             <option value="borrow">Borrow</option>
-                            <option value="transfer">Transfer</option>
                         </select>
                     </div>
                 </div>

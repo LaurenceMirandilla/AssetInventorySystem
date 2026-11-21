@@ -78,6 +78,56 @@ namespace SchoolInventoryManagement.BLL.DTOs
         public int OutOfStock { get; set; }
         public List<SupplyReportDepartmentDTO> ByDepartment { get; set; } = new();
         public List<SupplyReportItemDTO> ByItem { get; set; } = new();
+
+        // Who the supplies went to, person by person, under the department
+        // each request was made for.
+        public List<SupplyReportPersonDTO> ByPerson { get; set; } = new();
+
+        // Requested vs handed out: every supply request made in the period,
+        // whatever became of it.
+        public SupplyDemandDTO DemandTotal { get; set; } = new();
+        public List<SupplyDemandDTO> DemandByDepartment { get; set; } = new();
+        // The supplies people asked for but did not get (lowered or
+        // rejected), most first.
+        public List<SupplyUnmetDTO> MostUnmet { get; set; } = new();
+    }
+
+    public class SupplyReportPersonDTO
+    {
+        public int UserID { get; set; }
+        public string PersonName { get; set; } = null!;
+        public string DepartmentName { get; set; } = null!;
+        public int Requests { get; set; }
+        public int Units { get; set; }
+        public decimal Value { get; set; }
+    }
+
+    // Units asked for on supply requests, and what became of them.
+    public class SupplyDemandDTO
+    {
+        public string DepartmentName { get; set; } = "";
+        public int Requests { get; set; }
+        public int Asked { get; set; }
+        // Released or delivered.
+        public int HandedOut { get; set; }
+        // Approved for less than asked.
+        public int Lowered { get; set; }
+        public int Rejected { get; set; }
+        public int Cancelled { get; set; }
+        // Waiting for approval, or approved and not released yet.
+        public int StillOpen { get; set; }
+        // Handed out, of what was asked on requests that are settled.
+        public int? FilledPercent => Asked - StillOpen <= 0 ? null
+            : (int)Math.Round(100.0 * HandedOut / (Asked - StillOpen));
+    }
+
+    public class SupplyUnmetDTO
+    {
+        public int SupplyID { get; set; }
+        public string SupplyName { get; set; } = null!;
+        public string Unit { get; set; } = null!;
+        public int Asked { get; set; }
+        public int NotGiven { get; set; }
     }
 
     public class SupplyReportDepartmentDTO

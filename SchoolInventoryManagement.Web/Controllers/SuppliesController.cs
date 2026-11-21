@@ -90,12 +90,16 @@ namespace SchoolInventoryManagement.Web.Controllers
             return View(model);
         }
 
-        // GET /Supplies/Create
+        // GET /Supplies/Create[?newItemRequestItemId=7]
+        // From an arrived new-item request: a supply new to the school, filled
+        // in from the request's line.
         [Authorize(Roles = RoleNames.AssetOfficer + "," + RoleNames.Administrator)]
-        public async Task<IActionResult> Create()
+        public async Task<IActionResult> Create(int? newItemRequestItemId)
         {
             await PopulateFormAsync();
-            return View(new CreateSupplyDTO());
+            var dto = new CreateSupplyDTO { NewItemRequestItemID = newItemRequestItemId };
+            await LoadTicketLineAsync(dto, fill: true);
+            return View(dto);
         }
 
         [HttpPost]
@@ -107,12 +111,20 @@ namespace SchoolInventoryManagement.Web.Controllers
             if (!ModelState.IsValid)
             {
                 await PopulateFormAsync();
+                await LoadTicketLineAsync(dto, fill: false);
                 return View(dto);
             }
 
             try
             {
                 await _supplyService.CreateSupplyAsync(dto, CurrentUserId);
+                if (dto.NewItemRequestItemID is int lineId)
+                {
+                    var ticketId = await _context.NewItemRequestItems.Where(i => i.NewItemRequestItemID == lineId)
+                        .Select(i => i.NewItemRequestID).FirstAsync();
+                    TempData["StatusMessage"] = $"{dto.SupplyName.Trim()} was added to Supplies, with {dto.OpeningQuantity} in the Property Department's stock for request #{ticketId}.";
+                    return RedirectToAction("Details", "NewItemRequests", new { id = ticketId });
+                }
                 TempData["SuccessMessage"] = $"{dto.SupplyName.Trim()} was added to Supplies.";
                 return RedirectToAction(nameof(Index));
             }
@@ -120,6 +132,7 @@ namespace SchoolInventoryManagement.Web.Controllers
             {
                 HandleServiceException(ex);
                 await PopulateFormAsync();
+                await LoadTicketLineAsync(dto, fill: false);
                 return View(dto);
             }
         }
@@ -129,35 +142,10 @@ namespace SchoolInventoryManagement.Web.Controllers
         public async Task<IActionResult> AddStock(int? supplyId, int? newItemRequestId)
         {
             await PopulateAddStockAsync();
-            var dto = new AddStockDTO { Source = "" };
-            // Opened from an arrived new-item request: the source is fixed,
-            // the request number is kept as the reference, and the supplies
-            // on the ticket that are already on the list are filled in.
-            if (newItemRequestId.HasValue)
-            {
-                dto.Source = SchoolInventoryManagement.BLL.Services.SupplyService.NewItemSource;
-                dto.Reference = "Request #" + newItemRequestId.Value;
-                try
-                {
-                    var ticket = await _newItemRequests.GetRequestAsync(newItemRequestId.Value, CurrentUserId);
-                    if (ticket.ItemKind == CategoryKind.Supply)
-                    {
-                        // One row per supply, even if the ticket named it twice.
-                        dto.Lines = ticket.Items
-                            .Where(i => i.SupplyID.HasValue)
-                            .GroupBy(i => i.SupplyID)
-                            .Select(g => new AddStockLineDTO { SupplyID = g.Key, Quantity = g.Sum(i => i.Quantity) })
-                            .ToList();
-                        // New supplies have to be created first; say which.
-                        ViewBag.NewSupplyLines = ticket.Items
-                            .Where(i => !i.SupplyID.HasValue)
-                            .Select(i => $"{i.ItemName} ×{i.Quantity}{(string.IsNullOrWhiteSpace(i.Unit) ? "" : " " + SupplyText.Unit(i.Quantity, i.Unit))}")
-                            .ToList();
-                    }
-                }
-                catch (KeyNotFoundException) { }
-                catch (UnauthorizedAccessException) { }
-            }
+            var dto = new AddStockDTO { Source = "", NewItemRequestID = newItemRequestId };
+            // Opened from an arrived new-item request: its supplies, with
+            // what is still to be added.
+            await LoadTicketAsync(dto, fillLines: true);
             // Opened from a supply's page: that supply is the first row.
             if (dto.Lines.Count == 0)
                 dto.Lines.Add(new AddStockLineDTO { SupplyID = supplyId, Quantity = 1 });
@@ -176,6 +164,12 @@ namespace SchoolInventoryManagement.Web.Controllers
                 try
                 {
                     var units = await _supplyService.AddStockAsync(dto, CurrentUserId);
+                    if (dto.NewItemRequestID is int ticketId)
+                    {
+                        TempData["StatusMessage"] = $"{units} unit{(units == 1 ? "" : "s")} added to the Property Department's stock for request #{ticketId}. " +
+                            "Mark the request delivered once they reach the requester: they are then handed to their department.";
+                        return RedirectToAction("Details", "NewItemRequests", new { id = ticketId });
+                    }
                     TempData["SuccessMessage"] = $"{units} unit{(units == 1 ? "" : "s")} added to stock.";
                     return backToSupplyId.HasValue
                         ? RedirectToAction(nameof(Details), new { id = backToSupplyId.Value })
@@ -190,10 +184,121 @@ namespace SchoolInventoryManagement.Web.Controllers
             if (!ModelState.IsValid && ModelState[string.Empty] is null)
                 ModelState.AddModelError(string.Empty, "Pick a source, and enter a whole number for every quantity.");
             await PopulateAddStockAsync();
+            await LoadTicketAsync(dto, fillLines: false);
             if (dto.Lines.Count == 0)
                 dto.Lines.Add(new AddStockLineDTO { Quantity = 1 });
             ViewBag.BackToSupplyId = backToSupplyId;
             return View(dto);
+        }
+
+        // ---- Supplies bought through a new-item request (Scripts/028) ----
+
+        // An arrived supplies request, for Add stock: what it is for, the
+        // supplies new to the school (added under New supply first), and on
+        // first opening, a row for each listed supply with what is still to
+        // be added, put in the storage room of the branch it goes to.
+        private async Task LoadTicketAsync(AddStockDTO dto, bool fillLines)
+        {
+            if (dto.NewItemRequestID is not int id)
+                return;
+            NewItemRequestResponseDTO ticket;
+            try
+            {
+                ticket = await _newItemRequests.GetRequestAsync(id, CurrentUserId);
+            }
+            catch (Exception ex) when (ex is KeyNotFoundException or UnauthorizedAccessException)
+            {
+                dto.NewItemRequestID = null;
+                return;
+            }
+            if (ticket.ItemKind != CategoryKind.Supply)
+            {
+                dto.NewItemRequestID = null;
+                return;
+            }
+
+            dto.Source = SchoolInventoryManagement.BLL.Services.SupplyService.NewItemSource;
+            ViewBag.Ticket = ticket;
+            ViewBag.NewSupplyLines = ticket.Items.Where(i => !i.SupplyID.HasValue).ToList();
+            if (!fillLines)
+                return;
+
+            var room = await StoreRoomAsync(ticket.DeliverToLocationID);
+            // One row per supply, even if the ticket named it twice; what
+            // was already added for it is left out.
+            dto.Lines = ticket.Items
+                .Where(i => i.SupplyID.HasValue)
+                .GroupBy(i => i.SupplyID)
+                .Select(g => new AddStockLineDTO
+                {
+                    SupplyID = g.Key,
+                    Quantity = g.Sum(i => i.Quantity) - g.First().AddedToStock,
+                    LocationID = room
+                })
+                .Where(l => l.Quantity > 0)
+                .ToList();
+        }
+
+        // A line of an arrived supplies request that is new to the school,
+        // for New supply: filled in from the line on first opening.
+        private async Task LoadTicketLineAsync(CreateSupplyDTO dto, bool fill)
+        {
+            if (dto.NewItemRequestItemID is not int lineId)
+                return;
+            var line = await _context.NewItemRequestItems.AsNoTracking()
+                .Where(i => i.NewItemRequestItemID == lineId && i.SupplyID == null
+                    && i.Request.ItemKind == CategoryKind.Supply && i.Request.RequestStatus == NewItemStatus.Arrived)
+                .Select(i => new
+                {
+                    i.NewItemRequestID, i.ItemName, i.Unit, i.Quantity, i.EstimatedUnitPrice, i.Description,
+                    i.Request.CategoryID, i.Request.DeliverToLocationID,
+                    Department = i.Request.Department.DepartmentName
+                })
+                .FirstOrDefaultAsync();
+            if (line is null)
+            {
+                dto.NewItemRequestItemID = null;
+                return;
+            }
+
+            ViewBag.FromRequest = new SupplyFromRequest(line.NewItemRequestID, line.Department);
+            if (!fill)
+                return;
+            dto.SupplyName = line.ItemName;
+            dto.Unit = line.Unit ?? "";
+            dto.OpeningQuantity = line.Quantity;
+            dto.UnitPrice = line.EstimatedUnitPrice;
+            dto.Description = line.Description;
+            if (await _context.Categories.AnyAsync(c => c.CategoryID == line.CategoryID && c.Kind == CategoryKind.Supply))
+                dto.CategoryID = line.CategoryID;
+            dto.LocationID = await StoreRoomAsync(line.DeliverToLocationID);
+        }
+
+        // The branch's storage room (the Main Storage Room, else the Supply
+        // Room) for the place the supplies are delivered to.
+        private async Task<int?> StoreRoomAsync(int? deliverToLocationId)
+        {
+            if (deliverToLocationId is null)
+                return null;
+            var branchId = await _context.Locations.Where(l => l.LocationID == deliverToLocationId)
+                .Select(l => (int?)l.BranchID).FirstOrDefaultAsync();
+            if (branchId is null)
+                return null;
+            var rooms = await _context.Locations.Where(l => l.BranchID == branchId)
+                .Select(l => new { l.LocationID, l.LocationCode, l.LocationName })
+                .ToListAsync();
+            static int Rank(string? code, string name)
+            {
+                code = (code ?? "").Trim();
+                name = (name ?? "").Trim();
+                return code == "MSR" ? 0 : name.StartsWith("Main Storage", StringComparison.OrdinalIgnoreCase) ? 1
+                    : code == "SUP" ? 2 : name.StartsWith("Supply Room", StringComparison.OrdinalIgnoreCase) ? 3 : 9;
+            }
+            return rooms.Select(r => new { r.LocationID, Rank = Rank(r.LocationCode, r.LocationName) })
+                .Where(r => r.Rank < 9)
+                .OrderBy(r => r.Rank).ThenBy(r => r.LocationID)
+                .Select(r => (int?)r.LocationID)
+                .FirstOrDefault();
         }
 
         private async Task PopulateAddStockAsync()

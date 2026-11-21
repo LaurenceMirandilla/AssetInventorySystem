@@ -8,14 +8,17 @@
     var locations = ViewBag.Locations as List<SupplyLocationOption> ?? new();
     var sources = ViewBag.Sources as string[] ?? Array.Empty<string>();
     var backId = ViewBag.BackToSupplyId as int?;
-    var newSupplyLines = ViewBag.NewSupplyLines as List<string> ?? new();
+    var newSupplyLines = ViewBag.NewSupplyLines as List<NewItemRequestItemDTO> ?? new();
     var departments = ViewBag.Departments as List<SupplyDepartmentOption> ?? new();
+    // Opened from an arrived new-item request for supplies.
+    var ticket = ViewBag.Ticket as NewItemRequestResponseDTO;
 }
 
 <form asp-action="AddStock" method="post" class="register-form page-fill" id="addStockForm">
     @Html.AntiForgeryToken()
     @Html.FormTicket()
     <input type="hidden" name="backToSupplyId" value="@backId" />
+    <input type="hidden" name="NewItemRequestID" value="@Model.NewItemRequestID" />
 
     <div class="asset-detail-head">
         <div>
@@ -27,7 +30,14 @@
                 <span>Add stock</span>
             </nav>
             <h2 class="asset-detail-title">Add stock</h2>
-            <div class="asset-detail-sub">For supplies that arrived without a new-item request: a direct purchase, or unused supplies handed back.</div>
+            @if (ticket is null)
+            {
+                <div class="asset-detail-sub">For supplies that arrived without a new-item request: a direct purchase, or unused supplies handed back.</div>
+            }
+            else
+            {
+                <div class="asset-detail-sub"><span>Supplies that arrived for <a asp-controller="NewItemRequests" asp-action="Details" asp-route-id="@ticket.NewItemRequestID">new-item request #@ticket.NewItemRequestID</a>, for the @ticket.DepartmentName. They go into the Property Department's stock, and are handed to the @ticket.DepartmentName when the request is marked delivered.</span></div>
+            }
         </div>
     </div>
 
@@ -38,12 +48,25 @@
         <div class="alert alert-warning">There are no supplies yet. <a asp-action="Create">Add a supply first</a>.</div>
     }
 
+    @if (ticket is not null && ticket.RequestStatus != SchoolInventoryManagement.DAL.Entities.Enums.NewItemStatus.Arrived)
+    {
+        <div class="alert alert-warning">Request #@ticket.NewItemRequestID is no longer waiting to be delivered, so nothing can be added for it.</div>
+    }
+
     @if (newSupplyLines.Any())
     {
         <div class="alert alert-warning">
-            <strong>@newSupplyLines.Count suppl@(newSupplyLines.Count == 1 ? "y" : "ies") on this request @(newSupplyLines.Count == 1 ? "is" : "are") new to the school</strong> and not listed below:
-            @string.Join(", ", newSupplyLines).
-            Add each one under <a asp-controller="Supplies" asp-action="Create">New item &rsaquo; Supply</a>, with the amount that arrived as its opening quantity.
+            <strong>@newSupplyLines.Count suppl@(newSupplyLines.Count == 1 ? "y" : "ies") on this request @(newSupplyLines.Count == 1 ? "is" : "are") new to the school</strong> and not listed below.
+            Add @(newSupplyLines.Count == 1 ? "it" : "each one") as a new supply, with the amount that arrived as its opening quantity:
+            <ul class="mb-0 mt-1">
+                @foreach (var line in newSupplyLines)
+                {
+                    <li>
+                        @line.ItemName &times;@line.Quantity@(string.IsNullOrWhiteSpace(line.Unit) ? "" : " " + SupplyText.Unit(line.Quantity, line.Unit))
+                        &middot; <a asp-action="Create" asp-route-newItemRequestItemId="@line.NewItemRequestItemID">Add as a new supply &rarr;</a>
+                    </li>
+                }
+            </ul>
         </div>
     }
 
@@ -86,9 +109,9 @@
             <div class="row g-3 align-items-end">
                 <div class="col-md-6">
                     <label asp-for="DepartmentID" class="form-label">Department</label>
-                    <select asp-for="DepartmentID" class="form-select" id="stockDepartment">
+                    <select asp-for="DepartmentID" class="form-select" id="stockDepartment" disabled="@(ticket is not null)">
                         <option value="">Property Department (in stock, can be requested)</option>
-                        @foreach (var g in departments.GroupBy(d => d.BranchName))
+                        @foreach (var g in ticket is null ? departments.GroupBy(d => d.BranchName) : Enumerable.Empty<IGrouping<string, SupplyDepartmentOption>>())
                         {
                             <optgroup label="@g.Key">
                                 @foreach (var d in g)
@@ -100,7 +123,14 @@
                     </select>
                 </div>
                 <div class="col-md-6">
-                    <div class="form-text mb-2">The Property Department of each room's branch keeps it, and people request it from there. Pick another department only for stock it keeps for itself, put in rooms of its own branch.</div>
+                    @if (ticket is null)
+                    {
+                        <div class="form-text mb-2">The Property Department of each room's branch keeps it, and people request it from there. Pick another department only for stock it keeps for itself, put in rooms of its own branch.</div>
+                    }
+                    else
+                    {
+                        <div class="form-text mb-2">Supplies bought through a request always go into the Property Department's stock first. Marking the request delivered hands them to the @ticket.DepartmentName.</div>
+                    }
                 </div>
             </div>
         </div>

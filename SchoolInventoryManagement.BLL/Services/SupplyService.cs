@@ -156,6 +156,20 @@ namespace SchoolInventoryManagement.BLL.Services
             if (!locationExists)
                 throw new KeyNotFoundException("Location not found.");
 
+            // A supply new to the school on an arrived new-item request: it
+            // is the Property Department's, the request's line is linked to
+            // it, and its opening quantity is what arrived for the request.
+            NewItemRequestItem? ticketLine = null;
+            if (dto.NewItemRequestItemID is int lineId)
+            {
+                ticketLine = await _context.NewItemRequestItems.FirstOrDefaultAsync(i => i.NewItemRequestItemID == lineId)
+                    ?? throw new KeyNotFoundException("That line of the request was not found.");
+                await PurchasedSupplies.LoadArrivedAsync(_context, ticketLine.NewItemRequestID);
+                if (ticketLine.SupplyID.HasValue)
+                    throw new InvalidOperationException($"{ticketLine.ItemName} is already on the supplies list. Add its stock from the request instead.");
+                dto.DepartmentID = null;
+            }
+
             // The Property Department's unless another department is picked.
             var holder = await SupplyHolders.ForRoomAsync(_context, dto.LocationID!.Value, dto.DepartmentID);
 
@@ -191,7 +205,8 @@ namespace SchoolInventoryManagement.BLL.Services
                     Type = SupplyTransactionType.Opening,
                     QuantityChange = dto.OpeningQuantity,
                     QuantityAfter = dto.OpeningQuantity,
-                    Note = "Opening quantity",
+                    Note = ticketLine is null ? "Opening quantity" : $"{NewItemSource} #{ticketLine.NewItemRequestID}",
+                    NewItemRequestID = ticketLine?.NewItemRequestID,
                     UnitPrice = dto.UnitPrice,
                     PerformedByUserID = actingUserId,
                     CreatedAt = PhilippineTime.Now
@@ -199,8 +214,11 @@ namespace SchoolInventoryManagement.BLL.Services
             }
 
             // One save: the supply, its stock and its first history line
-            // go in together or not at all.
+            // go in together or not at all (and the request's line is
+            // linked to it).
             _context.Supplies.Add(supply);
+            if (ticketLine is not null)
+                ticketLine.Supply = supply;
             await _context.SaveChangesAsync();
 
             return supply.SupplyID;
@@ -233,6 +251,18 @@ namespace SchoolInventoryManagement.BLL.Services
             await PermissionHelper.EnsureIsAssetManagerAsync(_context, actingUserId);
 
             var source = (dto.Source ?? "").Trim();
+
+            // Supplies that arrived for a new-item request: the Property
+            // Department's, and only the supplies on that request. Marking
+            // the request delivered hands them to the department that asked.
+            NewItemRequest? ticket = null;
+            if (dto.NewItemRequestID is int ticketId)
+            {
+                ticket = await PurchasedSupplies.LoadArrivedAsync(_context, ticketId);
+                source = NewItemSource;
+                dto.DepartmentID = null;
+            }
+
             if (!StockSources.Contains(source) && source != NewItemSource)
                 throw new ArgumentException("Pick where the stock came from.");
 
@@ -258,6 +288,14 @@ namespace SchoolInventoryManagement.BLL.Services
             var supplyIds = lines.Select(l => l.SupplyID!.Value).Distinct().ToList();
             var locationIds = lines.Select(l => l.LocationID!.Value).Distinct().ToList();
 
+            if (ticket is not null)
+            {
+                var onTicket = ticket.Items.Where(i => i.SupplyID.HasValue).Select(i => i.SupplyID!.Value).ToHashSet();
+                if (supplyIds.Any(s => !onTicket.Contains(s)))
+                    throw new ArgumentException(
+                        $"Only the supplies on request #{ticket.NewItemRequestID} can be added here. Add other supplies from Add stock on its own.");
+            }
+
             var knownSupplies = await _context.Supplies.CountAsync(s => supplyIds.Contains(s.SupplyID));
             if (knownSupplies != supplyIds.Count)
                 throw new KeyNotFoundException("Supply not found.");
@@ -270,7 +308,7 @@ namespace SchoolInventoryManagement.BLL.Services
                 .ToListAsync();
 
             // "Direct purchase · from National Book Store · ref 0123"
-            var note = source;
+            var note = ticket is null ? source : $"{NewItemSource} #{ticket.NewItemRequestID}";
             if (!string.IsNullOrWhiteSpace(dto.SourceName)) note += " · from " + dto.SourceName.Trim();
             if (!string.IsNullOrWhiteSpace(dto.Reference)) note += " · ref " + dto.Reference.Trim();
             if (note.Length > 255) note = note[..255];
@@ -308,6 +346,7 @@ namespace SchoolInventoryManagement.BLL.Services
                     QuantityChange = line.Quantity,
                     QuantityAfter = row.Quantity,
                     Note = note,
+                    NewItemRequestID = ticket?.NewItemRequestID,
                     UnitPrice = line.UnitPrice,
                     PerformedByUserID = actingUserId,
                     CreatedAt = now

@@ -312,25 +312,23 @@ namespace SchoolInventoryManagement.Web.Controllers
             // Nothing is ticked here: the page runs Auto-fill as it loads
             // (see _ApprovalUnitPicker), so the common case is still just
             // "check and approve", using the same rule as the button.
-            if (request.RequestType == RequestType.Borrow)
+            // Only borrows are left: Transfer requests were removed
+            // (Scripts/029).
+            if (request.RequestType != RequestType.Borrow)
             {
-                await BuildApprovalLinesAsync(request, null);
-                await PopulateBorrowApprovalDropdownsAsync();
-
-                return View("ApproveBorrow", new ApproveBorrowRequestViewModel
-                {
-                    RequestID = id,
-                    DepartmentID = request.DepartmentID,
-                    // The requester's preferred pickup point, if they gave one.
-                    PickupLocationID = request.RequestedLocationID,
-                    RowVersionBase64 = RowVersionHelper.ToBase64(request.RowVersion)
-                });
+                TempData["ErrorMessage"] = "Transfer requests are no longer used.";
+                return RedirectToAction(nameof(Pending));
             }
 
             await BuildApprovalLinesAsync(request, null);
-            return View("ApproveTransfer", new ApproveTransferRequestViewModel
+            await PopulateBorrowApprovalDropdownsAsync();
+
+            return View("ApproveBorrow", new ApproveBorrowRequestViewModel
             {
                 RequestID = id,
+                DepartmentID = request.DepartmentID,
+                // The requester's department room (Scripts/029).
+                PickupLocationID = request.RequestedLocationID,
                 RowVersionBase64 = RowVersionHelper.ToBase64(request.RowVersion)
             });
         }
@@ -385,34 +383,6 @@ namespace SchoolInventoryManagement.Web.Controllers
             {
                 HandleServiceException(ex);
                 return await RedisplayBorrowApprovalAsync(id, model);
-            }
-        }
-
-        // POST /AssetRequests/ApproveTransfer/5
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        [Authorize(Roles = ApproverRoles)]
-        public async Task<IActionResult> ApproveTransfer(int id, ApproveTransferRequestViewModel model)
-        {
-            if (!ModelState.IsValid)
-                return await RedisplayTransferApprovalAsync(id, model);
-
-            try
-            {
-                await _fulfillmentService.ApproveTransferAsync(
-                    id,
-                    model.AssetIDs,
-                    null, // each unit keeps the condition it is in
-                    RowVersionHelper.FromBase64(model.RowVersionBase64),
-                    CurrentUserId,
-                    model.Remarks);
-
-                return RedirectToAction(nameof(Details), new { id });
-            }
-            catch (Exception ex)
-            {
-                HandleServiceException(ex);
-                return await RedisplayTransferApprovalAsync(id, model);
             }
         }
 
@@ -736,6 +706,8 @@ namespace SchoolInventoryManagement.Web.Controllers
             // can ask for. A model with none is greyed out: it has to be
             // bought instead. The service enforces both anyway.
             var models = await _modelService.GetAllModelsAsync();
+            // Where the items go: the requester's department room.
+            ViewBag.DeliveryRoom = await _requestService.GetDeliveryRoomNameAsync(CurrentUserId);
 
             var available = await _assetService.SearchAssetsAsync(
                 null, null, null, null, null, AssetStatus.Available, null);
@@ -868,18 +840,6 @@ namespace SchoolInventoryManagement.Web.Controllers
             await PopulateBorrowApprovalDropdownsAsync();
             ViewBag.ModelCategories = await ModelCategoriesAsync();
             return View("ApproveBorrow", model);
-        }
-
-        private async Task<IActionResult> RedisplayTransferApprovalAsync(int id, ApproveTransferRequestViewModel model)
-        {
-            var request = await _requestService.GetRequestByIdAsync(id);
-            if (request is null)
-                return NotFound();
-
-            ViewBag.Request = request;
-            await BuildApprovalLinesAsync(request, model.AssetIDs);
-            ViewBag.ModelCategories = await ModelCategoriesAsync();
-            return View("ApproveTransfer", model);
         }
     }
 }

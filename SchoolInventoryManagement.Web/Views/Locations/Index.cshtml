@@ -68,7 +68,7 @@ else
                             data-search="@($"{x.LocationName} {x.LocationCode} {x.BranchName} {x.Description}".ToLowerInvariant())">
                         <span class="myassets-item-main">
                             <span class="myassets-item-title">@x.LocationName</span>
-                            <span class="myassets-item-sub">@x.LocationCode@(string.IsNullOrWhiteSpace(x.Description) ? "" : " · " + x.Description)</span>
+                            <span class="myassets-item-sub">@x.LocationCode · @(x.DepartmentName ?? "no department")</span>
                         </span>
                         <span class="lk-count">@(u?.UnitsHere ?? 0)</span>
                     </button>
@@ -87,7 +87,7 @@ else
                 <article class="myassets-panel" data-panel="l-@x.LocationID" hidden>
                     <button type="button" class="myassets-back" data-back>&larr; All locations</button>
                     <h3 class="myassets-panel-title mt-0">@x.LocationName</h3>
-                    <div class="lk-sub">@x.LocationCode · @x.BranchName@(string.IsNullOrWhiteSpace(x.Description) ? "" : " · " + x.Description)</div>
+                    <div class="lk-sub">@x.LocationCode · @x.BranchName · @(x.DepartmentName is null ? "no department yet" : "the " + x.DepartmentName + "'s room")@(string.IsNullOrWhiteSpace(x.Description) ? "" : " · " + x.Description)</div>
 
                     <div class="myassets-stats lk-stats-3">
                         <div>

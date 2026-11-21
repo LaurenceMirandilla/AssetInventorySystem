@@ -480,6 +480,63 @@ namespace SchoolInventoryManagement.BLL.Services
             return assignments.Select(a => a.ToResponseDTO()).ToList();
         }
 
+        // ---- Shared within a department ----------------------------------
+        // Everyone in a department sees what it has. A borrowed unit still
+        // names who borrowed it; it counts for the department the request
+        // was made for (or the borrower's, without a request).
+
+        private IQueryable<AssetAssignment> OpenForDepartment(int userId, int departmentId) =>
+            _context.AssetAssignments.Where(a => a.ReturnDate == null
+                && (a.AssignedToUserID == userId
+                    || (a.Request != null ? a.Request.DepartmentID == departmentId : a.AssignedToUser.DepartmentID == departmentId)));
+
+        private IQueryable<Asset> KeptByDepartment(int departmentId) =>
+            _context.Assets.Where(a => a.DepartmentID == departmentId
+                && a.AssignedUserID == null
+                && a.Status == AssetStatus.Assigned
+                && !_context.AssetAssignments.Any(s => s.AssetID == a.AssetID && s.ReturnDate == null));
+
+        public async Task<DepartmentHoldingsDTO> GetDepartmentHoldingsAsync(int userId)
+        {
+            var me = await _context.Users.Where(u => u.UserID == userId)
+                .Select(u => new { u.DepartmentID, u.Department.DepartmentName })
+                .FirstOrDefaultAsync()
+                ?? throw new KeyNotFoundException("User not found.");
+
+            var openIds = await OpenForDepartment(userId, me.DepartmentID).Select(a => a.AssignmentID).ToListAsync();
+            var borrowed = await AssignmentQueryWithIncludes()
+                .Where(a => openIds.Contains(a.AssignmentID))
+                .OrderByDescending(a => a.AssignmentDate)
+                .ToListAsync();
+
+            var kept = await KeptByDepartment(me.DepartmentID)
+                .OrderBy(a => a.Model.ModelName).ThenBy(a => a.AssetCode)
+                .Select(a => new DepartmentAssetDTO
+                {
+                    AssetID = a.AssetID,
+                    AssetCode = a.AssetCode,
+                    AssetName = a.AssetName,
+                    ModelName = a.Model.ModelName,
+                    LocationName = a.CurrentLocation != null ? a.CurrentLocation.LocationName.Trim() : null,
+                    Condition = a.Condition
+                })
+                .ToListAsync();
+
+            return new DepartmentHoldingsDTO
+            {
+                DepartmentName = me.DepartmentName,
+                Borrowed = borrowed.Select(a => a.ToResponseDTO()).ToList(),
+                Kept = kept
+            };
+        }
+
+        public async Task<bool> IsDepartmentAssetAsync(int userId, int assetId)
+        {
+            var departmentId = await _context.Users.Where(u => u.UserID == userId).Select(u => u.DepartmentID).FirstOrDefaultAsync();
+            return await OpenForDepartment(userId, departmentId).AnyAsync(a => a.AssetID == assetId)
+                || await KeptByDepartment(departmentId).AnyAsync(a => a.AssetID == assetId);
+        }
+
         public async Task<List<AssetAssignmentResponseDTO>> GetActiveAssignmentsForUserAsync(int userId)
         {
             var assignments = await AssignmentQueryWithIncludes()

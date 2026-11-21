@@ -256,19 +256,44 @@ namespace SchoolInventoryManagement.BLL.Services
                             // moving someone does not move their old requests.
                             && (departmentId == null || r.DepartmentID == departmentId));
 
-            var lines = await released
+            var fromRequests = await released
                 .SelectMany(r => r.Items.Select(i => new
                 {
-                    r.SupplyRequestID,
+                    Purchase = false,
+                    Id = r.SupplyRequestID,
                     r.Department.DepartmentName,
+                    PersonId = r.RequestedByUserID,
+                    PersonName = r.RequestedBy.FirstName + " " + r.RequestedBy.LastName,
                     Units = i.QuantityApproved ?? 0,
                     Price = i.Supply.UnitPrice ?? 0m
                 }))
                 .ToListAsync();
 
+            // Supplies bought through a new-item request and handed to the
+            // department that asked when it was delivered (Scripts/028).
+            var fromPurchases = await _context.SupplyTransactions.AsNoTracking()
+                .Where(t => t.Type == SupplyTransactionType.Issued && t.NewItemRequestID != null
+                            && (from == null || t.CreatedAt >= from)
+                            && (until == null || t.CreatedAt < until)
+                            && (branchId == null || t.Location.BranchID == branchId)
+                            && (departmentId == null || t.NewItemRequest!.DepartmentID == departmentId))
+                .Select(t => new
+                {
+                    Purchase = true,
+                    Id = t.NewItemRequestID!.Value,
+                    t.NewItemRequest!.Department.DepartmentName,
+                    PersonId = t.NewItemRequest!.RequestedByUserID,
+                    PersonName = t.NewItemRequest!.RequestedByUser.FirstName + " " + t.NewItemRequest!.RequestedByUser.LastName,
+                    Units = -t.QuantityChange,
+                    Price = t.Supply.UnitPrice ?? 0m
+                })
+                .ToListAsync();
+
+            var lines = fromRequests.Concat(fromPurchases).ToList();
+
             var report = new SupplyReportDTO
             {
-                RequestsReleased = lines.Select(l => l.SupplyRequestID).Distinct().Count(),
+                RequestsReleased = lines.Select(l => (l.Purchase, l.Id)).Distinct().Count(),
                 UnitsIssued = lines.Sum(l => l.Units),
                 ValueIssued = lines.Sum(l => l.Units * l.Price),
                 ByDepartment = lines
@@ -276,13 +301,93 @@ namespace SchoolInventoryManagement.BLL.Services
                     .Select(g => new SupplyReportDepartmentDTO
                     {
                         DepartmentName = g.Key,
-                        Requests = g.Select(l => l.SupplyRequestID).Distinct().Count(),
+                        Requests = g.Select(l => (l.Purchase, l.Id)).Distinct().Count(),
                         Units = g.Sum(l => l.Units),
                         Value = g.Sum(l => l.Units * l.Price)
                     })
                     .OrderByDescending(d => d.Units).ThenBy(d => d.DepartmentName)
+                    .ToList(),
+                // A person who moved department shows once for each: the
+                // department each request was made for.
+                ByPerson = lines
+                    .GroupBy(l => new { l.PersonId, l.PersonName, l.DepartmentName })
+                    .Select(g => new SupplyReportPersonDTO
+                    {
+                        UserID = g.Key.PersonId,
+                        PersonName = g.Key.PersonName,
+                        DepartmentName = g.Key.DepartmentName,
+                        Requests = g.Select(l => (l.Purchase, l.Id)).Distinct().Count(),
+                        Units = g.Sum(l => l.Units),
+                        Value = g.Sum(l => l.Units * l.Price)
+                    })
+                    .OrderByDescending(p => p.Units).ThenBy(p => p.PersonName)
                     .ToList()
             };
+
+            // ---- requested vs handed out: supply requests MADE in the
+            // period, whatever became of them ----
+            var asked = await _context.SupplyRequests.AsNoTracking()
+                .Where(r => (from == null || r.CreatedAt >= from)
+                            && (until == null || r.CreatedAt < until)
+                            && (branchId == null || r.BranchID == branchId)
+                            && (departmentId == null || r.DepartmentID == departmentId))
+                .SelectMany(r => r.Items.Select(i => new
+                {
+                    r.SupplyRequestID,
+                    r.Status,
+                    r.Department.DepartmentName,
+                    i.SupplyID,
+                    i.Supply.SupplyName,
+                    i.Supply.Unit,
+                    i.QuantityRequested,
+                    Approved = i.QuantityApproved ?? 0
+                }))
+                .ToListAsync();
+
+            SupplyDemandDTO Tally(string department, IEnumerable<(int Request, SupplyRequestStatus Status, int Asked, int Approved)> rows)
+            {
+                var d = new SupplyDemandDTO { DepartmentName = department };
+                foreach (var r in rows)
+                {
+                    d.Asked += r.Asked;
+                    switch (r.Status)
+                    {
+                        case SupplyRequestStatus.Released:
+                        case SupplyRequestStatus.Delivered:
+                            d.HandedOut += r.Approved;
+                            d.Lowered += Math.Max(0, r.Asked - r.Approved);
+                            break;
+                        case SupplyRequestStatus.Rejected: d.Rejected += r.Asked; break;
+                        case SupplyRequestStatus.Cancelled: d.Cancelled += r.Asked; break;
+                        default: d.StillOpen += r.Asked; break;
+                    }
+                }
+                d.Requests = rows.Select(r => r.Request).Distinct().Count();
+                return d;
+            }
+            var demandRows = asked.Select(a => (Dept: a.DepartmentName, Row: (a.SupplyRequestID, a.Status, a.QuantityRequested, a.Approved))).ToList();
+            report.DemandTotal = Tally("All departments", demandRows.Select(x => x.Row));
+            report.DemandByDepartment = demandRows
+                .GroupBy(x => x.Dept)
+                .Select(g => Tally(g.Key, g.Select(x => x.Row)))
+                .OrderByDescending(d => d.Asked).ThenBy(d => d.DepartmentName)
+                .ToList();
+            report.MostUnmet = asked
+                .GroupBy(a => new { a.SupplyID, a.SupplyName, a.Unit })
+                .Select(g => new SupplyUnmetDTO
+                {
+                    SupplyID = g.Key.SupplyID,
+                    SupplyName = g.Key.SupplyName,
+                    Unit = g.Key.Unit,
+                    Asked = g.Sum(a => a.QuantityRequested),
+                    NotGiven = g.Sum(a => a.Status == SupplyRequestStatus.Rejected ? a.QuantityRequested
+                        : a.Status is SupplyRequestStatus.Released or SupplyRequestStatus.Delivered ? Math.Max(0, a.QuantityRequested - a.Approved)
+                        : 0)
+                })
+                .Where(u => u.NotGiven > 0)
+                .OrderByDescending(u => u.NotGiven).ThenBy(u => u.SupplyName)
+                .Take(5)
+                .ToList();
 
             // ---- in, out and what is left: the stock history ----
             var moves = await _context.SupplyTransactions.AsNoTracking()

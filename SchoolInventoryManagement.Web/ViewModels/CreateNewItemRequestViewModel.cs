@@ -40,8 +40,8 @@ namespace SchoolInventoryManagement.Web.ViewModels
         [Display(Name = "Needed by")]
         public DateTime? NeededBy { get; set; }
 
-        [Required(ErrorMessage = "Pick where the items should be brought.")]
-        [Display(Name = "Deliver to")]
+        // No longer asked: the requester's department room is used
+        // (Scripts/029).
         public int? DeliverToLocationID { get; set; }
     }
 }

@@ -44,5 +44,8 @@ namespace SchoolInventoryManagement.Web.ViewModels
 
     // A department other than Property, for "Belongs to" on the supply
     // forms: stock it keeps for itself (not requestable).
+    // New supply opened from an arrived new-item request.
+    public record SupplyFromRequest(int RequestId, string DepartmentName);
+
     public record SupplyDepartmentOption(int Id, string Name, int BranchId, string BranchName);
 }

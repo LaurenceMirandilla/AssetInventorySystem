@@ -1434,6 +1434,35 @@ a.dash-kpi:hover { background: rgba(255, 255, 255, 0.14); color: #fff; text-deco
 /* Share bars on Reports > Supplies. */
 .rp-bar { height: 8px; background: #eaf1ec; }
 .rp-bar > div { height: 8px; background: var(--sab-green); }
+.rp-bar.is-warn > div { background: #c98a12; }
+
+/* Department forms: the rooms picker (Scripts/029). */
+.dept-rooms-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px; }
+.dept-room { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border: 1px solid #dfe7e1; border-radius: 8px; background: #fff; cursor: pointer; font-size: 0.9rem; min-width: 0; }
+.dept-room input { margin: 0; accent-color: var(--sab-green); }
+.dept-room span { min-width: 0; overflow-wrap: anywhere; }
+.dept-room small { color: var(--sab-text-muted); white-space: nowrap; }
+.dept-room.is-taken { background: #f4f6f5; color: var(--sab-text-muted); cursor: not-allowed; }
+.dept-room:has(input:checked) { border-color: var(--sab-green); background: #eef7f0; }
+
+/* Reports > Supplies: each section's own CSV link, and the
+   "Requested vs handed out" figures. */
+.register-step-head .rp-csv { margin-left: 12px; font-size: 0.78rem; font-weight: 600; white-space: nowrap; color: inherit; opacity: 0.9; }
+.register-step-head .rp-csv:hover { opacity: 1; text-decoration: underline; }
+.rp-demand { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); border-bottom: 1px solid #e3ebe5; }
+.rp-demand > div { display: grid; gap: 2px; padding: 12px 14px; border-left: 1px solid #e3ebe5; min-width: 0; }
+.rp-demand > div:first-child { border-left: 0; }
+.rp-demand span { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--sab-text-muted); }
+.rp-demand strong { font-size: 1.35rem; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.rp-demand small { color: var(--sab-text-muted); font-size: 0.74rem; }
+.rp-demand .is-good strong { color: var(--sab-green); }
+.rp-demand .is-warn strong { color: #a86f00; }
+.rp-demand .is-bad strong { color: #b3261e; }
+@media (max-width: 991.98px) {
+  .rp-demand { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .rp-demand > div:nth-child(3n + 1) { border-left: 0; }
+  .rp-demand > div:nth-child(n + 4) { border-top: 1px solid #e3ebe5; }
+}
 .st-disposed         { background: var(--sab-gray-bg); color: var(--sab-gray-text); }
 /* Red tagged for disposal by the Property Department. */
 .st-redtagged        { background: #b3261e; color: #fff; }

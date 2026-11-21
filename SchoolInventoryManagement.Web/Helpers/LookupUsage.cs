@@ -127,12 +127,17 @@ namespace SchoolInventoryManagement.Web.Helpers
                 .Union(_context.NewItemRequests.Where(n => n.DeliverToLocationID != null).Select(n => n.DeliverToLocationID!.Value))
                 .ToListAsync();
 
+            var owners = await _context.Locations.Where(l => l.DepartmentID != null)
+                .Select(l => new { l.LocationID, l.Department!.DepartmentName })
+                .ToDictionaryAsync(x => x.LocationID, x => x.DepartmentName);
+
             var ids = await _context.Locations.Select(l => l.LocationID).ToListAsync();
             return ids.ToDictionary(id => id, id =>
             {
                 here.TryGetValue(id, out var h);
                 var units = h?.Units ?? 0;
-                var blocked = units > 0 ? $"Can't delete: {units} asset{(units == 1 ? " is" : "s are")} here."
+                var blocked = owners.TryGetValue(id, out var owner) ? $"Can't delete: it is the {owner}'s room."
+                    : units > 0 ? $"Can't delete: {units} asset{(units == 1 ? " is" : "s are")} here."
                     : requested.Contains(id) ? "Can't delete: requests name it."
                     : everMoved.Contains(id) ? "Can't delete: its movement history refers to it."
                     : supplyUse.Contains(id) ? "Can't delete: supplies or requests refer to it." : null;

@@ -25,6 +25,11 @@ namespace SchoolInventoryManagement.DAL.Entities
         [MaxLength(255)]
         public string? Description { get; set; }
 
+        // The department the room belongs to (Scripts/029). One department
+        // at most: a room is never shared.
+        public int? DepartmentID { get; set; }
+        public Department? Department { get; set; }
+
         // Upward Navigation Property
         [ForeignKey("BranchID")]
         public Branch Branch { get; set; } = null!;

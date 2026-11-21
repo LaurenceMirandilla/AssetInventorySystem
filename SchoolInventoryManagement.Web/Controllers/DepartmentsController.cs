@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
@@ -7,6 +9,7 @@ using Microsoft.AspNetCore.Mvc.Rendering;
 using SchoolInventoryManagement.BLL.DTOs;
 using SchoolInventoryManagement.BLL.Interfaces;
 using SchoolInventoryManagement.DAL.Constants;
+using SchoolInventoryManagement.Web.ViewModels;
 
 namespace SchoolInventoryManagement.Web.Controllers
 {
@@ -18,11 +21,13 @@ namespace SchoolInventoryManagement.Web.Controllers
     {
         private readonly IDepartmentService _departmentService;
         private readonly IBranchService _branchService;
+        private readonly ILocationService _locationService;
 
-        public DepartmentsController(IDepartmentService departmentService, IBranchService branchService)
+        public DepartmentsController(IDepartmentService departmentService, IBranchService branchService, ILocationService locationService)
         {
             _departmentService = departmentService;
             _branchService = branchService;
+            _locationService = locationService;
         }
 
         private int CurrentUserId =>
@@ -32,6 +37,17 @@ namespace SchoolInventoryManagement.Web.Controllers
         {
             var branches = await _branchService.GetAllBranchesAsync();
             ViewBag.Branches = new SelectList(branches, "BranchID", "BranchName");
+            ViewBag.RoomOptions = await RoomOptionsAsync();
+        }
+
+        // Every room, for the room picker: its branch and who has it.
+        private async Task<List<DepartmentRoomOption>> RoomOptionsAsync()
+        {
+            var locations = await _locationService.GetAllLocationsAsync();
+            return locations
+                .OrderBy(l => l.LocationName)
+                .Select(l => new DepartmentRoomOption(l.LocationID, l.LocationName.Trim(), l.BranchID, l.DepartmentID, l.DepartmentName))
+                .ToList();
         }
 
         // GET /Departments?branchId=2 -- the Branch filter starts on that
@@ -41,8 +57,9 @@ namespace SchoolInventoryManagement.Web.Controllers
             ViewBag.BranchFilter = branchId;
             var departments = await _departmentService.GetAllDepartmentsAsync();
             ViewBag.Usage = await usage.DepartmentsAsync();
-            // For the Branch list in each department's edit form.
+            // For the Branch list and the rooms in each department's edit form.
             ViewBag.BranchList = (await _branchService.GetAllBranchesAsync()).OrderBy(b => b.BranchName).ToList();
+            ViewBag.RoomOptions = await RoomOptionsAsync();
             return View(departments);
         }
 
@@ -87,7 +104,9 @@ namespace SchoolInventoryManagement.Web.Controllers
             {
                 BranchID = department.BranchID,
                 DepartmentName = department.DepartmentName,
-                Description = department.Description
+                Description = department.Description,
+                LocationIDs = department.Rooms.Select(r => r.LocationID).ToList(),
+                MainLocationID = department.MainLocationID
             };
 
             ViewBag.DepartmentID = id;

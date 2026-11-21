@@ -104,7 +104,12 @@ namespace SchoolInventoryManagement.Web.Middleware
                 context.Request.Method = HttpMethods.Get;
 
                 await _next(context);
-                context.Response.StatusCode = statusCode;
+                // The error page may already be on its way to the browser
+                // (a long page is sent as it renders); the status code went
+                // out with it then, and setting it again would throw and
+                // leave the browser waiting on a half-sent page.
+                if (!context.Response.HasStarted)
+                    context.Response.StatusCode = statusCode;
                 return true;
             }
             catch (Exception pageEx)

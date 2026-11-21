@@ -19,6 +19,12 @@ namespace SchoolInventoryManagement.DAL.Entities
         // not be told.
         public int? DepartmentID { get; set; }
 
+        // The new-item (purchase) request the line belongs to
+        // (Scripts/028): supplies that arrived for it (Received, Opening),
+        // and the same supplies handed to the department that asked once
+        // it is delivered (Issued).
+        public int? NewItemRequestID { get; set; }
+
         public SupplyTransactionType Type { get; set; }
 
         // Plus for stock coming in, minus for stock going out.
@@ -46,6 +52,9 @@ namespace SchoolInventoryManagement.DAL.Entities
 
         [ForeignKey("DepartmentID")]
         public Department? Department { get; set; }
+
+        [ForeignKey("NewItemRequestID")]
+        public NewItemRequest? NewItemRequest { get; set; }
 
         [ForeignKey("PerformedByUserID")]
         public User PerformedBy { get; set; } = null!;

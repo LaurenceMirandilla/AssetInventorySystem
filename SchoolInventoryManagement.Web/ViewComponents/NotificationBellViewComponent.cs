@@ -61,9 +61,12 @@ namespace SchoolInventoryManagement.Web.ViewComponents
                         .GetRequiredService<IRequestFulfillmentService>()
                         .MarkOverdueAsync();
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // Never break the page over it; the next page load retries.
+                    // Never break the page over it; the next page load
+                    // retries. Logged, so a failing check is seen.
+                    HttpContext.RequestServices.GetService<ILogger<NotificationBellViewComponent>>()
+                        ?.LogError(ex, "The overdue check failed.");
                 }
             }
 

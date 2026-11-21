@@ -9,11 +9,14 @@
     var units = ViewBag.Units as List<string> ?? new();
     var commonUnits = new[] { "piece", "box", "ream", "bottle", "pack", "roll", "set", "gallon" };
     var departments = ViewBag.Departments as List<SupplyDepartmentOption> ?? new();
+    // Opened from an arrived new-item request: a supply new to the school.
+    var fromRequest = ViewBag.FromRequest as SupplyFromRequest;
 }
 
 <form asp-action="Create" method="post" class="register-form page-fill" id="supplyForm">
     @Html.AntiForgeryToken()
     @Html.FormTicket()
+    <input type="hidden" asp-for="NewItemRequestItemID" />
 
     <div class="asset-detail-head">
         <div>
@@ -28,6 +31,14 @@
             <div class="asset-detail-sub">Something that gets used up. It is counted by quantity, so it has no code, serial number or holder.</div>
         </div>
     </div>
+
+    @if (fromRequest is not null)
+    {
+        <div class="sab-callout mb-3">
+            <span class="sab-callout-label">New-item request #@fromRequest.RequestId</span>
+            Filled in from the request. The opening quantity is what arrived: it goes into the Property Department's stock, and is handed to the @fromRequest.DepartmentName when the request is marked delivered.
+        </div>
+    }
 
     <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
 
@@ -125,9 +136,9 @@
                         </div>
                         <div class="col-md-8">
                             <label asp-for="DepartmentID" class="form-label">Belongs to</label>
-                            <select asp-for="DepartmentID" class="form-select" id="supplyDepartment">
+                            <select asp-for="DepartmentID" class="form-select" id="supplyDepartment" disabled="@(fromRequest is not null)">
                                 <option value="">Property Department (in stock, can be requested)</option>
-                                @foreach (var g in departments.GroupBy(d => d.BranchName))
+                                @foreach (var g in fromRequest is null ? departments.GroupBy(d => d.BranchName) : Enumerable.Empty<IGrouping<string, SupplyDepartmentOption>>())
                                 {
                                     <optgroup label="@g.Key">
                                         @foreach (var d in g)

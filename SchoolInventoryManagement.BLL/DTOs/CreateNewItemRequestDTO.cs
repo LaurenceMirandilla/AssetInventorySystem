@@ -21,8 +21,8 @@ namespace SchoolInventoryManagement.BLL.DTOs
         [Required]
         public DateTime? NeededBy { get; set; }
 
-        // Where the items are brought when they arrive.
-        [Required]
+        // No longer asked: the requester's department room is used
+        // (Scripts/029).
         public int? DeliverToLocationID { get; set; }
     }
 
@@ -56,6 +56,9 @@ namespace SchoolInventoryManagement.BLL.DTOs
         public string DepartmentName { get; set; } = null!;
         public string BranchName { get; set; } = null!;
         public int BranchID { get; set; }
+        // Where it is brought: the department's main room (Scripts/029).
+        // Null when the department has no room yet.
+        public string? DeliveryRoomName { get; set; }
         public List<NewItemModelChoiceDTO> Models { get; set; } = new();
         public List<NewItemSupplyChoiceDTO> Supplies { get; set; } = new();
         public List<NewItemLocationChoiceDTO> Locations { get; set; } = new();

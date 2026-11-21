@@ -49,6 +49,9 @@
                             <textarea asp-for="Description" class="form-control" rows="3" maxlength="255" placeholder="e.g. Grades 11 and 12."></textarea>
                             <span asp-validation-for="Description" class="text-danger small"></span>
                         </div>
+                        <div class="col-12">
+                            <partial name="_DepartmentRooms" model="@(new SchoolInventoryManagement.Web.ViewModels.DepartmentRoomsPicker("edit", (int?)recordId, Model.LocationIDs ?? new(), Model.MainLocationID, ViewBag.RoomOptions as List<SchoolInventoryManagement.Web.ViewModels.DepartmentRoomOption> ?? new()))" />
+                        </div>
                     </div>
                 </div>
             </div>

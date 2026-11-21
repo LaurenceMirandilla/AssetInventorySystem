@@ -16,6 +16,17 @@
     string Label(SupplyStockStatus s) => s == SupplyStockStatus.OutOfStock ? "Out of stock" : s == SupplyStockStatus.RunningLow ? "Running low" : "In stock";
     string Pill(SupplyStockStatus s) => s == SupplyStockStatus.OutOfStock ? "st-overdue" : s == SupplyStockStatus.RunningLow ? "st-low" : "st-available";
     int Pct(int value, int max) => max <= 0 ? 0 : Math.Max(2, (int)Math.Round(100.0 * value / max));
+    var demand = Model.DemandTotal;
+    var topUnmet = Model.MostUnmet.Count == 0 ? 0 : Model.MostUnmet.Max(u => u.NotGiven);
+    // The same filters, for each section's own CSV.
+    object Csv(string section) => new
+    {
+        section,
+        fromDate = from?.ToString("yyyy-MM-dd"),
+        toDate = to?.ToString("yyyy-MM-dd"),
+        branchId,
+        departmentId
+    };
 }
 
 <div class="asset-detail-head mb-2 pb-0 border-0">
@@ -71,7 +82,7 @@
 </form>
 
 <div class="myassets-stats lk-stats-4 mt-0 mb-3">
-    <div><span>Requests released</span><strong>@Model.RequestsReleased</strong></div>
+    <div><span>Requests handed out</span><strong>@Model.RequestsReleased</strong><span class="text-muted small">supply requests and delivered purchases</span></div>
     <div><span>Units issued</span><strong>@Model.UnitsIssued</strong></div>
     <div><span>Value issued</span><strong>@DisplayText.Peso(Model.ValueIssued)</strong><span class="text-muted small">from each supply's price per unit</span></div>
     <div>
@@ -83,7 +94,7 @@
 <div class="row g-3 mb-3">
     <div class="col-lg-8">
         <div class="sab-table-card h-100">
-            <div class="register-step-head"><div class="register-step-title flex-grow-1">Who used the most</div><span class="nr-head-note">by department, from released requests</span></div>
+            <div class="register-step-head"><div class="register-step-title flex-grow-1">Who used the most</div><span class="nr-head-note">by department, from released requests and delivered purchases</span><a href="@Url.Action("ExportSupplies", Csv("departments"))" class="rp-csv">&darr; CSV</a></div>
             @if (Model.ByDepartment.Any())
             {
                 <div class="table-responsive">
@@ -128,6 +139,122 @@
             </div>
         </div>
     </div>
+</div>
+
+@* ---- By person, and what people asked for but did not get ---- *@
+<div class="row g-3 mb-3">
+    <div class="col-lg-8">
+        <div class="sab-table-card h-100" data-pager data-page-size="10" data-noun="people">
+            <div class="register-step-head">
+                <div class="register-step-title flex-grow-1">By person</div>
+                <span class="nr-head-note">who the supplies went to, under the department each request was for</span>
+                <a href="@Url.Action("ExportSupplies", Csv("people"))" class="rp-csv">&darr; CSV</a>
+            </div>
+            @if (Model.ByPerson.Any())
+            {
+                <div class="table-responsive">
+                    <table class="table asset-table mb-0 align-middle">
+                        <thead><tr><th>Person</th><th>Department</th><th class="text-end">Requests</th><th class="text-end">Units</th><th class="text-end">Value</th></tr></thead>
+                        <tbody>
+                            @foreach (var p in Model.ByPerson)
+                            {
+                                <tr data-pager-item>
+                                    <td><strong>@p.PersonName</strong></td>
+                                    <td>@p.DepartmentName</td>
+                                    <td class="text-end">@p.Requests</td>
+                                    <td class="text-end"><strong>@p.Units</strong></td>
+                                    <td class="text-end text-nowrap">@DisplayText.Peso(p.Value)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <div class="history-foot">
+                    <span data-pager-range></span>
+                    <div class="d-flex align-items-center flex-wrap" style="gap:8px;">
+                        <span class="text-muted">Show</span>
+                        <select class="form-select form-select-sm rq-size" data-pager-size aria-label="Rows per page">
+                            <option value="10" selected>10</option>
+                            <option value="20">20</option>
+                            <option value="50">50</option>
+                        </select>
+                        <span class="text-muted">per page</span>
+                        <div class="d-flex flex-wrap" style="gap:6px;" data-pager-buttons></div>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="sab-empty"><div class="sab-empty-title">No supplies were handed out in this period</div></div>
+            }
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="sab-table-card h-100">
+            <div class="register-step-head"><div class="register-step-title flex-grow-1">Asked for but not given</div><span class="nr-head-note">lowered or rejected, top 5</span></div>
+            <div class="register-step-body">
+                @if (!Model.MostUnmet.Any())
+                {
+                    <div class="asset-muted">Everything settled in this period was given as asked.</div>
+                }
+                @foreach (var u in Model.MostUnmet)
+                {
+                    <div class="mb-3">
+                        <div class="d-flex flex-wrap justify-content-between" style="gap:2px 8px;">
+                            <a asp-controller="Supplies" asp-action="Details" asp-route-id="@u.SupplyID" class="asset-name" style="min-width:0;overflow-wrap:anywhere;">@u.SupplyName</a>
+                            <span class="asset-muted text-nowrap">@u.NotGiven of @u.Asked @SupplyText.Unit(u.Asked, u.Unit)</span>
+                        </div>
+                        <div class="rp-bar is-warn mt-1"><div style="width:@Pct(u.NotGiven, topUnmet)%;"></div></div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@* ---- Requested vs handed out ---- *@
+<div class="sab-table-card mb-3">
+    <div class="register-step-head">
+        <div class="register-step-title flex-grow-1">Requested vs handed out</div>
+        <span class="nr-head-note">supply requests made in this period, whatever became of them</span>
+        <a href="@Url.Action("ExportSupplies", Csv("demand"))" class="rp-csv">&darr; CSV</a>
+    </div>
+    @if (demand.Requests > 0)
+    {
+        <div class="rp-demand">
+            <div><span>Asked for</span><strong>@demand.Asked</strong><small>@demand.Requests request@(demand.Requests == 1 ? "" : "s")</small></div>
+            <div class="is-good"><span>Handed out</span><strong>@demand.HandedOut</strong><small>@(demand.FilledPercent is int f ? f + "% of what was settled" : "nothing settled yet")</small></div>
+            <div class="is-warn"><span>Lowered</span><strong>@demand.Lowered</strong><small>approved for less</small></div>
+            <div class="is-bad"><span>Rejected</span><strong>@demand.Rejected</strong><small>&nbsp;</small></div>
+            <div><span>Cancelled</span><strong>@demand.Cancelled</strong><small>&nbsp;</small></div>
+            <div><span>Still open</span><strong>@demand.StillOpen</strong><small>waiting or not released</small></div>
+        </div>
+        <div class="table-responsive">
+            <table class="table asset-table mb-0 align-middle">
+                <thead><tr><th>Department</th><th class="text-end">Requests</th><th class="text-end">Asked</th><th class="text-end">Handed out</th><th class="text-end">Lowered</th><th class="text-end">Rejected</th><th class="text-end">Cancelled</th><th class="text-end">Open</th><th class="text-end">Filled</th></tr></thead>
+                <tbody>
+                    @foreach (var d in Model.DemandByDepartment)
+                    {
+                        <tr>
+                            <td><strong>@d.DepartmentName</strong></td>
+                            <td class="text-end">@d.Requests</td>
+                            <td class="text-end">@d.Asked</td>
+                            <td class="text-end"><strong>@d.HandedOut</strong></td>
+                            <td class="text-end">@d.Lowered</td>
+                            <td class="text-end">@d.Rejected</td>
+                            <td class="text-end">@d.Cancelled</td>
+                            <td class="text-end">@d.StillOpen</td>
+                            <td class="text-end">@(d.FilledPercent is int p ? p + "%" : "—")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+    else
+    {
+        <div class="sab-empty"><div class="sab-empty-title">No supply requests were made in this period</div></div>
+    }
 </div>
 
 <div class="sab-table-card" data-pager data-page-size="10" data-noun="supplies">

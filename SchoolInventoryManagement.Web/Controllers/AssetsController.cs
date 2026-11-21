@@ -389,8 +389,8 @@ namespace SchoolInventoryManagement.Web.Controllers
         // anybody else's open assignments.
         public async Task<IActionResult> MyAssets()
         {
-            var assignments = await _assignmentService.GetActiveAssignmentsForUserAsync(CurrentUserId);
-            return View(assignments);
+            // Everything the department has, shared by its members.
+            return View(await _assignmentService.GetDepartmentHoldingsAsync(CurrentUserId));
         }
 
         // GET /Assets/Details/5
@@ -400,9 +400,9 @@ namespace SchoolInventoryManagement.Web.Controllers
             if (asset is null)
                 return NotFound();
 
-            if (!CanOpenUnit(asset))
+            if (!CanOpenUnit(asset) && !await _assignmentService.IsDepartmentAssetAsync(CurrentUserId, id))
             {
-                TempData["ErrorMessage"] = "You can only open items that are assigned to you. See My Assets.";
+                TempData["ErrorMessage"] = "You can only open items your department has. See My Assets.";
                 return RedirectToAction(nameof(Index));
             }
 

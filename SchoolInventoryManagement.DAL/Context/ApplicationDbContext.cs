@@ -60,6 +60,18 @@ namespace SchoolInventoryManagement.DAL.Context
                 .HasForeignKey(d => d.BranchID)
                 .OnDelete(DeleteBehavior.Restrict);
 
+            // A department's rooms, and its main room (Scripts/029).
+            modelBuilder.Entity<Location>()
+                .HasOne(l => l.Department)
+                .WithMany(d => d.Rooms)
+                .HasForeignKey(l => l.DepartmentID)
+                .OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<Department>()
+                .HasOne(d => d.MainLocation)
+                .WithMany()
+                .HasForeignKey(d => d.MainLocationID)
+                .OnDelete(DeleteBehavior.Restrict);
+
             modelBuilder.Entity<Location>()
                 .HasOne(l => l.Branch)
                 .WithMany(b => b.Locations)
@@ -396,6 +408,9 @@ namespace SchoolInventoryManagement.DAL.Context
             modelBuilder.Entity<SupplyRequest>()
                 .HasOne(r => r.Department).WithMany()
                 .HasForeignKey(r => r.DepartmentID).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<SupplyTransaction>()
+                .HasOne(t => t.NewItemRequest).WithMany()
+                .HasForeignKey(t => t.NewItemRequestID).OnDelete(DeleteBehavior.Restrict);
             modelBuilder.Entity<SupplyRequest>()
                 .HasOne(r => r.DecidedBy).WithMany()
                 .HasForeignKey(r => r.DecidedByUserID).OnDelete(DeleteBehavior.Restrict);

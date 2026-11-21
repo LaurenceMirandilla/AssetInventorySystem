@@ -676,8 +676,20 @@ namespace SchoolInventoryManagement.BLL.Services
                         $"Overdue: on your request #{request.RequestID}, {what} due back {due}. Please return it.",
                         url);
 
+                // Everyone else in the department shares the items, so they
+                // are told too (Scripts/029). Their link is My Assets: only
+                // the requester sees the request itself.
                 var requester = $"{request.RequestedByUser.FirstName} {request.RequestedByUser.LastName}";
-                foreach (var userId in managerIds.Except(holderIds))
+                var memberIds = await _context.Users
+                    .Where(u => u.Status == "Active" && u.DepartmentID == request.DepartmentID)
+                    .Select(u => u.UserID)
+                    .ToListAsync();
+                foreach (var userId in memberIds.Except(holderIds))
+                    NotificationHelper.Queue(_context, userId,
+                        $"Overdue: {requester} borrowed {what.Replace(" was", "").Replace(" were", "")} for your department on request #{request.RequestID}, due back {due}. Please make sure it is returned.",
+                        "/Assets/MyAssets");
+
+                foreach (var userId in managerIds.Except(holderIds).Except(memberIds))
                     NotificationHelper.Queue(_context, userId,
                         $"Overdue: request #{request.RequestID} by {requester}: {what} due back {due}.",
                         url);

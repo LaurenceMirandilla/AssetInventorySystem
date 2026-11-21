@@ -287,7 +287,9 @@ namespace SchoolInventoryManagement.Web.Controllers
                     var delivered = await _requestService.GetRequestAsync(id, CurrentUserId);
                     TempData["StatusMessage"] += delivered.ItemKind == CategoryKind.Asset && delivered.RegisteredUnits.Count > 0
                         ? $" {delivered.RequestedByUserName} now confirms receipt; then the items are {delivered.DepartmentName}'s."
-                        : " The request is complete.";
+                        : delivered.ItemKind == CategoryKind.Supply
+                            ? $" The supplies were handed to the {delivered.DepartmentName} out of the Property Department's stock. The request is complete."
+                            : " The request is complete.";
                 }
             }
             catch (Exception ex)

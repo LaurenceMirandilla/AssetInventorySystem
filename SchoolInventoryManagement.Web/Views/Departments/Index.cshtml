@@ -4,6 +4,7 @@
     ViewData["Title"] = "Departments";
     var usage = ViewBag.Usage as Dictionary<int, LookupUsage.DepartmentUsage> ?? new();
     var branches = ViewBag.BranchList as List<SchoolInventoryManagement.BLL.DTOs.BranchDTO> ?? new();
+    var roomOptions = ViewBag.RoomOptions as List<SchoolInventoryManagement.Web.ViewModels.DepartmentRoomOption> ?? new();
     var branchFilter = ViewBag.BranchFilter as int?;
 }
 @if (TempData["ErrorMessage"] != null)
@@ -88,6 +89,14 @@ else
                     <button type="button" class="myassets-back" data-back>&larr; All departments</button>
                     <h3 class="myassets-panel-title mt-0">@x.DepartmentName</h3>
                     <div class="lk-sub">@x.BranchName · head: @DisplayText.Or(u?.Head, "none yet")</div>
+                    @if (x.Rooms.Any())
+                    {
+                        <div class="lk-sub mt-1">Rooms: @string.Join(", ", x.Rooms.Select(r => r.LocationID == x.MainLocationID ? r.LocationName + " (main)" : r.LocationName))</div>
+                    }
+                    else
+                    {
+                        <div class="alert alert-warning mt-2 mb-0">No room yet. Pick its rooms below: its supplies and purchases are delivered to its main room.</div>
+                    }
                     @if (x.IsProperty)
                     {
                         <div class="sab-callout mt-3">
@@ -138,6 +147,9 @@ else
                                 <div class="col-12">
                                     <label class="form-label" for="@formId-desc">Description <span class="register-optional">optional</span></label>
                                     <textarea id="@formId-desc" name="Description" class="form-control" rows="2" maxlength="255">@x.Description</textarea>
+                                </div>
+                                <div class="col-12">
+                                    <partial name="_DepartmentRooms" model="@(new SchoolInventoryManagement.Web.ViewModels.DepartmentRoomsPicker(formId, x.DepartmentID, x.Rooms.Select(r => r.LocationID).ToList(), x.MainLocationID, roomOptions))" />
                                 </div>
                             </div>
                         </form>

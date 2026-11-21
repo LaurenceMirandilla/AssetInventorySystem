@@ -97,6 +97,8 @@ namespace SchoolInventoryManagement.BLL.DTOs
 
     public class NewItemRequestItemDTO
     {
+        public int NewItemRequestItemID { get; set; }
+
         public string ItemName { get; set; } = null!;
         public int Quantity { get; set; }
 
@@ -111,5 +113,9 @@ namespace SchoolInventoryManagement.BLL.DTOs
         public int? ModelID { get; set; }
         public int? SupplyID { get; set; }
         public bool IsExisting => ModelID.HasValue || SupplyID.HasValue;
+
+        // Supplies requests: how many were added to stock for this request
+        // so far (Scripts/028).
+        public int AddedToStock { get; set; }
     }
 }
